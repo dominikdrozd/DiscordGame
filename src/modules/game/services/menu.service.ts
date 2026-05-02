@@ -6,7 +6,7 @@ import { CITIES, getCity, listCities, type City } from '../cities/index.js';
 import { EXPEDITIONS, REGION_LVL_REQ } from '../engine/encounters.js';
 import { CLASSES, findSubclass, findSubclass2 } from '../classes/index.js';
 import { RACES } from '../races/index.js';
-import { fmtResource, fmtInstance, fmtStats } from './items.js';
+import { fmtStats } from './items.js';
 import { displayName } from '../../../utils.js';
 import { buildMenuRows, buildBackToMenuRow } from '../ui/menu-buttons.js';
 import { buildCityListRows, buildCityViewRows } from '../ui/city-buttons.js';
@@ -31,6 +31,11 @@ export interface MenuShopOpener {
   openShopFromInteraction(interaction: ButtonInteraction, cityId: string): Promise<void>;
 }
 
+export interface MenuInventoryOpener {
+  /** Klik 🎒 Plecak w menu — adapter w `registerGameCommands` rejestruje wątek do `InventoryCommand`. */
+  openInventoryFromInteraction(interaction: ButtonInteraction): Promise<void>;
+}
+
 const DUNGEONS_LIST = ['spizarnia_babci', 'smocza_dziupla'];
 
 export class MenuService {
@@ -43,6 +48,7 @@ export class MenuService {
     private readonly expeditions: ExpeditionService,
     private readonly crafting: CraftService,
     private readonly bosses: BossService,
+    private readonly inventory: MenuInventoryOpener,
   ) {}
 
   async handle(ctx: ICommandContext): Promise<void> {
@@ -79,7 +85,7 @@ export class MenuService {
       return;
     }
     if (action === 'stats') return this.update(interaction, this.renderStats(player), true);
-    if (action === 'inv') return this.update(interaction, this.renderInv(player), true);
+    if (action === 'inv') return this.inventory.openInventoryFromInteraction(interaction);
     if (action === 'skills') return this.update(interaction, this.renderSkills(player), true);
     if (action === 'party') return this.update(interaction, this.renderParty(player), true);
     if (action === 'exp') return this.expeditions.openFromInteraction(interaction);
@@ -190,36 +196,6 @@ export class MenuService {
       '**Skille zawodowe:**',
       `⛏️ Mining L${p.skills.mining.level} · 🎣 Fishing L${p.skills.fishing.level} · 🪓 Wood L${p.skills.woodcutting.level} · 🛠️ Crafting L${p.skills.crafting.level} · ⚔️ Combat L${p.skills.combat.level}`,
     ].join('\n');
-  }
-
-  private renderInv(p: PlayerStats): string {
-    const lines: string[] = [`🎒 **Plecak ${p.name}**`, ''];
-    lines.push('**Założone:**');
-    for (const slot of ['weapon', 'armor', 'tool'] as const) {
-      const it = this.stats.equippedItem(p, slot);
-      lines.push(`• ${slot}: ${it ? fmtInstance(it) : '_pusty_'}`);
-    }
-    const resources = Object.entries(p.inventory.resources);
-    if (resources.length) {
-      lines.push('', '**Zasoby:**');
-      for (const [id, qty] of resources) lines.push(`• ${fmtResource(id, qty)}`);
-    }
-    const items = p.inventory.items;
-    if (items.length) {
-      lines.push('', `**Itemy unikalne** (${items.length}):`);
-      for (const it of items.slice(0, 15)) {
-        const equipped = it.slot && p.equipped[it.slot] === it.uid ? ' **[założone]**' : '';
-        lines.push(`• ${fmtInstance(it)}${equipped}`);
-      }
-      if (items.length > 15)
-        lines.push(
-          `_...i ${items.length - 15} więcej. Wpisz \`.inv\` aby zobaczyć wszystko z guzikami zakładania._`,
-        );
-    }
-    if (resources.length === 0 && items.length === 0) {
-      lines.push('', 'Plecak pusty. `.mine`, `.fish`, `.chop`.');
-    }
-    return lines.join('\n');
   }
 
   private renderSkills(p: PlayerStats): string {

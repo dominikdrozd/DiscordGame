@@ -28,7 +28,11 @@ import { ClassCommand } from './commands/class.command.js';
 import { PartyCommand } from './commands/party.command.js';
 import { CityCommand } from './commands/city.command.js';
 import { MenuCommand } from './commands/menu.command.js';
-import { MenuService, type MenuShopOpener } from './services/menu.service.js';
+import {
+  MenuService,
+  type MenuShopOpener,
+  type MenuInventoryOpener,
+} from './services/menu.service.js';
 import { DialogService } from './services/dialog.service.js';
 import { TalkCommand } from './commands/talk.command.js';
 
@@ -65,6 +69,7 @@ export function registerGameCommands(manager: CommandManager, services: GameServ
   const dungeons = new DungeonService(stats);
   const crafting = new CraftService(stats);
   const inventory = new InventoryService(stats);
+  const inventoryCommand = new InventoryCommand(inventory);
   const city = new CityService(stats, (id) => dungeons.hasActiveFor(id));
   const dialog = new DialogService(stats);
   const cityCommand = new CityCommand(city);
@@ -105,6 +110,37 @@ export function registerGameCommands(manager: CommandManager, services: GameServ
     },
   };
 
+  // Adapter: 🎒 Plecak w menu → InventoryService.openInventoryForUser
+  // z thread-routingiem do InventoryCommand.
+  const inventoryOpener: MenuInventoryOpener = {
+    openInventoryFromInteraction: async (interaction) => {
+      const reply = async (content: string): Promise<unknown> => {
+        if (interaction.replied || interaction.deferred) {
+          return interaction.followUp({ content, ephemeral: true });
+        }
+        return interaction.reply({ content, ephemeral: true });
+      };
+      const channelCandidate: unknown = interaction.channel;
+      if (!hasThreadCreate(channelCandidate)) {
+        await reply('Nie mogę otworzyć plecaka — ten kanał nie wspiera prywatnych wątków.');
+        return;
+      }
+      const message = interaction.message;
+      const startThreadFallback =
+        message && typeof message.startThread === 'function'
+          ? (opts: { name: string; autoArchiveDuration: number }) => message.startThread(opts)
+          : undefined;
+      await inventory.openInventoryForUser({
+        userId: interaction.user.id,
+        userName: interaction.user.globalName || interaction.user.username,
+        channel: channelCandidate,
+        registerThread: (thread) => manager.registerThreadFor(thread, inventoryCommand),
+        reply,
+        startThreadFallback,
+      });
+    },
+  };
+
   const menu = new MenuService(
     stats,
     party,
@@ -114,6 +150,7 @@ export function registerGameCommands(manager: CommandManager, services: GameServ
     expeditions,
     crafting,
     bosses,
+    inventoryOpener,
   );
 
   manager.register(new DuelCommand(duels));
@@ -127,7 +164,7 @@ export function registerGameCommands(manager: CommandManager, services: GameServ
   manager.register(new CraftCommand(crafting));
   manager.register(new EquipCommand(stats));
   manager.register(new UnequipCommand(stats));
-  manager.register(new InventoryCommand(inventory));
+  manager.register(inventoryCommand);
   manager.register(new StatsCommand(stats));
   manager.register(new SkillsCommand(stats));
   manager.register(new RaceCommand(stats));

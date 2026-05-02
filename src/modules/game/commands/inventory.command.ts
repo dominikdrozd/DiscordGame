@@ -6,7 +6,7 @@ export class InventoryCommand implements ICommand {
   readonly name = 'inv';
   readonly prefix = '.inv';
   readonly description =
-    'Pokazuje twój ekwipunek (zasoby + przedmioty) w DM-ie z togglem Załóż/Zdejmij dla każdego itemu.';
+    'Otwiera plecak w prywatnym wątku — każdy unikalny przedmiot ma swój przycisk Załóż/Zdejmij. Z menu też dostępne (`.menu` → 🎒 Plecak).';
   readonly requiresPrompt = false;
 
   constructor(private readonly inventory: InventoryService) {}

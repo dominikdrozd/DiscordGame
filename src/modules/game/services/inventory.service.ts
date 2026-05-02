@@ -1,118 +1,346 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, type ButtonInteraction } from 'discord.js';
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ChannelType,
+  type ButtonInteraction,
+} from 'discord.js';
 import type { ICommandContext } from '../../../types/command.types.js';
 import { PlayerStatsService, type PlayerStats } from './player-stats.js';
 import { fmtResource, fmtInstance, type ItemInstance } from './items.js';
-import { displayName } from '../../../utils.js';
+import { displayName, errMsg } from '../../../utils.js';
+import { closeBattleThread } from '../engine/battle-helpers.js';
 
-const ITEMS_PER_ROW = 5;
-const MAX_ROWS = 5;
+interface InventoryState {
+  userId: string;
+  userName: string;
+  thread: InventoryThread;
+  /** map item.uid → message id (do refresh per-item po toggle). */
+  itemMessageIds: Map<string, string>;
+  /** id summary message (stats/zasoby/header) na początku. */
+  summaryMessageId?: string;
+  idleTimer?: NodeJS.Timeout;
+}
 
+interface InventoryThread {
+  id: string;
+  send: (payload: unknown) => Promise<{ id: string }>;
+  setArchived: (state: boolean) => Promise<unknown>;
+  members?: { add: (userId: string) => Promise<unknown> };
+  messages: { fetch: (id: string) => Promise<{ edit: (payload: unknown) => Promise<unknown> }> };
+}
+
+const INVENTORY_IDLE_TIMEOUT_MS = 5 * 60_000;
+
+function isInventoryThread(t: unknown): t is InventoryThread {
+  if (!t || typeof t !== 'object') return false;
+  if (!('id' in t) || typeof t.id !== 'string') return false;
+  if (!('send' in t) || typeof t.send !== 'function') return false;
+  if (!('setArchived' in t) || typeof t.setArchived !== 'function') return false;
+  if (!('messages' in t) || !t.messages || typeof t.messages !== 'object') return false;
+  return true;
+}
+
+/**
+ * Plecak gracza w prywatnym wątku — analogicznie do `.city shop`.
+ * Każdy unikalny przedmiot dostaje własną wiadomość z buttonem
+ * "⤴️ Załóż / ⤵️ Zdejmij" — refresh per-item zamiast całej listy.
+ */
 export class InventoryService {
+  private readonly states = new Map<string, InventoryState>();
+
   constructor(private readonly stats: PlayerStatsService) {}
 
+  /** `.inv` z command — otwiera wątek przez `msg.startThread` (back-compat). */
   async show(ctx: ICommandContext): Promise<void> {
-    const { msg } = ctx;
-    const player = this.stats.get(msg.author.id, displayName(msg));
-    const view = this.buildView(player);
+    const { msg, registerThread } = ctx;
+    await this.openInventoryForUser({
+      userId: msg.author.id,
+      userName: displayName(msg),
+      channel: msg.channel,
+      registerThread,
+      reply: (content: string) => msg.reply(content),
+      startThreadFallback: (opts) => msg.startThread(opts),
+    });
+  }
 
-    try {
-      await msg.author.send(view);
-      await msg.react('📬').catch(() => {});
-    } catch {
-      await msg.reply({
-        ...view,
-        content: `${view.content}\n\n_Nie mogę wysłać DM — masz wyłączone wiadomości od członków serwera. Pokazuję tutaj._`,
-      });
+  /**
+   * Niskopoziomowy entry point — używany z `.inv` (przez `show`) jak i
+   * z buttona menu (`menu:inv`) przez adapter w `registerGameCommands`.
+   */
+  async openInventoryForUser(args: {
+    userId: string;
+    userName: string;
+    channel: { threads?: { create: (opts: unknown) => Promise<unknown> } };
+    registerThread: (thread: unknown) => void;
+    reply: (content: string) => Promise<unknown>;
+    startThreadFallback?: (opts: {
+      name: string;
+      autoArchiveDuration: number;
+    }) => Promise<unknown>;
+  }): Promise<void> {
+    if (this.states.has(args.userId)) {
+      await args.reply(
+        'Masz już otwarty plecak — zamknij poprzedni (`✖ Zamknij plecak`) zanim otworzysz nowy.',
+      );
+      return;
     }
+    const player = this.stats.get(args.userId, args.userName);
+
+    let thread: unknown;
+    try {
+      if (!args.channel.threads?.create) throw new Error('channel has no threads.create');
+      thread = await args.channel.threads.create({
+        name: `Plecak: ${player.name}`.slice(0, 100),
+        autoArchiveDuration: 60,
+        type: ChannelType.PrivateThread,
+        invitable: false,
+      });
+    } catch {
+      if (!args.startThreadFallback) {
+        await args.reply('Nie udało się otworzyć wątku plecaka (brak uprawnień).');
+        return;
+      }
+      try {
+        thread = await args.startThreadFallback({
+          name: `Plecak: ${player.name}`.slice(0, 100),
+          autoArchiveDuration: 60,
+        });
+      } catch (e) {
+        await args.reply(`Nie udało się otworzyć wątku plecaka: ${errMsg(e)}`);
+        return;
+      }
+    }
+    if (!isInventoryThread(thread)) {
+      await args.reply('Wątek plecaka utworzony, ale brak wymaganego API.');
+      return;
+    }
+    if (thread.members) {
+      await thread.members.add(args.userId).catch(() => {});
+    }
+    if (thread.id) args.registerThread(thread);
+
+    const state: InventoryState = {
+      userId: args.userId,
+      userName: args.userName,
+      thread,
+      itemMessageIds: new Map(),
+    };
+
+    const summary = await thread
+      .send({ content: this.renderSummary(player) })
+      .catch(() => null);
+    if (summary && typeof summary === 'object' && 'id' in summary && typeof summary.id === 'string') {
+      state.summaryMessageId = summary.id;
+    }
+
+    const equippableItems = player.inventory.items.filter((it) => it.slot);
+    if (equippableItems.length === 0) {
+      await thread
+        .send({
+          content: '_Brak unikalnych przedmiotów do założenia._ Spróbuj `.craft` lub bossów.',
+        })
+        .catch(() => {});
+    } else {
+      for (const it of equippableItems) {
+        const sent = await thread
+          .send({
+            content: this.renderItemContent(it, player),
+            components: [this.buildItemRow(it, player)],
+          })
+          .catch(() => null);
+        if (sent && typeof sent === 'object' && 'id' in sent && typeof sent.id === 'string') {
+          state.itemMessageIds.set(it.uid, sent.id);
+        }
+      }
+    }
+
+    await thread
+      .send({
+        content: '_Gdy skończysz, kliknij guzik poniżej:_',
+        components: [this.buildCloseRow(args.userId)],
+      })
+      .catch(() => {});
+
+    this.states.set(args.userId, state);
+    this.resetIdleTimer(state);
   }
 
   async handleInteraction(interaction: ButtonInteraction): Promise<void> {
     if (!interaction.isButton?.()) return;
     if (!interaction.customId.startsWith('inv:')) return;
-    const [, uid] = interaction.customId.split(':');
-    const player = this.stats.get(
-      interaction.user.id,
-      interaction.user.globalName || interaction.user.username,
-    );
-    const item = this.stats.findItem(player, uid);
-    if (!item || !item.slot) {
+    const parts = interaction.customId.split(':');
+    const action = parts[1];
+    const userId = parts[parts.length - 1];
+
+    if (interaction.user.id !== userId) {
+      await interaction.reply({ content: 'To nie twój plecak.', ephemeral: true }).catch(() => {});
+      return;
+    }
+    const state = this.states.get(userId);
+    if (!state) {
       await interaction
-        .reply({ content: 'Nie posiadasz tego itemu już.', ephemeral: true })
+        .reply({
+          content: 'Plecak już zamknięty — otwórz go ponownie `.inv` lub z `.menu`.',
+          ephemeral: true,
+        })
         .catch(() => {});
       return;
     }
-    const isEquipped = player.equipped[item.slot] === uid;
-    if (isEquipped) {
-      this.stats.unequip(player, item.slot);
-    } else {
-      this.stats.equip(player, uid);
+    this.resetIdleTimer(state);
+
+    if (action === 'toggle') {
+      const uid = parts[2];
+      return this.handleToggle(interaction, state, uid);
     }
-    this.stats.save();
-    const view = this.buildView(player);
-    try {
-      await interaction.update(view);
-    } catch {
-      await interaction
-        .reply({ content: 'Zaktualizowane, ale nie udało się odświeżyć widoku.', ephemeral: true })
-        .catch(() => {});
+    if (action === 'close') {
+      return this.handleClose(interaction, state);
     }
   }
 
-  private buildView(player: PlayerStats): {
-    content: string;
-    components: ActionRowBuilder<ButtonBuilder>[];
-  } {
-    const lines: string[] = [`🎒 **Plecak ${player.name}**`, ''];
-    lines.push('**Założone:**');
+  private async handleToggle(
+    interaction: ButtonInteraction,
+    state: InventoryState,
+    uid: string,
+  ): Promise<void> {
+    const player = this.stats.get(state.userId);
+    const item = this.stats.findItem(player, uid);
+    if (!item || !item.slot) {
+      await interaction
+        .reply({ content: 'Nie posiadasz już tego przedmiotu.', ephemeral: true })
+        .catch(() => {});
+      return;
+    }
+    const wasEquipped = player.equipped[item.slot] === uid;
+    let previouslyEquipped: ItemInstance | undefined;
+    if (wasEquipped) {
+      this.stats.unequip(player, item.slot);
+    } else {
+      // Jeśli inny item zajmował slot, zapamiętaj go żeby odświeżyć jego wiadomość.
+      const prevUid = player.equipped[item.slot];
+      if (prevUid) previouslyEquipped = this.stats.findItem(player, prevUid);
+      this.stats.equip(player, uid);
+    }
+    this.stats.save();
+
+    // Update klikniętego itemu via interaction.update (atomicznie).
+    await interaction
+      .update({
+        content: this.renderItemContent(item, player),
+        components: [this.buildItemRow(item, player)],
+      })
+      .catch(() => {});
+
+    // Refresh messageu poprzednio założonego itemu (jego button też się zmienił).
+    if (previouslyEquipped) {
+      await this.refreshItem(state, previouslyEquipped);
+    }
+
+    // Refresh summary (HP/dmg/def w nagłówku zmieniają się przy equip).
+    await this.refreshSummary(state);
+  }
+
+  private async refreshItem(state: InventoryState, item: ItemInstance): Promise<void> {
+    const msgId = state.itemMessageIds.get(item.uid);
+    if (!msgId) return;
+    const player = this.stats.get(state.userId);
+    try {
+      const m = await state.thread.messages.fetch(msgId);
+      await m
+        .edit({
+          content: this.renderItemContent(item, player),
+          components: [this.buildItemRow(item, player)],
+        })
+        .catch(() => {});
+    } catch {
+      // ignore
+    }
+  }
+
+  private async refreshSummary(state: InventoryState): Promise<void> {
+    if (!state.summaryMessageId) return;
+    const player = this.stats.get(state.userId);
+    try {
+      const m = await state.thread.messages.fetch(state.summaryMessageId);
+      await m.edit({ content: this.renderSummary(player) }).catch(() => {});
+    } catch {
+      // ignore
+    }
+  }
+
+  private async handleClose(
+    interaction: ButtonInteraction,
+    state: InventoryState,
+  ): Promise<void> {
+    if (state.idleTimer) clearTimeout(state.idleTimer);
+    this.states.delete(state.userId);
+    await interaction
+      .update({ content: `🎒 Plecak zamknięty. Wpisz \`.inv\` aby otworzyć ponownie.`, components: [] })
+      .catch(() => {});
+    await closeBattleThread(state.thread, '🎒 Wątek plecaka archiwizujemy.');
+  }
+
+  private resetIdleTimer(state: InventoryState): void {
+    if (state.idleTimer) clearTimeout(state.idleTimer);
+    state.idleTimer = setTimeout(() => {
+      this.autoClose(state).catch(() => {});
+    }, INVENTORY_IDLE_TIMEOUT_MS);
+    state.idleTimer.unref?.();
+  }
+
+  private async autoClose(state: InventoryState): Promise<void> {
+    if (!this.states.has(state.userId)) return;
+    this.states.delete(state.userId);
+    await closeBattleThread(state.thread, '⏰ Plecak zamknięty po 5 min braku interakcji.');
+  }
+
+  private renderSummary(player: PlayerStats): string {
+    const lines: string[] = [
+      `🎒 **Plecak ${player.name}**`,
+      `❤️ HP: **${this.stats.effectiveMaxHp(player)}** · ⚔️ Dmg: **+${this.stats.effectiveDamageBonus(player)}** · 🛡️ Def: **+${this.stats.effectiveDefenseBonus(player)}** · 💥 Crit: **${this.stats.effectiveCritPercent(player).toFixed(1)}%**`,
+      '',
+      '**Założone:**',
+    ];
     for (const slot of ['weapon', 'armor', 'tool'] as const) {
       const it = this.stats.equippedItem(player, slot);
       lines.push(`• ${slot}: ${it ? fmtInstance(it) : '_pusty_'}`);
     }
-    lines.push('');
 
     const resources = Object.entries(player.inventory.resources);
-    if (resources.length) {
-      lines.push('**Zasoby:**');
+    if (resources.length > 0) {
+      lines.push('', '**Zasoby:**');
       for (const [id, qty] of resources) lines.push(`• ${fmtResource(id, qty)}`);
-      lines.push('');
     }
 
-    const equippableItems = player.inventory.items.filter((it) => it.slot);
-    if (equippableItems.length) {
-      lines.push('**Przedmioty unikalne (kliknij przycisk żeby założyć/zdjąć):**');
-      for (const it of equippableItems) {
-        const equipped = player.equipped[it.slot!] === it.uid;
-        const tag = equipped ? ' **[założone]**' : '';
-        lines.push(`• ${fmtInstance(it)}${tag}`);
-      }
-    }
-
-    if (resources.length === 0 && equippableItems.length === 0) {
-      lines.push('Plecak pusty. Spróbuj `.mine`, `.fish` albo `.chop`.');
-    }
-
-    const rows: ActionRowBuilder<ButtonBuilder>[] = [];
-    const limited = equippableItems.slice(0, ITEMS_PER_ROW * MAX_ROWS);
-    for (let i = 0; i < limited.length; i += ITEMS_PER_ROW) {
-      const batch = limited.slice(i, i + ITEMS_PER_ROW);
-      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        ...batch.map((it) => this.buildItemButton(player, it)),
-      );
-      rows.push(row);
-    }
-
-    return {
-      content: lines.join('\n').slice(0, 1900),
-      components: rows,
-    };
+    return lines.join('\n').slice(0, 1900);
   }
 
-  private buildItemButton(player: PlayerStats, it: ItemInstance): ButtonBuilder {
+  private renderItemContent(it: ItemInstance, player: PlayerStats): string {
     const isEquipped = it.slot ? player.equipped[it.slot] === it.uid : false;
-    const label = `${isEquipped ? '⤵️ Zdejmij' : '⤴️ Załóż'}: ${it.name}`.slice(0, 80);
-    return new ButtonBuilder()
-      .setCustomId(`inv:${it.uid}:toggle`)
-      .setLabel(label)
-      .setStyle(isEquipped ? ButtonStyle.Secondary : ButtonStyle.Primary);
+    const tag = isEquipped ? ' **[założone]**' : '';
+    const slotLabel = it.slot ? ` _(slot: ${it.slot})_` : '';
+    return `${fmtInstance(it)}${slotLabel}${tag}\n\`uid: ${it.uid}\``;
+  }
+
+  private buildItemRow(
+    it: ItemInstance,
+    player: PlayerStats,
+  ): ActionRowBuilder<ButtonBuilder> {
+    const isEquipped = it.slot ? player.equipped[it.slot] === it.uid : false;
+    return new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`inv:toggle:${it.uid}:${player.id}`)
+        .setLabel(isEquipped ? '⤵️ Zdejmij' : '⤴️ Załóż')
+        .setStyle(isEquipped ? ButtonStyle.Secondary : ButtonStyle.Primary),
+    );
+  }
+
+  private buildCloseRow(userId: string): ActionRowBuilder<ButtonBuilder> {
+    return new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`inv:close:${userId}`)
+        .setLabel('✖ Zamknij plecak')
+        .setStyle(ButtonStyle.Danger),
+    );
   }
 }
