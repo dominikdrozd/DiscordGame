@@ -104,10 +104,18 @@ export function randomAmbushMob(opts: RandomAmbushOpts = {}): Mob {
  * Dzięki temu nowy gracz (combat lvl 1-7) prawie zawsze trafi na T1,
  * a doświadczony (combat lvl 32+) głównie na T5 z okazjonalnym T4.
  */
+function clampTier(n: number): MobTier {
+  if (n <= 1) return 1;
+  if (n === 2) return 2;
+  if (n === 3) return 3;
+  if (n === 4) return 4;
+  return 5;
+}
+
 export function ambushTierForLevel(combatLvl: number): MobTier {
-  const base = Math.min(5, Math.max(1, Math.floor(combatLvl / 8) + 1)) as MobTier;
+  const base = clampTier(Math.floor(combatLvl / 8) + 1);
   const r = Math.random();
   if (r < 0.7) return base;
-  if (r < 0.9) return Math.max(1, base - 1) as MobTier;
-  return Math.min(5, base + 1) as MobTier;
+  if (r < 0.9) return clampTier(base - 1);
+  return clampTier(base + 1);
 }

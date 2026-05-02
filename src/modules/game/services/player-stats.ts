@@ -61,7 +61,15 @@ export interface PlayerStats {
   cooldowns: Record<string, number>;
 }
 
-const SKILL_NAMES: SkillName[] = ['mining', 'fishing', 'woodcutting', 'crafting', 'combat'];
+function makeSkillsRecord(read: (k: SkillName) => SkillRecord): Record<SkillName, SkillRecord> {
+  return {
+    mining: read('mining'),
+    fishing: read('fishing'),
+    woodcutting: read('woodcutting'),
+    crafting: read('crafting'),
+    combat: read('combat'),
+  };
+}
 
 function defaultPlayer(id: string, name: string): PlayerStats {
   return {
@@ -75,13 +83,7 @@ function defaultPlayer(id: string, name: string): PlayerStats {
     duels: 0,
     inventory: { resources: {}, items: [] },
     equipped: {},
-    skills: SKILL_NAMES.reduce(
-      (acc, k) => {
-        acc[k] = { level: 1, xp: 0 };
-        return acc;
-      },
-      {} as Record<SkillName, SkillRecord>,
-    ),
+    skills: makeSkillsRecord(() => ({ level: 1, xp: 0 })),
     unspentPoints: 0,
     attribute: { attack: 0, defense: 0, hp: 0, crit: 0 },
     primary: { str: 0, agi: 0, wit: 0, int: 0 },
@@ -100,13 +102,7 @@ function ensureDefaults(p: any, id: string, name: string): PlayerStats {
       items: p?.inventory?.items ?? [],
     },
     equipped: p?.equipped ?? {},
-    skills: SKILL_NAMES.reduce(
-      (acc, k) => {
-        acc[k] = p?.skills?.[k] ?? { level: 1, xp: 0 };
-        return acc;
-      },
-      {} as Record<SkillName, SkillRecord>,
-    ),
+    skills: makeSkillsRecord((k) => p?.skills?.[k] ?? { level: 1, xp: 0 }),
     attribute: {
       attack: p?.attribute?.attack ?? 0,
       defense: p?.attribute?.defense ?? 0,
@@ -145,10 +141,13 @@ export class PlayerStatsService {
   private load(): void {
     try {
       const raw = fs.readFileSync(this.file, 'utf8');
-      const arr = JSON.parse(raw) as any[];
-      for (const s of arr) {
-        if (!s?.id) continue;
-        this.stats.set(s.id, ensureDefaults(s, s.id, s.name ?? s.id));
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      for (const s of parsed) {
+        if (!s || typeof s !== 'object' || !('id' in s) || typeof s.id !== 'string') continue;
+        const id = s.id;
+        const name = 'name' in s && typeof s.name === 'string' ? s.name : id;
+        this.stats.set(id, ensureDefaults(s, id, name));
       }
     } catch {
       // missing/invalid file is fine

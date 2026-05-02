@@ -3,7 +3,9 @@ import { PlayerStatsService } from '../services/player-stats.js';
 import { fmtInstance, type ItemSlot } from '../services/items.js';
 import { displayName } from '../../../utils.js';
 
-const VALID_SLOTS: ItemSlot[] = ['weapon', 'armor', 'tool'];
+function isItemSlot(s: string): s is ItemSlot {
+  return s === 'weapon' || s === 'armor' || s === 'tool';
+}
 
 export class UnequipCommand implements ICommand {
   readonly name = 'unequip';
@@ -23,8 +25,8 @@ export class UnequipCommand implements ICommand {
 
   async execute(ctx: ICommandContext): Promise<void> {
     const { msg, prompt } = ctx;
-    const slot = prompt.trim().toLowerCase() as ItemSlot;
-    if (!VALID_SLOTS.includes(slot)) {
+    const slot = prompt.trim().toLowerCase();
+    if (!isItemSlot(slot)) {
       await msg.reply('Slot musi być jednym z: `weapon`, `armor`, `tool`.');
       return;
     }

@@ -11,6 +11,16 @@ import {
 } from '../ui/battle-buttons.js';
 import { getSkill, isOnCooldown } from '../skills/index.js';
 
+/**
+ * Acknowledge interakcji która trafia w nieaktualny stan (walka skończona / nieznany battleId).
+ * Bez tego Discord pokazuje "This interaction failed".
+ */
+export async function ackStaleInteraction(interaction: ButtonInteraction): Promise<void> {
+  await interaction
+    .reply({ content: 'Walka już się zakończyła lub jest nieaktywna.', ephemeral: true })
+    .catch(() => {});
+}
+
 export async function openItemPicker(
   interaction: ButtonInteraction,
   battleId: string,

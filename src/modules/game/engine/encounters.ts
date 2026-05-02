@@ -96,6 +96,23 @@ export const REGION_LVL_REQ: Record<1 | 2 | 3 | 4, number> = {
   4: 24,
 };
 
+/** Mapuje tier ekspedycji na string-zakres rekomendowanego combat lvl ("1-7" etc.). */
+export function expeditionLvlBracket(tier: 1 | 2 | 3 | 4 | 5): string {
+  const ranges: Record<typeof tier, string> = {
+    1: '1-7',
+    2: '8-15',
+    3: '16-23',
+    4: '24-31',
+    5: '32+',
+  };
+  return ranges[tier];
+}
+
+/** Minimalny combat lvl wymagany do ekspedycji o danym tierze. */
+export function expeditionMinLvl(tier: 1 | 2 | 3 | 4 | 5): number {
+  return Math.max(1, (tier - 1) * 8);
+}
+
 export const EXPEDITIONS: Record<string, ExpeditionDef> = {
   // ── REGION I — Wybrzeże Szeptów (T1) ──────────────
   slonechna_plaza: {

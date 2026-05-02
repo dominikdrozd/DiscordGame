@@ -1,5 +1,6 @@
 import type { ICommand, ICommandContext } from '../types/command.types.js';
 import { getMovieOfTheDay } from '../tools.js';
+import { errMsg } from '../utils.js';
 
 export class MovieOfTheDayCommand implements ICommand {
   readonly name = 'film_dnia';
@@ -32,7 +33,7 @@ export class MovieOfTheDayCommand implements ICommand {
       await msg.react('✅').catch(() => {});
     } catch (err) {
       console.error(err);
-      await msg.reply(`Błąd: ${(err as Error).message}`).catch(() => {});
+      await msg.reply(`Błąd: ${errMsg(err)}`).catch(() => {});
       await msg.react('❌').catch(() => {});
     }
   }

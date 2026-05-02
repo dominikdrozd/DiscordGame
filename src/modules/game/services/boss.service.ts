@@ -18,12 +18,13 @@ import {
   openSkillPicker,
   handleSkillPick,
   handleSkillTarget,
+  ackStaleInteraction,
 } from '../engine/battle-helpers.js';
 import { BOSS_MOBS } from '../mobs/index.js';
 import { buildPlayerCombatant } from '../engine/player-combatant.js';
 import { awardReward } from './reward.service.js';
 import { buildActionRow, buildTargetRow } from '../ui/battle-buttons.js';
-import { displayName } from '../../../utils.js';
+import { displayName, errMsg } from '../../../utils.js';
 
 interface BossBattleState extends BattleState {
   bossId: string;
@@ -74,7 +75,7 @@ export class BossService {
       });
       if (thread?.id) registerThread(thread);
     } catch (e) {
-      await msg.reply(`Nie udało się otworzyć wątku: ${(e as Error).message}`);
+      await msg.reply(`Nie udało się otworzyć wątku: ${errMsg(e)}`);
       return;
     }
 
@@ -126,7 +127,10 @@ export class BossService {
   private async handleItemPick(interaction: ButtonInteraction): Promise<void> {
     const [, battleId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) return;
+    if (!state || state.finished) {
+      await ackStaleInteraction(interaction);
+      return;
+    }
     const recorded = await recordItemPick(interaction, state);
     if (recorded) await this.maybeResolve(state);
   }
@@ -134,7 +138,10 @@ export class BossService {
   private async handleSklPick(interaction: ButtonInteraction): Promise<void> {
     const [, battleId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) return;
+    if (!state || state.finished) {
+      await ackStaleInteraction(interaction);
+      return;
+    }
     const recorded = await handleSkillPick(interaction, state);
     if (recorded) await this.maybeResolve(state);
   }
@@ -142,7 +149,10 @@ export class BossService {
   private async handleSklTarget(interaction: ButtonInteraction): Promise<void> {
     const [, battleId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) return;
+    if (!state || state.finished) {
+      await ackStaleInteraction(interaction);
+      return;
+    }
     const recorded = await handleSkillTarget(interaction, state);
     if (recorded) await this.maybeResolve(state);
   }
@@ -150,7 +160,10 @@ export class BossService {
   private async handleAction(interaction: ButtonInteraction): Promise<void> {
     const [, battleId, combatantId, kind] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) return;
+    if (!state || state.finished) {
+      await ackStaleInteraction(interaction);
+      return;
+    }
     if (interaction.user.id !== combatantId) {
       await interaction.reply({ content: 'To nie twoja walka.', ephemeral: true }).catch(() => {});
       return;
@@ -199,6 +212,9 @@ export class BossService {
         return; // czekamy na klik celu
       }
     } else {
+      await interaction
+        .reply({ content: `Nieznana akcja \`${kind}\`.`, ephemeral: true })
+        .catch(() => {});
       return;
     }
 
@@ -208,12 +224,20 @@ export class BossService {
   private async handleTarget(interaction: ButtonInteraction): Promise<void> {
     const [, battleId, combatantId, kind, targetId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) return;
+    if (!state || state.finished) {
+      await ackStaleInteraction(interaction);
+      return;
+    }
     if (interaction.user.id !== combatantId) {
       await interaction.reply({ content: 'To nie twój wybór.', ephemeral: true }).catch(() => {});
       return;
     }
-    if (state.pending.has(combatantId)) return;
+    if (state.pending.has(combatantId)) {
+      await interaction
+        .update({ content: 'Już wybrałeś akcję wcześniej.', components: [] })
+        .catch(() => {});
+      return;
+    }
 
     if (kind === 'atk') {
       const target = findCombatant(state, targetId);

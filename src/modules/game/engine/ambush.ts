@@ -4,12 +4,8 @@ import { PartyService, type Party } from '../services/party.js';
 import { rollLootMany } from '../services/loot.js';
 import { ITEMS } from '../services/items.js';
 import { EXPEDITIONS, type ExpeditionDef } from './encounters.js';
-import {
-  randomAmbushMob,
-  ambushTierForLevel,
-  type RandomAmbushOpts,
-  type MobTier,
-} from '../mobs/index.js';
+import { randomAmbushMob, ambushTierForLevel, type RandomAmbushOpts } from '../mobs/index.js';
+import { errMsg } from '../../../utils.js';
 
 function buildAmbushOpts(def: ExpeditionDef | undefined, combatLvl: number): RandomAmbushOpts {
   const opts: RandomAmbushOpts = {};
@@ -17,7 +13,7 @@ function buildAmbushOpts(def: ExpeditionDef | undefined, combatLvl: number): Ran
     opts.allowedIds = [...def.ambushMobIds];
   }
   if (def?.ambushTiers && def.ambushTiers.length > 0) {
-    opts.allowedTiers = [...def.ambushTiers] as MobTier[];
+    opts.allowedTiers = [...def.ambushTiers];
   } else {
     opts.tier = ambushTierForLevel(combatLvl);
   }
@@ -41,6 +37,7 @@ import {
   openSkillPicker,
   handleSkillPick,
   handleSkillTarget,
+  ackStaleInteraction,
 } from './battle-helpers.js';
 
 const AMBUSH_CHECK_INTERVAL_MS = parseInt(process.env.AMBUSH_CHECK_INTERVAL_MS || '300000', 10);
@@ -66,9 +63,9 @@ export class AmbushService {
   start(): void {
     if (this.timer) return;
     this.timer = setInterval(() => {
-      this.tick().catch((e) => console.error('[ambush] tick fail:', (e as Error).message));
+      this.tick().catch((e) => console.error('[ambush] tick fail:', errMsg(e)));
     }, AMBUSH_CHECK_INTERVAL_MS);
-    if ((this.timer as any).unref) (this.timer as any).unref();
+    this.timer.unref?.();
     console.log(
       `[ambush] loop started (every ${AMBUSH_CHECK_INTERVAL_MS / 1000}s, chance ${AMBUSH_CHANCE})`,
     );
@@ -94,7 +91,10 @@ export class AmbushService {
   private async handleItemPick(interaction: ButtonInteraction): Promise<void> {
     const [, battleId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) return;
+    if (!state || state.finished) {
+      await ackStaleInteraction(interaction);
+      return;
+    }
     const recorded = await recordItemPick(interaction, state);
     if (recorded) await this.maybeResolve(state);
   }
@@ -102,7 +102,10 @@ export class AmbushService {
   private async handleSklPick(interaction: ButtonInteraction): Promise<void> {
     const [, battleId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) return;
+    if (!state || state.finished) {
+      await ackStaleInteraction(interaction);
+      return;
+    }
     const recorded = await handleSkillPick(interaction, state);
     if (recorded) await this.maybeResolve(state);
   }
@@ -110,7 +113,10 @@ export class AmbushService {
   private async handleSklTarget(interaction: ButtonInteraction): Promise<void> {
     const [, battleId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) return;
+    if (!state || state.finished) {
+      await ackStaleInteraction(interaction);
+      return;
+    }
     const recorded = await handleSkillTarget(interaction, state);
     if (recorded) await this.maybeResolve(state);
   }
@@ -147,9 +153,9 @@ export class AmbushService {
     if (members.length === 0) return;
     const channelId = members[0].activeExpedition!.channelId!;
     const channel = await this.client.channels.fetch(channelId).catch(() => null);
-    if (!channel || !('send' in channel)) return;
+    if (!channel || !channel.isTextBased() || !('send' in channel)) return;
 
-    const announcement = await (channel as any)
+    const announcement = await channel
       .send(
         `🏹 ${members.map((m) => `<@${m.id}>`).join(' ')} — z krzaków wyskakuje banda — broń się!`,
       )
@@ -197,10 +203,10 @@ export class AmbushService {
 
     state.timeoutHandle = setTimeout(() => {
       this.timeoutAmbush(state).catch((e) =>
-        console.error('[ambush] party timeout fail:', (e as Error).message),
+        console.error('[ambush] party timeout fail:', errMsg(e)),
       );
     }, AMBUSH_TIMEOUT_MS);
-    if ((state.timeoutHandle as any).unref) (state.timeoutHandle as any).unref();
+    state.timeoutHandle.unref?.();
 
     const mobLine = mobCombatants.map((m) => `**${m.name}** (${m.hp} HP)`).join(', ');
     await thread.send(
@@ -214,9 +220,9 @@ export class AmbushService {
     const exp = player.activeExpedition;
     if (!exp?.channelId) return;
     const channel = await this.client.channels.fetch(exp.channelId).catch(() => null);
-    if (!channel || !('send' in channel)) return;
+    if (!channel || !channel.isTextBased() || !('send' in channel)) return;
 
-    const announcement = await (channel as any)
+    const announcement = await channel
       .send(`🏹 <@${playerId}> Z krzaków wyskakuje napastnik — broń się!`)
       .catch(() => null);
     if (!announcement) return;
@@ -259,11 +265,9 @@ export class AmbushService {
     this.states.set(thread.id, state);
 
     state.timeoutHandle = setTimeout(() => {
-      this.timeoutAmbush(state).catch((e) =>
-        console.error('[ambush] timeout fail:', (e as Error).message),
-      );
+      this.timeoutAmbush(state).catch((e) => console.error('[ambush] timeout fail:', errMsg(e)));
     }, AMBUSH_TIMEOUT_MS);
-    if ((state.timeoutHandle as any).unref) (state.timeoutHandle as any).unref();
+    state.timeoutHandle.unref?.();
 
     await thread.send(
       `**${mobCombatant.name}** (${mobCombatant.hp} HP, +${mobCombatant.damageBonus} dmg) blokuje Ci drogę! Masz ${AMBUSH_TIMEOUT_MS / 60_000} min na walkę — w przeciwnym razie wyprawa pada.`,
@@ -274,13 +278,21 @@ export class AmbushService {
   private async handleAction(interaction: ButtonInteraction): Promise<void> {
     const [, battleId, combatantId, kind] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) return;
+    if (!state || state.finished) {
+      await ackStaleInteraction(interaction);
+      return;
+    }
     if (interaction.user.id !== combatantId) {
       await interaction.reply({ content: 'To nie twój ambush.', ephemeral: true }).catch(() => {});
       return;
     }
     const me = findCombatant(state, combatantId);
-    if (!me || me.hp <= 0) return;
+    if (!me || me.hp <= 0) {
+      await interaction
+        .reply({ content: 'Już nie żyjesz w tym ambushu.', ephemeral: true })
+        .catch(() => {});
+      return;
+    }
     if (state.pending.has(combatantId)) {
       await interaction.reply({ content: 'Już wybrałeś.', ephemeral: true }).catch(() => {});
       return;
@@ -299,7 +311,12 @@ export class AmbushService {
       return;
     } else if (kind === 'atk') {
       const enemies = aliveEnemies(state, me);
-      if (enemies.length === 0) return;
+      if (enemies.length === 0) {
+        await interaction
+          .reply({ content: 'Brak żywych przeciwników.', ephemeral: true })
+          .catch(() => {});
+        return;
+      }
       if (enemies.length === 1) {
         state.pending.set(combatantId, { kind: 'attack', targetId: enemies[0].id });
         await interaction
@@ -313,6 +330,9 @@ export class AmbushService {
         return;
       }
     } else {
+      await interaction
+        .reply({ content: `Nieznana akcja \`${kind}\`.`, ephemeral: true })
+        .catch(() => {});
       return;
     }
     await this.maybeResolve(state);
@@ -321,9 +341,22 @@ export class AmbushService {
   private async handleTarget(interaction: ButtonInteraction): Promise<void> {
     const [, battleId, combatantId, kind, targetId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) return;
-    if (interaction.user.id !== combatantId) return;
-    if (state.pending.has(combatantId)) return;
+    if (!state || state.finished) {
+      await ackStaleInteraction(interaction);
+      return;
+    }
+    if (interaction.user.id !== combatantId) {
+      await interaction
+        .reply({ content: 'To nie twój wybór celu.', ephemeral: true })
+        .catch(() => {});
+      return;
+    }
+    if (state.pending.has(combatantId)) {
+      await interaction
+        .update({ content: 'Już wybrałeś akcję wcześniej.', components: [] })
+        .catch(() => {});
+      return;
+    }
     if (kind === 'atk') {
       const target = findCombatant(state, targetId);
       if (!target || target.hp <= 0) {
@@ -334,6 +367,11 @@ export class AmbushService {
       await interaction
         .update({ content: `Wybrany: **${target.name}**.`, components: [] })
         .catch(() => {});
+    } else {
+      await interaction
+        .update({ content: `Nieznany kind \`${kind}\`.`, components: [] })
+        .catch(() => {});
+      return;
     }
     await this.maybeResolve(state);
   }

@@ -176,7 +176,7 @@ export interface RoundResult {
 function normalize(a: CombatAction | BattleAction): BattleAction {
   if (typeof a === 'string') {
     if (a === 'potion') return { kind: 'item', itemId: 'potion_small' };
-    return { kind: a as CombatActionKind };
+    return { kind: a };
   }
   return a;
 }

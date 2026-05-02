@@ -11,6 +11,16 @@ export interface Party {
 
 export const MAX_PARTY = 4;
 
+function isParty(v: unknown): v is Party {
+  if (!v || typeof v !== 'object') return false;
+  if (!('id' in v) || typeof v.id !== 'string') return false;
+  if (!('leaderId' in v) || typeof v.leaderId !== 'string') return false;
+  if (!('members' in v) || !Array.isArray(v.members)) return false;
+  if (!('pendingInvites' in v) || !Array.isArray(v.pendingInvites)) return false;
+  if (!('createdAt' in v) || typeof v.createdAt !== 'number') return false;
+  return true;
+}
+
 let counter = 0;
 function newPartyId(): string {
   counter += 1;
@@ -29,9 +39,10 @@ export class PartyService {
   private load(): void {
     try {
       const raw = fs.readFileSync(this.file, 'utf8');
-      const arr = JSON.parse(raw) as Party[];
-      for (const p of arr) {
-        if (p?.id) this.parties.set(p.id, p);
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      for (const item of parsed) {
+        if (isParty(item)) this.parties.set(item.id, item);
       }
     } catch {
       // brak pliku — ok

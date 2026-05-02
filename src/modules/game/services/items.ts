@@ -10,6 +10,13 @@ export interface ItemStats {
   crit?: number; // %
 }
 
+const STAT_KEYS = [
+  'attack',
+  'defense',
+  'hp',
+  'crit',
+] as const satisfies readonly (keyof ItemStats)[];
+
 export interface ItemTemplate {
   id: string;
   name: string;
@@ -236,8 +243,9 @@ function rollStats(template: ItemTemplate, rarity: Rarity): ItemStats {
     out[stat] = randIntInclusive(range[0], range[1]);
   }
   if (template.baseStats) {
-    for (const k of Object.keys(template.baseStats) as Array<keyof ItemStats>) {
-      out[k] = (out[k] ?? 0) + (template.baseStats[k] ?? 0);
+    for (const k of STAT_KEYS) {
+      const v = template.baseStats[k];
+      if (v !== undefined) out[k] = (out[k] ?? 0) + v;
     }
   }
   return out;

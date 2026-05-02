@@ -19,9 +19,10 @@ import {
   openSkillPicker,
   handleSkillPick,
   handleSkillTarget,
+  ackStaleInteraction,
 } from '../engine/battle-helpers.js';
 import { buildActionRow, buildPanelOpenerRow, buildTargetRow } from '../ui/battle-buttons.js';
-import { displayName } from '../../../utils.js';
+import { displayName, errMsg } from '../../../utils.js';
 
 interface DuelBattleState extends BattleState {
   /** kopia PlayerStats do logowania na koniec walki */
@@ -63,7 +64,7 @@ export class DuelService {
       });
       if (thread?.id) registerThread(thread);
     } catch (e) {
-      await msg.reply(`Nie udało się otworzyć wątku: ${(e as Error).message}`);
+      await msg.reply(`Nie udało się otworzyć wątku: ${errMsg(e)}`);
       return;
     }
 
@@ -111,7 +112,7 @@ export class DuelService {
       });
       if (thread?.id) registerThread(thread);
     } catch (e) {
-      await msg.reply(`Nie udało się otworzyć wątku: ${(e as Error).message}`);
+      await msg.reply(`Nie udało się otworzyć wątku: ${errMsg(e)}`);
       return;
     }
 
@@ -206,7 +207,10 @@ export class DuelService {
   private async handleItemPick(interaction: ButtonInteraction): Promise<void> {
     const [, battleId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) return;
+    if (!state || state.finished) {
+      await ackStaleInteraction(interaction);
+      return;
+    }
     const recorded = await recordItemPick(interaction, state);
     if (recorded) await this.maybeResolve(state);
   }
@@ -214,7 +218,10 @@ export class DuelService {
   private async handleSklPick(interaction: ButtonInteraction): Promise<void> {
     const [, battleId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) return;
+    if (!state || state.finished) {
+      await ackStaleInteraction(interaction);
+      return;
+    }
     const recorded = await handleSkillPick(interaction, state);
     if (recorded) await this.maybeResolve(state);
   }
@@ -222,7 +229,10 @@ export class DuelService {
   private async handleSklTarget(interaction: ButtonInteraction): Promise<void> {
     const [, battleId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) return;
+    if (!state || state.finished) {
+      await ackStaleInteraction(interaction);
+      return;
+    }
     const recorded = await handleSkillTarget(interaction, state);
     if (recorded) await this.maybeResolve(state);
   }
@@ -230,7 +240,10 @@ export class DuelService {
   private async handleAction(interaction: ButtonInteraction): Promise<void> {
     const [, battleId, combatantId, kind] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) return;
+    if (!state || state.finished) {
+      await ackStaleInteraction(interaction);
+      return;
+    }
     if (interaction.user.id !== combatantId) {
       await interaction
         .reply({ content: 'Nie bierzesz udziału w tym pojedynku.', ephemeral: true })
@@ -238,10 +251,15 @@ export class DuelService {
       return;
     }
     const me = findCombatant(state, combatantId);
-    if (!me || me.hp <= 0) return;
+    if (!me || me.hp <= 0) {
+      await interaction
+        .reply({ content: 'Już nie żyjesz w tej walce.', ephemeral: true })
+        .catch(() => {});
+      return;
+    }
     if (state.pending.has(combatantId)) {
       await interaction
-        .reply({ content: 'Już wybrałeś akcję — czekamy na drugiego.', ephemeral: true })
+        .reply({ content: 'Już wybrałeś akcję — czekamy na pozostałych.', ephemeral: true })
         .catch(() => {});
       return;
     }
@@ -259,7 +277,12 @@ export class DuelService {
       return;
     } else if (kind === 'atk') {
       const enemies = aliveEnemies(state, me);
-      if (enemies.length === 0) return;
+      if (enemies.length === 0) {
+        await interaction
+          .reply({ content: 'Brak żywych przeciwników.', ephemeral: true })
+          .catch(() => {});
+        return;
+      }
       if (enemies.length === 1) {
         state.pending.set(combatantId, { kind: 'attack', targetId: enemies[0].id });
         await interaction
@@ -273,6 +296,9 @@ export class DuelService {
         return;
       }
     } else {
+      await interaction
+        .reply({ content: `Nieznana akcja \`${kind}\`.`, ephemeral: true })
+        .catch(() => {});
       return;
     }
 
@@ -282,9 +308,22 @@ export class DuelService {
   private async handleTarget(interaction: ButtonInteraction): Promise<void> {
     const [, battleId, combatantId, kind, targetId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) return;
-    if (interaction.user.id !== combatantId) return;
-    if (state.pending.has(combatantId)) return;
+    if (!state || state.finished) {
+      await ackStaleInteraction(interaction);
+      return;
+    }
+    if (interaction.user.id !== combatantId) {
+      await interaction
+        .reply({ content: 'To nie twój wybór celu.', ephemeral: true })
+        .catch(() => {});
+      return;
+    }
+    if (state.pending.has(combatantId)) {
+      await interaction
+        .update({ content: 'Już wybrałeś akcję wcześniej.', components: [] })
+        .catch(() => {});
+      return;
+    }
     if (kind === 'atk') {
       const target = findCombatant(state, targetId);
       if (!target || target.hp <= 0) {
@@ -295,6 +334,11 @@ export class DuelService {
       await interaction
         .update({ content: `Wybrany cel: **${target.name}**.`, components: [] })
         .catch(() => {});
+    } else {
+      await interaction
+        .update({ content: `Nieznany kind \`${kind}\`.`, components: [] })
+        .catch(() => {});
+      return;
     }
     await this.maybeResolve(state);
   }

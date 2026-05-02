@@ -17,13 +17,14 @@ import {
   openSkillPicker,
   handleSkillPick,
   handleSkillTarget,
+  ackStaleInteraction,
 } from '../engine/battle-helpers.js';
 import { DUNGEONS } from '../engine/encounters.js';
 import { BOSS_MOBS } from '../mobs/index.js';
 import { buildPlayerCombatant } from '../engine/player-combatant.js';
 import { awardReward } from './reward.service.js';
 import { buildActionRow, buildTargetRow } from '../ui/battle-buttons.js';
-import { displayName } from '../../../utils.js';
+import { displayName, errMsg } from '../../../utils.js';
 
 interface DungeonBattleState extends BattleState {
   dungeonId: string;
@@ -72,7 +73,7 @@ export class DungeonService {
       });
       if (thread?.id) registerThread(thread);
     } catch (e) {
-      await msg.reply(`Nie udało się otworzyć wątku: ${(e as Error).message}`);
+      await msg.reply(`Nie udało się otworzyć wątku: ${errMsg(e)}`);
       return;
     }
 
@@ -124,7 +125,10 @@ export class DungeonService {
   private async handleItemPick(interaction: ButtonInteraction): Promise<void> {
     const [, battleId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) return;
+    if (!state || state.finished) {
+      await ackStaleInteraction(interaction);
+      return;
+    }
     const recorded = await recordItemPick(interaction, state);
     if (recorded) await this.maybeResolve(state);
   }
@@ -132,7 +136,10 @@ export class DungeonService {
   private async handleSklPick(interaction: ButtonInteraction): Promise<void> {
     const [, battleId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) return;
+    if (!state || state.finished) {
+      await ackStaleInteraction(interaction);
+      return;
+    }
     const recorded = await handleSkillPick(interaction, state);
     if (recorded) await this.maybeResolve(state);
   }
@@ -140,7 +147,10 @@ export class DungeonService {
   private async handleSklTarget(interaction: ButtonInteraction): Promise<void> {
     const [, battleId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) return;
+    if (!state || state.finished) {
+      await ackStaleInteraction(interaction);
+      return;
+    }
     const recorded = await handleSkillTarget(interaction, state);
     if (recorded) await this.maybeResolve(state);
   }
@@ -148,13 +158,21 @@ export class DungeonService {
   private async handleAction(interaction: ButtonInteraction): Promise<void> {
     const [, battleId, combatantId, kind] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) return;
+    if (!state || state.finished) {
+      await ackStaleInteraction(interaction);
+      return;
+    }
     if (interaction.user.id !== combatantId) {
       await interaction.reply({ content: 'To nie twój dungeon.', ephemeral: true }).catch(() => {});
       return;
     }
     const me = findCombatant(state, combatantId);
-    if (!me || me.hp <= 0) return;
+    if (!me || me.hp <= 0) {
+      await interaction
+        .reply({ content: 'Już nie żyjesz w tym dungeonie.', ephemeral: true })
+        .catch(() => {});
+      return;
+    }
     if (state.pending.has(combatantId)) {
       await interaction.reply({ content: 'Już wybrałeś akcję.', ephemeral: true }).catch(() => {});
       return;
@@ -173,7 +191,12 @@ export class DungeonService {
       return;
     } else if (kind === 'atk') {
       const enemies = aliveEnemies(state, me);
-      if (enemies.length === 0) return;
+      if (enemies.length === 0) {
+        await interaction
+          .reply({ content: 'Brak żywych przeciwników.', ephemeral: true })
+          .catch(() => {});
+        return;
+      }
       if (enemies.length === 1) {
         state.pending.set(combatantId, { kind: 'attack', targetId: enemies[0].id });
         await interaction
@@ -187,6 +210,9 @@ export class DungeonService {
         return;
       }
     } else {
+      await interaction
+        .reply({ content: `Nieznana akcja \`${kind}\`.`, ephemeral: true })
+        .catch(() => {});
       return;
     }
 
@@ -196,9 +222,22 @@ export class DungeonService {
   private async handleTarget(interaction: ButtonInteraction): Promise<void> {
     const [, battleId, combatantId, kind, targetId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) return;
-    if (interaction.user.id !== combatantId) return;
-    if (state.pending.has(combatantId)) return;
+    if (!state || state.finished) {
+      await ackStaleInteraction(interaction);
+      return;
+    }
+    if (interaction.user.id !== combatantId) {
+      await interaction
+        .reply({ content: 'To nie twój wybór celu.', ephemeral: true })
+        .catch(() => {});
+      return;
+    }
+    if (state.pending.has(combatantId)) {
+      await interaction
+        .update({ content: 'Już wybrałeś akcję wcześniej.', components: [] })
+        .catch(() => {});
+      return;
+    }
     if (kind === 'atk') {
       const target = findCombatant(state, targetId);
       if (!target || target.hp <= 0) {
@@ -209,6 +248,11 @@ export class DungeonService {
       await interaction
         .update({ content: `Wybrany cel: **${target.name}**.`, components: [] })
         .catch(() => {});
+    } else {
+      await interaction
+        .update({ content: `Nieznany kind \`${kind}\`.`, components: [] })
+        .catch(() => {});
+      return;
     }
     await this.maybeResolve(state);
   }

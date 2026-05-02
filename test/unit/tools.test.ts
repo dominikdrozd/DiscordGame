@@ -1,4 +1,4 @@
-import { searchMovie, getMovieDetails, runTool } from '../src/tools.js';
+import { searchMovie, getMovieDetails, runTool } from '../../src/tools.js';
 
 const mockFetch = jest.fn();
 global.fetch = mockFetch;
@@ -31,17 +31,17 @@ describe('tools', () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: () => mockData });
 
       const res = await searchMovie('Movie 1', 'key');
-      expect(res).not.toHaveProperty('error');
-      expect((res as any).results).toHaveLength(1);
-      expect((res as any).results[0].id).toBe(1);
+      if ('error' in res) throw new Error(`unexpected error: ${res.error}`);
+      expect(res.results).toHaveLength(1);
+      expect(res.results[0].id).toBe(1);
     });
 
     test('handles fetch error', async () => {
       mockFetch.mockResolvedValueOnce({ ok: false, status: 500, text: () => 'Server Error' });
 
       const res = await searchMovie('Movie', 'key');
-      expect(res).toHaveProperty('error');
-      expect((res as any).error).toContain('500');
+      if (!('error' in res)) throw new Error('expected error result');
+      expect(res.error).toContain('500');
     });
   });
 
@@ -70,9 +70,9 @@ describe('tools', () => {
       mockFetch.mockResolvedValueOnce({ ok: true, json: () => mockData });
 
       const res = await getMovieDetails(1, 'key');
-      expect(res).toHaveProperty('formatted');
-      expect((res as any).formatted).toContain('reżyseria: Director Name');
-      expect((res as any).formatted).toContain('obsadzie m.in. Actor 1');
+      if ('error' in res) throw new Error(`unexpected error: ${res.error}`);
+      expect(res.formatted).toContain('reżyseria: Director Name');
+      expect(res.formatted).toContain('obsadzie m.in. Actor 1');
     });
   });
 
@@ -108,7 +108,10 @@ describe('tools', () => {
       const call = { function: { name: 'unknown', arguments: {} } };
       const res = await runTool(call, 'key');
       expect(res).toHaveProperty('error');
-      expect((res as any).error).toContain('nieznane narzędzie');
+      if (!res || typeof res !== 'object' || !('error' in res)) {
+        throw new Error('expected error result');
+      }
+      expect(String(res.error)).toContain('nieznane narzędzie');
     });
 
     test('handles string arguments', async () => {

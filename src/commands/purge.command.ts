@@ -1,4 +1,5 @@
 import type { ICommand, ICommandContext } from '../types/command.types.js';
+import { errMsg } from '../utils.js';
 
 const PURGE_CHANNEL_ID = process.env.PURGE_CHANNEL_ID || '1500080398426705940';
 const OWNER_ID = process.env.BOT_OWNER_ID || '240155722908696577';
@@ -42,8 +43,8 @@ export class PurgeCommand implements ICommand {
         )
         .catch(() => {});
     } catch (e) {
-      console.error('[purge]', (e as Error).message);
-      await msg.channel.send(`Błąd przy purge: ${(e as Error).message}`).catch(() => {});
+      console.error('[purge]', errMsg(e));
+      await msg.channel.send(`Błąd przy purge: ${errMsg(e)}`).catch(() => {});
     }
   }
 }

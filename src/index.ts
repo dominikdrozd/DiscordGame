@@ -55,8 +55,8 @@ client.on(Events.MessageCreate, async (msg) => {
 
 client.on(Events.InteractionCreate, async (interaction) => {
   await manager.handleInteraction(interaction);
-  if (ambushService && 'isButton' in interaction) {
-    await ambushService.handleInteraction(interaction as any);
+  if (ambushService && interaction.isButton()) {
+    await ambushService.handleInteraction(interaction);
   }
 });
 

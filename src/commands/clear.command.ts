@@ -1,4 +1,5 @@
 import type { ICommand, ICommandContext } from '../types/command.types.js';
+import { errMsg } from '../utils.js';
 
 export class ClearCommand implements ICommand {
   readonly name = 'clear';
@@ -30,7 +31,7 @@ export class ClearCommand implements ICommand {
       forgetThread(threadId);
       await msg.channel.delete('manual .clear');
     } catch (e) {
-      await msg.reply(`Błąd usuwania wątku: ${(e as Error).message}`).catch(() => {});
+      await msg.reply(`Błąd usuwania wątku: ${errMsg(e)}`).catch(() => {});
     }
   }
 }

@@ -1,7 +1,7 @@
 import type { Client } from 'discord.js';
 import { streamQwen } from '../ollama.js';
 import { TOOLS as DEFAULT_TOOLS, runTool } from '../tools.js';
-import { displayName, stripPrefix } from '../utils.js';
+import { displayName, errMsg, stripPrefix } from '../utils.js';
 import type { ICommand, ICommandContext } from '../types/command.types.js';
 
 const HISTORY_LIMIT = 50;
@@ -65,7 +65,7 @@ export abstract class Command implements ICommand {
         try {
           await placeholder.edit(next);
         } catch (e) {
-          console.error('edit fail:', (e as Error)?.message);
+          console.error('edit fail:', errMsg(e));
         }
       };
       const schedule = () => {
@@ -128,7 +128,7 @@ export abstract class Command implements ICommand {
       await msg.react('✅').catch(() => {});
     } catch (err) {
       console.error(err);
-      await (target ?? msg).send(`Błąd: ${(err as Error).message}`).catch(() => {});
+      await (target ?? msg).send(`Błąd: ${errMsg(err)}`).catch(() => {});
       await msg.react('❌').catch(() => {});
     }
   }

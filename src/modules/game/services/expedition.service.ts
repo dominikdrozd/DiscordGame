@@ -1,29 +1,15 @@
 import type { ICommandContext } from '../../../types/command.types.js';
 import { PlayerStatsService } from './player-stats.js';
 import { PartyService } from './party.js';
-import { EXPEDITIONS, REGION_LVL_REQ } from '../engine/encounters.js';
+import {
+  EXPEDITIONS,
+  REGION_LVL_REQ,
+  expeditionLvlBracket,
+  expeditionMinLvl,
+} from '../engine/encounters.js';
 import { rollLootMany } from './loot.js';
 import { rollItemInstance, fmtInstance, ITEMS } from './items.js';
 import { displayName } from '../../../utils.js';
-
-/**
- * Mapuje tier ekspedycji na rekomendowany combat level gracza.
- * Wzór odwrócony do `ambushTierForLevel`: tier = floor(lvl/8)+1 → lvl = (tier-1)*8.
- */
-function expeditionLvlBracket(tier: 1 | 2 | 3 | 4 | 5): string {
-  const ranges: Record<typeof tier, string> = {
-    1: '1-7',
-    2: '8-15',
-    3: '16-23',
-    4: '24-31',
-    5: '32+',
-  };
-  return ranges[tier];
-}
-
-function expeditionMinLvl(tier: 1 | 2 | 3 | 4 | 5): number {
-  return Math.max(1, (tier - 1) * 8);
-}
 
 export class ExpeditionService {
   constructor(

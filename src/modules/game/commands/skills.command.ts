@@ -2,7 +2,11 @@ import type { ICommand, ICommandContext } from '../../../types/command.types.js'
 import { PlayerStatsService, type PrimaryAttribute } from '../services/player-stats.js';
 import { displayName } from '../../../utils.js';
 
-const VALID: PrimaryAttribute[] = ['str', 'agi', 'wit', 'int'];
+const VALID: readonly PrimaryAttribute[] = ['str', 'agi', 'wit', 'int'];
+
+function isPrimaryAttribute(s: string): s is PrimaryAttribute {
+  return s === 'str' || s === 'agi' || s === 'wit' || s === 'int';
+}
 
 export class SkillsCommand implements ICommand {
   readonly name = 'skills';
@@ -47,9 +51,9 @@ export class SkillsCommand implements ICommand {
       await msg.reply('Użycie: `.skills add <str|agi|wit|int> <ile>`');
       return;
     }
-    const attr = parts[1] as PrimaryAttribute;
+    const attr = parts[1];
     const pts = parseInt(parts[2], 10);
-    if (!VALID.includes(attr)) {
+    if (!isPrimaryAttribute(attr)) {
       await msg.reply(`Atrybut musi być jednym z: ${VALID.join(', ')}.`);
       return;
     }

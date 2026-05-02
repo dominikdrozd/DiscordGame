@@ -1,9 +1,9 @@
 import { Client, GatewayIntentBits } from 'discord.js';
-import * as indexModule from '../src/index.js';
-import * as ollamaModule from '../src/ollama.js';
+import * as indexModule from '../../src/index.js';
+import * as ollamaModule from '../../src/ollama.js';
 
-jest.mock('../src/ollama.js');
-jest.mock('../src/tools.js');
+jest.mock('../../src/ollama.js');
+jest.mock('../../src/tools.js');
 
 describe('Discord Bot Integration', () => {
   let client: Client;
@@ -69,7 +69,7 @@ describe('Discord Bot Integration', () => {
       react: jest.fn().mockResolvedValue({}),
     };
 
-    (ollamaModule.streamQwen as jest.Mock).mockResolvedValue({
+    jest.mocked(ollamaModule.streamQwen).mockResolvedValue({
       content: 'AI is artificial intelligence.',
       toolCalls: [],
     });

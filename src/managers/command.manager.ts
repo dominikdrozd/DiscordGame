@@ -1,5 +1,14 @@
 import type { Client } from 'discord.js';
 import type { ICommand } from '../types/command.types.js';
+import { errMsg } from '../utils.js';
+
+interface InteractionHandler {
+  handleInteraction(interaction: unknown): Promise<void>;
+}
+
+function hasInteractionHandler(cmd: ICommand): cmd is ICommand & InteractionHandler {
+  return 'handleInteraction' in cmd && typeof cmd.handleInteraction === 'function';
+}
 
 const DEFAULT_TTL_MIN = parseInt(process.env.THREAD_TTL_MIN || '60', 10);
 
@@ -62,14 +71,13 @@ export class CommandManager {
     );
   }
 
-  async handleInteraction(interaction: any): Promise<void> {
+  async handleInteraction(interaction: unknown): Promise<void> {
     for (const cmd of this.commands) {
-      if (typeof (cmd as any).handleInteraction === 'function') {
-        try {
-          await (cmd as any).handleInteraction(interaction);
-        } catch (e) {
-          console.error(`[manager] handleInteraction ${cmd.name}:`, (e as Error).message);
-        }
+      if (!hasInteractionHandler(cmd)) continue;
+      try {
+        await cmd.handleInteraction(interaction);
+      } catch (e) {
+        console.error(`[manager] handleInteraction ${cmd.name}:`, errMsg(e));
       }
     }
   }
@@ -91,7 +99,7 @@ export class CommandManager {
     const existing = this.threadDeleteTimers.get(threadId);
     if (existing) clearTimeout(existing);
     const timer = setTimeout(() => this.deleteThread(threadId), this.threadTtlMs);
-    if ((timer as any).unref) (timer as any).unref();
+    timer.unref?.();
     this.threadDeleteTimers.set(threadId, timer);
   }
 
@@ -104,12 +112,12 @@ export class CommandManager {
       await info.thread.delete('TTL: brak aktywności');
       console.log(`[manager] auto-deleted thread ${threadId}`);
     } catch (e) {
-      console.error(`[manager] auto-delete fail ${threadId}:`, (e as Error).message);
+      console.error(`[manager] auto-delete fail ${threadId}:`, errMsg(e));
     }
   }
 
   private enqueue(task: () => Promise<void>): Promise<void> {
-    const run = this.queueTail.then(task, task) as Promise<void>;
+    const run: Promise<void> = this.queueTail.then(task, task);
     this.queueTail = run.catch(() => {});
     return run;
   }
