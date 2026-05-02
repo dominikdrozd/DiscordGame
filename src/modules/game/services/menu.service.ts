@@ -4,8 +4,7 @@ import { PlayerStatsService, type PlayerStats } from './player-stats.js';
 import { PartyService } from './party.js';
 import { CITIES, getCity, listCities, type City } from '../cities/index.js';
 import { BOSS_MOBS } from '../mobs/index.js';
-import { EXPEDITIONS, REGION_LVL_REQ, expeditionLvlBracket } from '../engine/encounters.js';
-import { listRecipes } from './recipes.js';
+import { EXPEDITIONS, REGION_LVL_REQ } from '../engine/encounters.js';
 import { CLASSES, findSubclass, findSubclass2 } from '../classes/index.js';
 import { RACES } from '../races/index.js';
 import { fmtResource, fmtInstance } from './items.js';
@@ -14,6 +13,8 @@ import { buildMenuRows, buildBackToMenuRow } from '../ui/menu-buttons.js';
 import { buildCityListRows, buildCityViewRows } from '../ui/city-buttons.js';
 import { GatheringCommand } from '../commands/gathering.command.js';
 import { DialogService } from './dialog.service.js';
+import { ExpeditionService } from './expedition.service.js';
+import { CraftService } from './craft.service.js';
 
 export interface MenuGatherers {
   mine: GatheringCommand;
@@ -39,6 +40,8 @@ export class MenuService {
     private readonly gatherers: MenuGatherers,
     private readonly shop: MenuShopOpener,
     private readonly dialog: DialogService,
+    private readonly expeditions: ExpeditionService,
+    private readonly crafting: CraftService,
   ) {}
 
   async handle(ctx: ICommandContext): Promise<void> {
@@ -78,7 +81,7 @@ export class MenuService {
     if (action === 'inv') return this.update(interaction, this.renderInv(player), true);
     if (action === 'skills') return this.update(interaction, this.renderSkills(player), true);
     if (action === 'party') return this.update(interaction, this.renderParty(player), true);
-    if (action === 'exp') return this.update(interaction, this.renderExpList(player), true);
+    if (action === 'exp') return this.expeditions.openFromInteraction(interaction);
     if (action === 'city' || action === 'citylist') {
       return this.renderCityListView(interaction, player);
     }
@@ -94,7 +97,7 @@ export class MenuService {
       const npcId = parts[3];
       return this.dialog.startFromInteraction(interaction, npcId);
     }
-    if (action === 'craft') return this.update(interaction, this.renderCraftList(player), true);
+    if (action === 'craft') return this.crafting.openFromInteraction(interaction);
     if (action === 'boss') return this.update(interaction, this.renderBossList(player), true);
     if (action === 'dungeon') return this.update(interaction, this.renderDungeonList(player), true);
     if (action === 'mine') return this.runGather(interaction, player, this.gatherers.mine);
@@ -243,36 +246,6 @@ export class MenuService {
     return lines.join('\n');
   }
 
-  private renderExpList(p: PlayerStats): string {
-    const lines: string[] = [
-      '🗺️ **Wyprawy** (wpisz `.expedition` żeby otworzyć interaktywny browser)',
-    ];
-    if (p.activeExpedition) {
-      const def = EXPEDITIONS[p.activeExpedition.destination];
-      const left = p.activeExpedition.endsAt - Date.now();
-      lines.push(
-        '',
-        `_Aktywna: **${def?.name ?? p.activeExpedition.destination}** — ${left <= 0 ? '✅ Skończona, kliknij Zbierz w `.expedition`' : `pozostało ${Math.ceil(left / 60_000)} min`}_`,
-      );
-    }
-    const sorted = Object.values(EXPEDITIONS).sort((a, b) => {
-      if (a.region !== b.region) return a.region - b.region;
-      return a.tier - b.tier;
-    });
-    let region = 0;
-    for (const e of sorted) {
-      if (e.region !== region) {
-        region = e.region;
-        lines.push(
-          '',
-          `**Region ${e.region} — ${e.regionName}** (lvl ${REGION_LVL_REQ[e.region]}+)`,
-        );
-      }
-      lines.push(`• \`${e.id}\` (T${e.tier}, lvl ${expeditionLvlBracket(e.tier)}) — ${e.name}`);
-    }
-    return lines.join('\n');
-  }
-
   /**
    * Widok listy miast — buttony zamiast tekstowych ID. Każdy button reprezentuje
    * jedno miasto (disabled gdy combat lvl niewystarczający).
@@ -340,20 +313,6 @@ export class MenuService {
     await interaction
       .update({ content: lines.join('\n').slice(0, 1900), components: rows })
       .catch(() => {});
-  }
-
-  private renderCraftList(p: PlayerStats): string {
-    const lines: string[] = [
-      `🛠️ **Crafting** — twój level: **${p.skills.crafting.level}**`,
-      '_Pełen interaktywny browser:_ `.craft`',
-      '',
-      '**Dostępne przepisy:**',
-    ];
-    for (const r of listRecipes()) {
-      const lock = p.skills.crafting.level < r.craftingLevelRequired ? ' 🔒' : '';
-      lines.push(`• \`${r.id}\` (lvl ${r.craftingLevelRequired})${lock}`);
-    }
-    return lines.join('\n');
   }
 
   private renderBossList(p: PlayerStats): string {

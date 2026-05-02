@@ -103,10 +103,10 @@ describe('applyItem', () => {
     expect(c.consumables?.potion_small).toBe(1);
   });
 
-  test('returns empty message when consumable not in inventory', () => {
-    const c = makeCombatant({ hp: 50, consumables: {} });
+  test('returns empty message when no free uses and no inventory potions', () => {
+    const c = makeCombatant({ hp: 50, potionsLeft: 0, consumables: {} });
     const line = applyItem(c, 'potion_small');
-    expect(line).toContain('plecak pusty');
+    expect(line).toContain('flaszka pusta');
     expect(c.hp).toBe(50);
   });
 

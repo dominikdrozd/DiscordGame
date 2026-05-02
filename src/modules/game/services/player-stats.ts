@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { ItemInstance, ItemSlot } from './items.js';
+import type { ItemInstance, ItemSlot, ToolKind } from './items.js';
 
 export type SkillName = 'mining' | 'fishing' | 'woodcutting' | 'crafting' | 'combat';
 
@@ -369,6 +369,18 @@ export class PlayerStatsService {
     const uid = p.equipped[slot];
     if (!uid) return undefined;
     return this.findItem(p, uid);
+  }
+
+  /**
+   * Zwraca dowolne posiadane (założone lub w plecaku) narzędzie danego typu.
+   * Używane przez gathering — gracz nie musi przekładać slotu, żeby wymienić
+   * kilof na siekierę. Preferuje założony slot tool jeśli pasuje (np. lepszy
+   * tier), inaczej bierze pierwszy z plecaka.
+   */
+  toolOfKind(p: PlayerStats, kind: ToolKind): ItemInstance | undefined {
+    const equipped = this.equippedItem(p, 'tool');
+    if (equipped?.toolKind === kind) return equipped;
+    return p.inventory.items.find((it) => it.toolKind === kind);
   }
 
   // ── Cooldowns ──────────────────────────────────────

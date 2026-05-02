@@ -29,7 +29,7 @@ import {
 import { resolveBattleRound } from './combat-battle.js';
 import { chooseAiAction } from './ai.js';
 import { buildPlayerCombatant } from './player-combatant.js';
-import { buildActionRow, buildTargetRow } from '../ui/battle-buttons.js';
+import { buildPanelOpenerRow, buildTargetRow } from '../ui/battle-buttons.js';
 import {
   openItemPicker,
   recordItemPick,
@@ -39,6 +39,9 @@ import {
   handleSkillTarget,
   ackStaleInteraction,
   closeBattleThread,
+  promptHumansWithPanel,
+  handlePanelOpen,
+  notifyChoiceMade,
 } from './battle-helpers.js';
 
 const AMBUSH_CHECK_INTERVAL_MS = parseInt(process.env.AMBUSH_CHECK_INTERVAL_MS || '300000', 10);
@@ -83,6 +86,7 @@ export class AmbushService {
     const id = interaction.customId;
     const battleId = id.split(':')[1];
     if (!this.states.has(battleId)) return;
+    if (id.startsWith('pnl:')) return this.handlePanel(interaction);
     if (id.startsWith('bat:')) return this.handleAction(interaction);
     if (id.startsWith('tgt:')) return this.handleTarget(interaction);
     if (id.startsWith('itmpick:')) return this.handleItemPick(interaction);
@@ -90,40 +94,60 @@ export class AmbushService {
     if (id.startsWith('skltgt:')) return this.handleSklTarget(interaction);
   }
 
+  private async handlePanel(interaction: ButtonInteraction): Promise<void> {
+    const [, battleId] = interaction.customId.split(':');
+    const state = this.states.get(battleId);
+    if (!state) return;
+    if (state.finished) {
+      await ackStaleInteraction(interaction);
+      return;
+    }
+    await handlePanelOpen(interaction, state);
+  }
+
   private async handleItemPick(interaction: ButtonInteraction): Promise<void> {
     const [, battleId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state) return; // nie moja walka
+    if (!state) return;
     if (state.finished) {
       await ackStaleInteraction(interaction);
       return;
     }
     const recorded = await recordItemPick(interaction, state);
-    if (recorded) await this.maybeResolve(state);
+    if (recorded) {
+      await notifyChoiceMade(state, interaction.user.id);
+      await this.maybeResolve(state);
+    }
   }
 
   private async handleSklPick(interaction: ButtonInteraction): Promise<void> {
     const [, battleId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state) return; // nie moja walka
+    if (!state) return;
     if (state.finished) {
       await ackStaleInteraction(interaction);
       return;
     }
     const recorded = await handleSkillPick(interaction, state);
-    if (recorded) await this.maybeResolve(state);
+    if (recorded) {
+      await notifyChoiceMade(state, interaction.user.id);
+      await this.maybeResolve(state);
+    }
   }
 
   private async handleSklTarget(interaction: ButtonInteraction): Promise<void> {
     const [, battleId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state) return; // nie moja walka
+    if (!state) return;
     if (state.finished) {
       await ackStaleInteraction(interaction);
       return;
     }
     const recorded = await handleSkillTarget(interaction, state);
-    if (recorded) await this.maybeResolve(state);
+    if (recorded) {
+      await notifyChoiceMade(state, interaction.user.id);
+      await this.maybeResolve(state);
+    }
   }
 
   private async tick(): Promise<void> {
@@ -315,11 +339,13 @@ export class AmbushService {
       return;
     }
 
+    let recorded = false;
     if (kind === 'def') {
       state.pending.set(combatantId, { kind: 'defend' });
       await interaction
         .reply({ content: 'Wybrałeś: **Obrona**.', ephemeral: true })
         .catch(() => {});
+      recorded = true;
     } else if (kind === 'itm') {
       await openItemPicker(interaction, battleId, combatantId, me);
       return;
@@ -339,6 +365,7 @@ export class AmbushService {
         await interaction
           .reply({ content: `Atak na **${enemies[0].name}**.`, ephemeral: true })
           .catch(() => {});
+        recorded = true;
       } else {
         const row = buildTargetRow(battleId, combatantId, 'atk', enemies);
         await interaction
@@ -352,6 +379,7 @@ export class AmbushService {
         .catch(() => {});
       return;
     }
+    if (recorded) await notifyChoiceMade(state, combatantId);
     await this.maybeResolve(state);
   }
 
@@ -393,6 +421,7 @@ export class AmbushService {
           await interaction
             .update({ content: 'Cel padł — brak innych wrogów, idziesz w obronę.', components: [] })
             .catch(() => {});
+          await notifyChoiceMade(state, combatantId);
         } else if (enemies.length === 1) {
           state.pending.set(combatantId, { kind: 'attack', targetId: enemies[0].id });
           await interaction
@@ -401,6 +430,7 @@ export class AmbushService {
               components: [],
             })
             .catch(() => {});
+          await notifyChoiceMade(state, combatantId);
         } else {
           const row = buildTargetRow(battleId, combatantId, 'atk', enemies);
           await interaction
@@ -413,6 +443,7 @@ export class AmbushService {
         await interaction
           .update({ content: `Wybrany: **${target.name}**.`, components: [] })
           .catch(() => {});
+        await notifyChoiceMade(state, combatantId);
       }
     } else {
       await interaction
@@ -431,25 +462,30 @@ export class AmbushService {
       if (c.controller !== 'ai' || c.hp <= 0 || state.pending.has(c.id)) continue;
       state.pending.set(c.id, chooseAiAction(state, c));
     }
-    for (const [allyId, msgId] of state.promptMessageIds) {
+    for (const [, msgId] of state.promptMessageIds) {
       try {
         const m = await state.thread.messages.fetch(msgId).catch(() => null);
         if (m)
-          await m.edit({ components: [buildActionRow(state.id, allyId, true)] }).catch(() => {});
+          await m.edit({ components: [buildPanelOpenerRow(state.id, true)] }).catch(() => {});
       } catch {}
     }
     state.promptMessageIds.clear();
 
     const result = resolveBattleRound(state);
 
+    // Log walki — zawsze, też dla ostatniej rundy gdy ktoś ginie.
+    if (result.lines.length > 0) {
+      await state.thread.send(
+        [...result.lines, '', this.fmtBoard(state)].join('\n').slice(0, 1900),
+      );
+    }
+
     if (result.finished) {
       await this.finishAmbush(state, result);
       return;
     }
 
-    await state.thread.send(
-      [...result.lines, '', this.fmtBoard(state), `⏭ Runda ${state.roundNumber}`].join('\n'),
-    );
+    await state.thread.send(`⏭ Runda ${state.roundNumber}`);
     await this.promptHumans(state);
   }
 
@@ -524,22 +560,14 @@ export class AmbushService {
   }
 
   private async promptHumans(state: AmbushBattleState): Promise<void> {
-    for (const c of state.combatants) {
-      if (c.controller !== 'human' || c.hp <= 0) continue;
-      const hasSkills = (c.skills ?? []).length > 0;
-      const sent = await state.thread.send({
-        content: `<@${c.id}> — wybierz akcję:`,
-        components: [buildActionRow(state.id, c.id, false, hasSkills)],
-      });
-      state.promptMessageIds.set(c.id, sent.id);
-    }
+    await promptHumansWithPanel(state);
   }
 
   private fmtBoard(state: AmbushBattleState): string {
     return state.combatants
       .map(
         (c) =>
-          `${c.name}: ${c.hp}/${c.maxHp} HP${c.controller === 'human' ? ` (mikstury: ${c.potionsLeft})` : ''}`,
+          `${c.name}: ${c.hp}/${c.maxHp} HP${c.controller === 'human' ? ` (potki: ${c.consumables?.potion_small ?? 0})` : ''}`,
       )
       .join(' | ');
   }

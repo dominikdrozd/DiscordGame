@@ -19,12 +19,15 @@ import {
   handleSkillTarget,
   ackStaleInteraction,
   closeBattleThread,
+  promptHumansWithPanel,
+  handlePanelOpen,
+  notifyChoiceMade,
 } from '../engine/battle-helpers.js';
 import { DUNGEONS } from '../engine/encounters.js';
 import { BOSS_MOBS } from '../mobs/index.js';
 import { buildPlayerCombatant } from '../engine/player-combatant.js';
 import { awardReward } from './reward.service.js';
-import { buildActionRow, buildTargetRow } from '../ui/battle-buttons.js';
+import { buildPanelOpenerRow, buildTargetRow } from '../ui/battle-buttons.js';
 import { displayName, errMsg } from '../../../utils.js';
 
 interface DungeonBattleState extends BattleState {
@@ -125,6 +128,7 @@ export class DungeonService {
   async handleInteraction(interaction: ButtonInteraction): Promise<void> {
     if (!interaction.isButton?.()) return;
     const id = interaction.customId;
+    if (id.startsWith('pnl:')) return this.handlePanel(interaction);
     if (id.startsWith('bat:')) return this.handleAction(interaction);
     if (id.startsWith('tgt:')) return this.handleTarget(interaction);
     if (id.startsWith('itmpick:')) return this.handleItemPick(interaction);
@@ -132,40 +136,60 @@ export class DungeonService {
     if (id.startsWith('skltgt:')) return this.handleSklTarget(interaction);
   }
 
+  private async handlePanel(interaction: ButtonInteraction): Promise<void> {
+    const [, battleId] = interaction.customId.split(':');
+    const state = this.states.get(battleId);
+    if (!state) return;
+    if (state.finished) {
+      await ackStaleInteraction(interaction);
+      return;
+    }
+    await handlePanelOpen(interaction, state);
+  }
+
   private async handleItemPick(interaction: ButtonInteraction): Promise<void> {
     const [, battleId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state) return; // nie moja walka — niech inny service obsłuży
+    if (!state) return;
     if (state.finished) {
       await ackStaleInteraction(interaction);
       return;
     }
     const recorded = await recordItemPick(interaction, state);
-    if (recorded) await this.maybeResolve(state);
+    if (recorded) {
+      await notifyChoiceMade(state, interaction.user.id);
+      await this.maybeResolve(state);
+    }
   }
 
   private async handleSklPick(interaction: ButtonInteraction): Promise<void> {
     const [, battleId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state) return; // nie moja walka — niech inny service obsłuży
+    if (!state) return;
     if (state.finished) {
       await ackStaleInteraction(interaction);
       return;
     }
     const recorded = await handleSkillPick(interaction, state);
-    if (recorded) await this.maybeResolve(state);
+    if (recorded) {
+      await notifyChoiceMade(state, interaction.user.id);
+      await this.maybeResolve(state);
+    }
   }
 
   private async handleSklTarget(interaction: ButtonInteraction): Promise<void> {
     const [, battleId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state) return; // nie moja walka — niech inny service obsłuży
+    if (!state) return;
     if (state.finished) {
       await ackStaleInteraction(interaction);
       return;
     }
     const recorded = await handleSkillTarget(interaction, state);
-    if (recorded) await this.maybeResolve(state);
+    if (recorded) {
+      await notifyChoiceMade(state, interaction.user.id);
+      await this.maybeResolve(state);
+    }
   }
 
   private async handleAction(interaction: ButtonInteraction): Promise<void> {
@@ -192,11 +216,13 @@ export class DungeonService {
       return;
     }
 
+    let recorded = false;
     if (kind === 'def') {
       state.pending.set(combatantId, { kind: 'defend' });
       await interaction
         .reply({ content: 'Wybrałeś: **Obrona**.', ephemeral: true })
         .catch(() => {});
+      recorded = true;
     } else if (kind === 'itm') {
       await openItemPicker(interaction, battleId, combatantId, me);
       return;
@@ -216,6 +242,7 @@ export class DungeonService {
         await interaction
           .reply({ content: `Atak na **${enemies[0].name}**.`, ephemeral: true })
           .catch(() => {});
+        recorded = true;
       } else {
         const row = buildTargetRow(battleId, combatantId, 'atk', enemies);
         await interaction
@@ -230,6 +257,7 @@ export class DungeonService {
       return;
     }
 
+    if (recorded) await notifyChoiceMade(state, combatantId);
     await this.maybeResolve(state);
   }
 
@@ -265,6 +293,7 @@ export class DungeonService {
       await interaction
         .update({ content: `Wybrany cel: **${target.name}**.`, components: [] })
         .catch(() => {});
+      await notifyChoiceMade(state, combatantId);
     } else {
       await interaction
         .update({ content: `Nieznany kind \`${kind}\`.`, components: [] })
@@ -283,11 +312,11 @@ export class DungeonService {
       state.pending.set(c.id, chooseAiAction(state, c));
     }
 
-    for (const [allyId, msgId] of state.promptMessageIds) {
+    for (const [, msgId] of state.promptMessageIds) {
       try {
         const m = await state.thread.messages.fetch(msgId).catch(() => null);
         if (m)
-          await m.edit({ components: [buildActionRow(state.id, allyId, true)] }).catch(() => {});
+          await m.edit({ components: [buildPanelOpenerRow(state.id, true)] }).catch(() => {});
       } catch {}
     }
     state.promptMessageIds.clear();
@@ -387,22 +416,14 @@ export class DungeonService {
   }
 
   private async promptHumans(state: DungeonBattleState): Promise<void> {
-    for (const c of state.combatants) {
-      if (c.controller !== 'human' || c.hp <= 0) continue;
-      const hasSkills = (c.skills ?? []).length > 0;
-      const sent = await state.thread.send({
-        content: `<@${c.id}> — wybierz akcję:`,
-        components: [buildActionRow(state.id, c.id, false, hasSkills)],
-      });
-      state.promptMessageIds.set(c.id, sent.id);
-    }
+    await promptHumansWithPanel(state);
   }
 
   private fmtBoard(state: DungeonBattleState): string {
     return state.combatants
       .map(
         (c) =>
-          `${c.name}: ${c.hp}/${c.maxHp} HP${c.controller === 'human' ? ` (mikstury: ${c.potionsLeft})` : ''}`,
+          `${c.name}: ${c.hp}/${c.maxHp} HP${c.controller === 'human' ? ` (potki: ${c.consumables?.potion_small ?? 0})` : ''}`,
       )
       .join(' | ');
   }

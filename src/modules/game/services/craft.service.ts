@@ -4,11 +4,13 @@ import { PlayerStatsService, type PlayerStats } from './player-stats.js';
 import { listRecipes, getRecipe, type Recipe } from './recipes.js';
 import { rollItemInstance, fmtInstance, ITEMS } from './items.js';
 import { displayName } from '../../../utils.js';
-import { buildCraftBrowseRows } from '../ui/craft-buttons.js';
+import { buildCraftBrowseRows, buildCraftAfterRows } from '../ui/craft-buttons.js';
 
 interface BrowserState {
   userId: string;
   index: number;
+  /** Czy browser został otwarty z `menu:craft` — wtedy renderujemy ← Menu row. */
+  fromMenu: boolean;
 }
 
 function sortedRecipes(): Recipe[] {
@@ -58,13 +60,48 @@ export class CraftService {
       await msg.reply('Brak przepisów.');
       return;
     }
-    const state: BrowserState = { userId: msg.author.id, index: 0 };
+    const state: BrowserState = { userId: msg.author.id, index: 0, fromMenu: false };
     this.browsers.set(msg.author.id, state);
     const recipe = recipes[state.index];
     await msg.reply({
       content: this.renderRecipeContent(recipe, player),
-      components: buildCraftBrowseRows(player.id, recipes.length, this.canCraft(recipe, player)),
+      components: buildCraftBrowseRows(
+        player.id,
+        recipes.length,
+        this.canCraft(recipe, player),
+        false,
+      ),
     });
+  }
+
+  /**
+   * Wejście do browsera craftingu z buttona menu (`menu:craft`).
+   * Używa `interaction.update` zamiast nowej wiadomości — zachowuje
+   * pojedynczą wiadomość menu — i dodaje row "← Menu" pod buttonami.
+   */
+  async openFromInteraction(interaction: ButtonInteraction): Promise<void> {
+    const userId = interaction.user.id;
+    const userName = interaction.user.globalName || interaction.user.username;
+    const player = this.stats.get(userId, userName);
+    const recipes = sortedRecipes();
+    if (recipes.length === 0) {
+      await interaction.update({ content: 'Brak przepisów.', components: [] }).catch(() => {});
+      return;
+    }
+    const state: BrowserState = { userId, index: 0, fromMenu: true };
+    this.browsers.set(userId, state);
+    const recipe = recipes[state.index];
+    await interaction
+      .update({
+        content: this.renderRecipeContent(recipe, player),
+        components: buildCraftBrowseRows(
+          player.id,
+          recipes.length,
+          this.canCraft(recipe, player),
+          true,
+        ),
+      })
+      .catch(() => {});
   }
 
   private renderRecipeContent(recipe: Recipe, player: PlayerStats): string {
@@ -135,7 +172,12 @@ export class CraftService {
     await interaction
       .update({
         content: this.renderRecipeContent(recipe, player),
-        components: buildCraftBrowseRows(userId, recipes.length, this.canCraft(recipe, player)),
+        components: buildCraftBrowseRows(
+          userId,
+          recipes.length,
+          this.canCraft(recipe, player),
+          state.fromMenu,
+        ),
       })
       .catch(() => {});
   }
@@ -166,15 +208,24 @@ export class CraftService {
     await interaction
       .update({
         content: `${this.renderRecipeContent(recipe, player)}\n\n${result.message ?? ''}`,
-        components: buildCraftBrowseRows(userId, recipes.length, this.canCraft(recipe, player)),
+        components: buildCraftBrowseRows(
+          userId,
+          recipes.length,
+          this.canCraft(recipe, player),
+          state.fromMenu,
+        ),
       })
       .catch(() => {});
   }
 
   private async handleClose(interaction: ButtonInteraction, userId: string): Promise<void> {
+    const fromMenu = this.browsers.get(userId)?.fromMenu ?? false;
     this.browsers.delete(userId);
     await interaction
-      .update({ content: 'Browser craftingu zamknięty.', components: [] })
+      .update({
+        content: 'Browser craftingu zamknięty.',
+        components: fromMenu ? buildCraftAfterRows(userId) : [],
+      })
       .catch(() => {});
   }
 

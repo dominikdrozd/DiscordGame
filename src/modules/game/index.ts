@@ -111,6 +111,8 @@ export function registerGameCommands(manager: CommandManager, services: GameServ
     { mine: mineCmd, fish: fishCmd, chop: chopCmd },
     shopOpener,
     dialog,
+    expeditions,
+    crafting,
   );
 
   manager.register(new DuelCommand(duels));

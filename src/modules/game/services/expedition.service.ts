@@ -13,7 +13,11 @@ import { rollLootMany } from './loot.js';
 import { rollItemInstance, fmtInstance, ITEMS } from './items.js';
 import { displayName } from '../../../utils.js';
 import { AMBUSH_MOB_CLASSES_BY_ID } from '../mobs/index.js';
-import { buildExpBrowseRows, buildExpActiveRows } from '../ui/expedition-buttons.js';
+import {
+  buildExpBrowseRows,
+  buildExpActiveRows,
+  buildExpAfterRows,
+} from '../ui/expedition-buttons.js';
 import { CLASSES, findSubclass, findSubclass2 } from '../classes/index.js';
 import { RACES } from '../races/index.js';
 
@@ -23,6 +27,8 @@ interface BrowserState {
   userId: string;
   index: number;
   channelId?: string;
+  /** Czy view został otwarty z `menu:exp` — wtedy renderujemy ← Menu row. */
+  fromMenu: boolean;
 }
 
 function sortedExpeditions(): ExpeditionDef[] {
@@ -92,7 +98,7 @@ export class ExpeditionService {
     if (player.activeExpedition) {
       await msg.reply({
         content: this.renderActiveContent(player),
-        components: buildExpActiveRows(player.id, this.canClaim(player)),
+        components: buildExpActiveRows(player.id, this.canClaim(player), false),
       });
       return;
     }
@@ -100,14 +106,52 @@ export class ExpeditionService {
       userId: msg.author.id,
       index: 0,
       channelId: msg.channel?.id,
+      fromMenu: false,
     };
     this.browsers.set(msg.author.id, state);
     const sorted = sortedExpeditions();
     const exp = sorted[state.index];
     await msg.reply({
       content: this.renderExpDetails(exp, player),
-      components: buildExpBrowseRows(player.id, sorted.length, this.canEnter(exp, player)),
+      components: buildExpBrowseRows(player.id, sorted.length, this.canEnter(exp, player), false),
     });
+  }
+
+  /**
+   * Wejście do browsera ekspedycji z buttona menu (`menu:exp`).
+   * Zamiast nowej wiadomości używa `interaction.update` (zachowuje pojedynczą
+   * wiadomość menu) i dodaje row "← Menu" pod buttonami.
+   */
+  async openFromInteraction(interaction: ButtonInteraction): Promise<void> {
+    const userId = interaction.user.id;
+    const userName = interaction.user.globalName || interaction.user.username;
+    const player = this.stats.get(userId, userName);
+    // Zapisujemy state nawet w aktywnej ekspedycji, żeby kolejne refresh/claim
+    // mogły odczytać `fromMenu` i zachować "← Menu" row.
+    const state: BrowserState = {
+      userId,
+      index: 0,
+      channelId: interaction.channel?.id,
+      fromMenu: true,
+    };
+    this.browsers.set(userId, state);
+    if (player.activeExpedition) {
+      await interaction
+        .update({
+          content: this.renderActiveContent(player),
+          components: buildExpActiveRows(player.id, this.canClaim(player), true),
+        })
+        .catch(() => {});
+      return;
+    }
+    const sorted = sortedExpeditions();
+    const exp = sorted[state.index];
+    await interaction
+      .update({
+        content: this.renderExpDetails(exp, player),
+        components: buildExpBrowseRows(player.id, sorted.length, this.canEnter(exp, player), true),
+      })
+      .catch(() => {});
   }
 
   private renderExpDetails(exp: ExpeditionDef, player: PlayerStats): string {
@@ -301,7 +345,12 @@ export class ExpeditionService {
     await interaction
       .update({
         content: this.renderExpDetails(exp, player),
-        components: buildExpBrowseRows(userId, sorted.length, this.canEnter(exp, player)),
+        components: buildExpBrowseRows(
+          userId,
+          sorted.length,
+          this.canEnter(exp, player),
+          state.fromMenu,
+        ),
       })
       .catch(() => {});
   }
@@ -322,22 +371,24 @@ export class ExpeditionService {
         .catch(() => {});
       return;
     }
+    const fromMenu = state.fromMenu;
     this.browsers.delete(userId);
     this.logs.set(userId, []);
     await interaction
       .update({
         content: `🗺️ **${exp.name}** rozpoczęta — wraca za ${Math.round(exp.durationMs / 60_000)} min. Wpisz \`.expedition\` żeby śledzić log walk.`,
-        components: [],
+        components: fromMenu ? buildExpAfterRows(userId) : [],
       })
       .catch(() => {});
   }
 
   private async refreshActive(interaction: ButtonInteraction, player: PlayerStats): Promise<void> {
+    const fromMenu = this.browsers.get(player.id)?.fromMenu ?? false;
     if (!player.activeExpedition) {
       await interaction
         .update({
           content: 'Nie masz aktywnej wyprawy. Wpisz `.expedition` żeby otworzyć browser.',
-          components: [],
+          components: fromMenu ? buildExpAfterRows(player.id) : [],
         })
         .catch(() => {});
       return;
@@ -345,7 +396,7 @@ export class ExpeditionService {
     await interaction
       .update({
         content: this.renderActiveContent(player),
-        components: buildExpActiveRows(player.id, this.canClaim(player)),
+        components: buildExpActiveRows(player.id, this.canClaim(player), fromMenu),
       })
       .catch(() => {});
   }
@@ -357,15 +408,26 @@ export class ExpeditionService {
         .catch(() => {});
       return;
     }
+    const fromMenu = this.browsers.get(player.id)?.fromMenu ?? false;
     const summary = this.runClaim(player);
     this.logs.delete(player.id);
-    await interaction.update({ content: summary, components: [] }).catch(() => {});
+    this.browsers.delete(player.id);
+    await interaction
+      .update({
+        content: summary,
+        components: fromMenu ? buildExpAfterRows(player.id) : [],
+      })
+      .catch(() => {});
   }
 
   private async handleClose(interaction: ButtonInteraction, userId: string): Promise<void> {
+    const fromMenu = this.browsers.get(userId)?.fromMenu ?? false;
     this.browsers.delete(userId);
     await interaction
-      .update({ content: 'Browser ekspedycji zamknięty.', components: [] })
+      .update({
+        content: 'Browser ekspedycji zamknięty.',
+        components: fromMenu ? buildExpAfterRows(userId) : [],
+      })
       .catch(() => {});
   }
 

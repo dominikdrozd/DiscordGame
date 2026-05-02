@@ -137,29 +137,46 @@ export function applyDefend(p: Combatant): string {
   return `🛡️ **${p.name}** przyjmuje pozycję **${pick(DEFEND_NAMES)}**.`;
 }
 
-export function applyPotion(p: Combatant): string {
-  if (p.potionsLeft <= 0) {
-    return `🧪 **${p.name}** sięga po miksturę, ale flaszka pusta.`;
+function totalPotions(p: Combatant): number {
+  return p.potionsLeft + (p.consumables?.potion_small ?? 0);
+}
+
+/**
+ * Wypicie potki w walce — zużywa najpierw `potionsLeft` (2 darmowe na walkę),
+ * potem `consumables.potion_small` (z plecaka). UI łączy oba pule w jednym
+ * buttonie więc gracz nie musi rozróżniać źródła.
+ */
+function consumePotion(p: Combatant): string {
+  let source: string;
+  if (p.potionsLeft > 0) {
+    p.potionsLeft -= 1;
+    source = 'darmowa na walkę';
+  } else {
+    if (!p.consumables) p.consumables = {};
+    const have = p.consumables.potion_small ?? 0;
+    if (have <= 0) {
+      return `🧪 **${p.name}** sięga po miksturę, ale flaszka pusta.`;
+    }
+    p.consumables.potion_small = have - 1;
+    source = 'z plecaka';
   }
-  p.potionsLeft -= 1;
   const before = p.hp;
   p.hp = Math.min(p.maxHp, p.hp + POTION_HEAL);
   const restored = p.hp - before;
-  return `🧪 **${p.name}** chla **${pick(POTION_NAMES)}** i odzyskuje **${restored}** HP (zostało ${p.potionsLeft}).`;
+  return `🧪 **${p.name}** chla **${pick(POTION_NAMES)}** (${source}) i odzyskuje **${restored}** HP (zostało ${totalPotions(p)}).`;
+}
+
+/** Backward-compat: stary entry-point bez itemId — alias do `consumePotion`. */
+export function applyPotion(p: Combatant): string {
+  return consumePotion(p);
 }
 
 export function applyItem(p: Combatant, itemId: string): string {
+  if (itemId === 'potion_small') return consumePotion(p);
   if (!p.consumables) p.consumables = {};
   const have = p.consumables[itemId] ?? 0;
   if (have <= 0) return `🎒 **${p.name}** sięga po item \`${itemId}\`, ale plecak pusty.`;
   p.consumables[itemId] = have - 1;
-
-  if (itemId === 'potion_small') {
-    const before = p.hp;
-    p.hp = Math.min(p.maxHp, p.hp + POTION_HEAL);
-    const restored = p.hp - before;
-    return `🧪 **${p.name}** chla **${pick(POTION_NAMES)}** i odzyskuje **${restored}** HP (zostało ${p.consumables[itemId]}).`;
-  }
   return `🎒 **${p.name}** używa \`${itemId}\` (efekt nieznany).`;
 }
 

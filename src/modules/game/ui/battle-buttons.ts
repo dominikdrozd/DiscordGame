@@ -83,7 +83,20 @@ export function buildItemPickerRow(
   legacyPotionsLeft: number,
 ): ActionRowBuilder<ButtonBuilder> | null {
   const buttons: ButtonBuilder[] = [];
+  // Łączymy 2 darmowe (legacyPotionsLeft) + plecakowe potion_small w jeden button.
+  const potionInv = consumables.potion_small ?? 0;
+  const totalPotion = potionInv + legacyPotionsLeft;
+  if (totalPotion > 0) {
+    const freeBadge = legacyPotionsLeft > 0 ? ` (${legacyPotionsLeft} free)` : '';
+    buttons.push(
+      new ButtonBuilder()
+        .setCustomId(`itmpick:${battleId}:${combatantId}:potion_small`)
+        .setLabel(`🧪 Mikstura ×${totalPotion}${freeBadge}`.slice(0, 80))
+        .setStyle(ButtonStyle.Success),
+    );
+  }
   for (const [itemId, qty] of Object.entries(consumables)) {
+    if (itemId === 'potion_small') continue;
     if (qty <= 0) continue;
     const name = ITEMS[itemId]?.name ?? itemId;
     buttons.push(
@@ -93,14 +106,6 @@ export function buildItemPickerRow(
         .setStyle(ButtonStyle.Success),
     );
     if (buttons.length >= 5) break;
-  }
-  if (legacyPotionsLeft > 0 && buttons.length < 5) {
-    buttons.push(
-      new ButtonBuilder()
-        .setCustomId(`itmpick:${battleId}:${combatantId}:_legacy`)
-        .setLabel(`🧪 Mikstura (start ×${legacyPotionsLeft})`.slice(0, 80))
-        .setStyle(ButtonStyle.Secondary),
-    );
   }
   if (buttons.length === 0) return null;
   return new ActionRowBuilder<ButtonBuilder>().addComponents(...buttons);

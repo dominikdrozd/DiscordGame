@@ -1,4 +1,4 @@
-import { POTIONS_START, type Combatant } from './combat.js';
+import { type Combatant } from './combat.js';
 import type { PlayerStats } from '../services/player-stats.js';
 import type { PlayerStatsService } from '../services/player-stats.js';
 import { isCombatConsumable } from '../services/items.js';
@@ -46,7 +46,9 @@ export function buildPlayerCombatant(
     defenseBonus,
     critBonus,
     defending: false,
-    potionsLeft: POTIONS_START,
+    // Gracze NIE dostają darmowych potek — używają tylko tych z plecaka.
+    // `potionsLeft` zostawiamy dla AI/bossów (mob.toCombatant ustawia własne).
+    potionsLeft: 0,
     consumables,
     consumablesStart: { ...consumables },
     skills,

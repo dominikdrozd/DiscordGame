@@ -2,7 +2,6 @@ import { type ButtonInteraction } from 'discord.js';
 import type { ICommandContext } from '../../../types/command.types.js';
 import { PlayerStatsService, type PlayerStats } from './player-stats.js';
 import { PartyService, type Party } from './party.js';
-import { POTIONS_START } from '../engine/combat.js';
 import {
   type BattleCombatant,
   type BattleState,
@@ -21,8 +20,11 @@ import {
   handleSkillTarget,
   ackStaleInteraction,
   closeBattleThread,
+  promptHumansWithPanel,
+  handlePanelOpen,
+  notifyChoiceMade,
 } from '../engine/battle-helpers.js';
-import { buildActionRow, buildPanelOpenerRow, buildTargetRow } from '../ui/battle-buttons.js';
+import { buildPanelOpenerRow, buildTargetRow } from '../ui/battle-buttons.js';
 import { displayName, errMsg } from '../../../utils.js';
 
 interface DuelBattleState extends BattleState {
@@ -97,7 +99,7 @@ export class DuelService {
     await thread.send(
       `⚔️ **Pojedynek!**\n` +
         `${this.fmtPlayer(p1, stats1)} **vs** ${this.fmtPlayer(p2, stats2)}\n` +
-        `Każdy ma ${POTIONS_START} mikstury. W każdej rundzie obaj wybieracie akcję — wynik rozlicza się gdy obaj klikną.`,
+        `Mikstury używasz tylko z plecaka. W każdej rundzie obaj wybieracie akcję — wynik rozlicza się gdy obaj klikną.`,
     );
     await this.promptHumans(state);
   }
@@ -170,40 +172,12 @@ export class DuelService {
   private async handlePanel(interaction: ButtonInteraction): Promise<void> {
     const [, battleId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state) return; // nie moja walka
+    if (!state) return;
     if (state.finished) {
-      await interaction
-        .reply({ content: 'Walka już się skończyła.', ephemeral: true })
-        .catch(() => {});
+      await ackStaleInteraction(interaction);
       return;
     }
-    const me = findCombatant(state, interaction.user.id);
-    if (!me || me.controller !== 'human') {
-      await interaction
-        .reply({ content: 'Nie bierzesz udziału w tej walce.', ephemeral: true })
-        .catch(() => {});
-      return;
-    }
-    if (me.hp <= 0) {
-      await interaction
-        .reply({ content: 'Już nie żyjesz w tej walce.', ephemeral: true })
-        .catch(() => {});
-      return;
-    }
-    if (state.pending.has(me.id)) {
-      await interaction
-        .reply({ content: 'Już wybrałeś akcję — czekamy na pozostałych.', ephemeral: true })
-        .catch(() => {});
-      return;
-    }
-    const hasSkills = (me.skills ?? []).length > 0;
-    await interaction
-      .reply({
-        content: `🎮 Runda ${state.roundNumber} — wybierz akcję (${me.hp}/${me.maxHp} HP):`,
-        ephemeral: true,
-        components: [buildActionRow(state.id, me.id, false, hasSkills)],
-      })
-      .catch(() => {});
+    await handlePanelOpen(interaction, state);
   }
 
   private async handleItemPick(interaction: ButtonInteraction): Promise<void> {
@@ -215,7 +189,10 @@ export class DuelService {
       return;
     }
     const recorded = await recordItemPick(interaction, state);
-    if (recorded) await this.maybeResolve(state);
+    if (recorded) {
+      await notifyChoiceMade(state, interaction.user.id);
+      await this.maybeResolve(state);
+    }
   }
 
   private async handleSklPick(interaction: ButtonInteraction): Promise<void> {
@@ -227,7 +204,10 @@ export class DuelService {
       return;
     }
     const recorded = await handleSkillPick(interaction, state);
-    if (recorded) await this.maybeResolve(state);
+    if (recorded) {
+      await notifyChoiceMade(state, interaction.user.id);
+      await this.maybeResolve(state);
+    }
   }
 
   private async handleSklTarget(interaction: ButtonInteraction): Promise<void> {
@@ -239,7 +219,10 @@ export class DuelService {
       return;
     }
     const recorded = await handleSkillTarget(interaction, state);
-    if (recorded) await this.maybeResolve(state);
+    if (recorded) {
+      await notifyChoiceMade(state, interaction.user.id);
+      await this.maybeResolve(state);
+    }
   }
 
   private async handleAction(interaction: ButtonInteraction): Promise<void> {
@@ -270,11 +253,13 @@ export class DuelService {
       return;
     }
 
+    let recorded = false;
     if (kind === 'def') {
       state.pending.set(combatantId, { kind: 'defend' });
       await interaction
         .reply({ content: 'Wybrałeś: **Obrona**.', ephemeral: true })
         .catch(() => {});
+      recorded = true;
     } else if (kind === 'itm') {
       await openItemPicker(interaction, battleId, combatantId, me);
       return;
@@ -294,6 +279,7 @@ export class DuelService {
         await interaction
           .reply({ content: `Atak na **${enemies[0].name}**.`, ephemeral: true })
           .catch(() => {});
+        recorded = true;
       } else {
         const row = buildTargetRow(battleId, combatantId, 'atk', enemies);
         await interaction
@@ -308,6 +294,7 @@ export class DuelService {
       return;
     }
 
+    if (recorded) await notifyChoiceMade(state, combatantId);
     await this.maybeResolve(state);
   }
 
@@ -343,6 +330,7 @@ export class DuelService {
       await interaction
         .update({ content: `Wybrany cel: **${target.name}**.`, components: [] })
         .catch(() => {});
+      await notifyChoiceMade(state, combatantId);
     } else {
       await interaction
         .update({ content: `Nieznany kind \`${kind}\`.`, components: [] })
@@ -356,30 +344,32 @@ export class DuelService {
     const humans = humansAlive(state);
     if (state.pending.size < humans.length) return;
 
-    // disable old prompts
-    for (const [allyId, msgId] of state.promptMessageIds) {
+    // disable old prompts (panel opener row staje się `disabled`)
+    for (const [, msgId] of state.promptMessageIds) {
       try {
         const m = await state.thread.messages.fetch(msgId).catch(() => null);
         if (!m) continue;
-        const row =
-          allyId === '__panel__'
-            ? buildPanelOpenerRow(state.id, true)
-            : buildActionRow(state.id, allyId, true);
-        await m.edit({ components: [row] }).catch(() => {});
+        await m.edit({ components: [buildPanelOpenerRow(state.id, true)] }).catch(() => {});
       } catch {}
     }
     state.promptMessageIds.clear();
 
     const result = resolveBattleRound(state);
 
+    // Log walki — wysyłany ZAWSZE, też dla ostatniej rundy (gdy ktoś ginie),
+    // żeby gracze widzieli decydujący cios przed komunikatem o zwycięstwie.
+    if (result.lines.length > 0) {
+      await state.thread.send(
+        [...result.lines, '', this.fmtBoard(state)].join('\n').slice(0, 1900),
+      );
+    }
+
     if (result.finished) {
       await this.finish(state, result);
       return;
     }
 
-    await state.thread.send(
-      [...result.lines, '', this.fmtBoard(state), `⏭ Runda ${state.roundNumber}`].join('\n'),
-    );
+    await state.thread.send(`⏭ Runda ${state.roundNumber}`);
     await this.promptHumans(state);
   }
 
@@ -445,26 +435,7 @@ export class DuelService {
   }
 
   private async promptHumans(state: DuelBattleState): Promise<void> {
-    if (state.isPartyDuel) {
-      const aliveHumans = state.combatants.filter((c) => c.controller === 'human' && c.hp > 0);
-      if (aliveHumans.length === 0) return;
-      const mentions = aliveHumans.map((c) => `<@${c.id}>`).join(' ');
-      const sent = await state.thread.send({
-        content: `🎮 Runda ${state.roundNumber} — ${mentions}, kliknij, by otworzyć swój panel akcji.`,
-        components: [buildPanelOpenerRow(state.id)],
-      });
-      state.promptMessageIds.set('__panel__', sent.id);
-      return;
-    }
-    for (const c of state.combatants) {
-      if (c.controller !== 'human' || c.hp <= 0) continue;
-      const hasSkills = (c.skills ?? []).length > 0;
-      const sent = await state.thread.send({
-        content: `<@${c.id}> — runda ${state.roundNumber}, wybierz akcję:`,
-        components: [buildActionRow(state.id, c.id, false, hasSkills)],
-      });
-      state.promptMessageIds.set(c.id, sent.id);
-    }
+    await promptHumansWithPanel(state);
   }
 
   private fmtPlayer(c: BattleCombatant, p: PlayerStats): string {
@@ -473,7 +444,10 @@ export class DuelService {
 
   private fmtBoard(state: DuelBattleState): string {
     return state.combatants
-      .map((c) => `${c.name}: ${c.hp}/${c.maxHp} HP (mikstury: ${c.potionsLeft})`)
+      .map(
+        (c) =>
+          `${c.name}: ${c.hp}/${c.maxHp} HP${c.controller === 'human' ? ` (potki: ${c.consumables?.potion_small ?? 0})` : ` (potki: ${c.potionsLeft})`}`,
+      )
       .join(' | ');
   }
 }

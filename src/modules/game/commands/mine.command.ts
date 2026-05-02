@@ -8,7 +8,7 @@ export class MineCommand extends GatheringCommand {
       name: 'mine',
       prefix: '.mine',
       description:
-        'Wydobywaj rudy. Wymaga założonego kilofa (`.equip <uid>`). Cooldown 60 s, daje XP do `mining`.',
+        'Wydobywaj rudy. Wymaga kilofa w plecaku (nie trzeba zakładać). Cooldown 60 s, daje XP do `mining`.',
       skill: 'mining',
       table: MINING_TABLE,
       cooldownMs: 60_000,

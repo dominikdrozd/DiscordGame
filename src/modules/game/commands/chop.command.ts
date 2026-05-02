@@ -8,7 +8,7 @@ export class ChopCommand extends GatheringCommand {
       name: 'chop',
       prefix: '.chop',
       description:
-        'Ścinaj drzewa. Wymaga założonej siekiery (`.equip <uid>`). Cooldown 60 s, daje XP do `woodcutting`.',
+        'Ścinaj drzewa. Wymaga siekiery w plecaku (nie trzeba zakładać). Cooldown 60 s, daje XP do `woodcutting`.',
       skill: 'woodcutting',
       table: WOODCUTTING_TABLE,
       cooldownMs: 60_000,

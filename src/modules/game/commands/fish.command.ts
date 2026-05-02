@@ -8,7 +8,7 @@ export class FishCommand extends GatheringCommand {
       name: 'fish',
       prefix: '.fish',
       description:
-        'Łap ryby. Wymaga założonej wędki (`.equip <uid>`). Cooldown 60 s, daje XP do `fishing`.',
+        'Łap ryby. Wymaga wędki w plecaku (nie trzeba zakładać). Cooldown 60 s, daje XP do `fishing`.',
       skill: 'fishing',
       table: FISHING_TABLE,
       cooldownMs: 60_000,

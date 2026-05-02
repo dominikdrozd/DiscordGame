@@ -57,9 +57,12 @@ export abstract class GatheringCommand implements ICommand {
    */
   runGather(player: PlayerStats): string {
     if (this.cfg.requiredTool) {
-      const tool = this.stats.equippedItem(player, 'tool');
-      if (!tool || tool.toolKind !== this.cfg.requiredTool) {
-        return `Potrzebujesz założonego narzędzia typu **${this.cfg.requiredTool}**. Skraftuj jakieś przez \`.craft\` i załóż przez \`.equip <uid>\`.`;
+      // Wystarczy posiadać narzędzie w plecaku — nie trzeba zakładać slotu tool
+      // (slot tool jest jeden, więc wymaganie equip blokowałoby switch między
+      // miningiem/fishingiem/choppingiem przy każdej akcji).
+      const tool = this.stats.toolOfKind(player, this.cfg.requiredTool);
+      if (!tool) {
+        return `Potrzebujesz narzędzia typu **${this.cfg.requiredTool}** w plecaku. Skraftuj przez \`.craft\` — nie musisz go zakładać.`;
       }
     }
 

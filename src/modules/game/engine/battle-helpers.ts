@@ -5,7 +5,9 @@ import { consumablesUsed } from './player-combatant.js';
 import type { PlayerStatsService } from '../services/player-stats.js';
 import { ITEMS } from '../services/items.js';
 import {
+  buildActionRow,
   buildItemPickerRow,
+  buildPanelOpenerRow,
   buildSkillPickerRow,
   buildSkillTargetRow,
 } from '../ui/battle-buttons.js';
@@ -73,15 +75,20 @@ export async function recordItemPick(
   const me = findCombatant(state, combatantId);
   if (!me || me.hp <= 0) return false;
 
-  if (itemId === '_legacy') {
-    if (me.potionsLeft <= 0) {
+  // potion_small jest łączony — sprawdzamy zarówno darmowy pool (potionsLeft)
+  // jak i plecak. Pozostałe consumables tylko z plecaka.
+  if (itemId === 'potion_small') {
+    const inv = me.consumables?.potion_small ?? 0;
+    if (me.potionsLeft <= 0 && inv <= 0) {
       await interaction
-        .update({ content: 'Brak miksturek startowych.', components: [] })
+        .update({ content: 'Brak mikstur (zero darmowych i zero w plecaku).', components: [] })
         .catch(() => {});
       return false;
     }
-    state.pending.set(combatantId, { kind: 'item' });
-    await interaction.update({ content: 'Wybrałeś: 🧪 Mikstura.', components: [] }).catch(() => {});
+    state.pending.set(combatantId, { kind: 'item', itemId });
+    await interaction
+      .update({ content: 'Wybrałeś: 🧪 **Mikstura**.', components: [] })
+      .catch(() => {});
     return true;
   }
 
@@ -196,6 +203,89 @@ export async function handleSkillTarget(
     .update({ content: `Wybrano: **${skill.name}** → **${target.name}**.`, components: [] })
     .catch(() => {});
   return true;
+}
+
+interface SendableThread {
+  send: (
+    payload: { content: string; components?: unknown[] } | string,
+  ) => Promise<{ id: string }>;
+  messages?: { fetch: (id: string) => Promise<{ edit: (payload: unknown) => Promise<unknown> }> };
+}
+
+function isSendableThread(t: unknown): t is SendableThread {
+  if (!t || typeof t !== 'object') return false;
+  if (!('send' in t)) return false;
+  return typeof t.send === 'function';
+}
+
+/**
+ * Wysyła pojedynczą publiczną wiadomość "Runda X — kliknij swój panel"
+ * z buttonem `pnl:<battleId>`. Zastępuje per-user public action rows —
+ * akcje gracz wybiera w ephemeral panelu po kliknięciu w opener.
+ *
+ * Idempotentne wobec startMessageIds: zapisuje id wiadomości pod kluczem
+ * `__panel__` w `state.promptMessageIds`, dzięki czemu `maybeResolve`
+ * potrafi wyłączyć button po rozliczeniu.
+ */
+export async function promptHumansWithPanel(state: BattleState): Promise<void> {
+  if (!isSendableThread(state.thread)) return;
+  const aliveHumans = state.combatants.filter((c) => c.controller === 'human' && c.hp > 0);
+  if (aliveHumans.length === 0) return;
+  const mentions = aliveHumans.map((c) => `<@${c.id}>`).join(' ');
+  const sent = await state.thread.send({
+    content: `🎮 Runda ${state.roundNumber} — ${mentions}, kliknij **Otwórz panel** żeby wybrać akcję.`,
+    components: [buildPanelOpenerRow(state.id)],
+  });
+  state.promptMessageIds.set('__panel__', sent.id);
+}
+
+/**
+ * Otwiera ephemeral panel akcji dla gracza po kliknięciu `pnl:<battleId>`.
+ * Sprawdza czy gracz jest w walce, żywy i nie wybrał już akcji.
+ */
+export async function handlePanelOpen(
+  interaction: ButtonInteraction,
+  state: BattleState,
+): Promise<void> {
+  const me = findCombatant(state, interaction.user.id);
+  if (!me || me.controller !== 'human') {
+    await interaction
+      .reply({ content: 'Nie bierzesz udziału w tej walce.', ephemeral: true })
+      .catch(() => {});
+    return;
+  }
+  if (me.hp <= 0) {
+    await interaction
+      .reply({ content: 'Już nie żyjesz w tej walce.', ephemeral: true })
+      .catch(() => {});
+    return;
+  }
+  if (state.pending.has(me.id)) {
+    await interaction
+      .reply({ content: 'Już wybrałeś akcję — czekamy na pozostałych.', ephemeral: true })
+      .catch(() => {});
+    return;
+  }
+  const hasSkills = (me.skills ?? []).length > 0;
+  await interaction
+    .reply({
+      content: `🎮 Runda ${state.roundNumber} (${me.hp}/${me.maxHp} HP) — wybierz akcję:`,
+      ephemeral: true,
+      components: [buildActionRow(state.id, me.id, false, hasSkills)],
+    })
+    .catch(() => {});
+}
+
+/**
+ * Publiczne potwierdzenie do wątku po dokonaniu wyboru akcji — ujawnia tylko
+ * fakt wyboru, nie szczegóły (cel/skill/item). Pozostali gracze widzą postęp
+ * rundy, ale nie wiedzą co przeciwnik wybrał — efekt jak w klasycznych RPG.
+ */
+export async function notifyChoiceMade(state: BattleState, combatantId: string): Promise<void> {
+  if (!isSendableThread(state.thread)) return;
+  const c = findCombatant(state, combatantId);
+  if (!c) return;
+  await state.thread.send(`✅ **${c.name}** wybrał akcję.`).catch(() => {});
 }
 
 export function syncConsumablesAfterBattle(stats: PlayerStatsService, state: BattleState): void {
