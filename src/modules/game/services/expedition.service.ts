@@ -207,7 +207,10 @@ export class ExpeditionService {
     }
     const party = this.party.get(partyId);
     if (!party) {
-      return [`**Party:** \`${partyId}\` (nie znaleziono w rejestrze)`, `• ${this.fmtMember(player)}`];
+      return [
+        `**Party:** \`${partyId}\` (nie znaleziono w rejestrze)`,
+        `• ${this.fmtMember(player)}`,
+      ];
     }
     const leader = this.stats.get(party.leaderId);
     const leaderDisplay = leader.name === leader.id ? `<@${leader.id}>` : leader.name;

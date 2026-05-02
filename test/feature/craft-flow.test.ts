@@ -82,7 +82,7 @@ describe('craft feature flow', () => {
       forgetThread: () => {},
     });
     expect(player.inventory.items).toHaveLength(0);
-    expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('Wymagany level craftingu'));
+    expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('za niski lvl craftingu'));
   });
 
   test('craft awards xpReward and may level the crafting skill', async () => {
@@ -126,6 +126,6 @@ describe('craft feature flow', () => {
       forgetThread: () => {},
     });
     expect(player.inventory.resources.potion_small).toBeUndefined();
-    expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('Brakuje składników'));
+    expect(msg.reply).toHaveBeenCalledWith(expect.stringMatching(/brak (Karp|Sosna)/));
   });
 });

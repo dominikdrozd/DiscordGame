@@ -1,3 +1,4 @@
+import { type ButtonInteraction } from 'discord.js';
 import type { ICommand, ICommandContext } from '../../../types/command.types.js';
 import { CraftService } from '../services/craft.service.js';
 
@@ -5,7 +6,7 @@ export class CraftCommand implements ICommand {
   readonly name = 'craft';
   readonly prefix = '.craft';
   readonly description =
-    'Crafting przedmiotów. `.craft` pokazuje listę dostępnych przepisów; `.craft <recipeId>` próbuje skraftować — rzadkość i bonusy do statów są losowe (common…legendary).';
+    'Crafting. `.craft` interaktywny browser z paginacją; `.craft <recipeId>` szybki craft konkretnego przepisu.';
   readonly requiresPrompt = false;
 
   constructor(private readonly crafting: CraftService) {}
@@ -21,5 +22,9 @@ export class CraftCommand implements ICommand {
 
   async execute(ctx: ICommandContext): Promise<void> {
     return this.crafting.handle(ctx);
+  }
+
+  async handleInteraction(interaction: ButtonInteraction): Promise<void> {
+    return this.crafting.handleInteraction(interaction);
   }
 }

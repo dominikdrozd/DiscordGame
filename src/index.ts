@@ -58,6 +58,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (ambushService && interaction.isButton()) {
     await ambushService.handleInteraction(interaction);
   }
+  // Fallback ack — gdy żaden service nie obsłużył (np. bot się zrestartował
+  // i state in-memory zniknął), Discord pokaże "This interaction failed"
+  // jeśli nie potwierdzimy.
+  if (interaction.isButton() && !interaction.replied && !interaction.deferred) {
+    await interaction
+      .reply({
+        content: '⚠️ Ta walka już nie istnieje (bot mógł się zrestartować). Otwórz ją ponownie.',
+        ephemeral: true,
+      })
+      .catch(() => {});
+  }
 });
 
 export async function handleMessage(c: Client, msg: any): Promise<void> {

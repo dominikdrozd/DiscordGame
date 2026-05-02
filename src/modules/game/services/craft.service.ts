@@ -1,54 +1,189 @@
+import { type ButtonInteraction } from 'discord.js';
 import type { ICommandContext } from '../../../types/command.types.js';
-import { PlayerStatsService } from './player-stats.js';
-import { listRecipes, getRecipe, fmtRecipe } from './recipes.js';
+import { PlayerStatsService, type PlayerStats } from './player-stats.js';
+import { listRecipes, getRecipe, type Recipe } from './recipes.js';
 import { rollItemInstance, fmtInstance, ITEMS } from './items.js';
 import { displayName } from '../../../utils.js';
+import { buildCraftBrowseRows } from '../ui/craft-buttons.js';
+
+interface BrowserState {
+  userId: string;
+  index: number;
+}
+
+function sortedRecipes(): Recipe[] {
+  return listRecipes().sort((a, b) => {
+    if (a.craftingLevelRequired !== b.craftingLevelRequired) {
+      return a.craftingLevelRequired - b.craftingLevelRequired;
+    }
+    return a.id.localeCompare(b.id);
+  });
+}
 
 export class CraftService {
+  private readonly browsers = new Map<string, BrowserState>();
+
   constructor(private readonly stats: PlayerStatsService) {}
 
   async handle(ctx: ICommandContext): Promise<void> {
     const { msg, prompt } = ctx;
+    if (!prompt) return this.openBrowser(msg);
+    return this.craftDirect(msg, prompt);
+  }
+
+  async handleInteraction(interaction: ButtonInteraction): Promise<void> {
+    if (!interaction.isButton?.()) return;
+    if (!interaction.customId.startsWith('craft:')) return;
+    const parts = interaction.customId.split(':');
+    const action = parts[1];
+    const userId = parts[2];
+    const arg = parts[3];
+
+    if (interaction.user.id !== userId) {
+      await interaction.reply({ content: 'To nie twój browser.', ephemeral: true }).catch(() => {});
+      return;
+    }
+
+    if (action === 'nav') return this.handleNav(interaction, userId, arg);
+    if (action === 'create') return this.handleCreate(interaction, userId);
+    if (action === 'close') return this.handleClose(interaction, userId);
+  }
+
+  // ── Interactive UI ────────────────────────────────────
+
+  private async openBrowser(msg: any): Promise<void> {
     const player = this.stats.get(msg.author.id, displayName(msg));
-
-    if (!prompt) {
-      const lines = listRecipes()
-        .filter((r) => r.craftingLevelRequired <= player.skills.crafting.level + 5)
-        .map((r) => fmtRecipe(r));
-      const head = `📜 **Twój crafting: lvl ${player.skills.crafting.level}**. Użycie: \`.craft <id>\`.`;
-      await msg.reply([head, ...lines].join('\n').slice(0, 1900));
+    const recipes = sortedRecipes();
+    if (recipes.length === 0) {
+      await msg.reply('Brak przepisów.');
       return;
     }
+    const state: BrowserState = { userId: msg.author.id, index: 0 };
+    this.browsers.set(msg.author.id, state);
+    const recipe = recipes[state.index];
+    await msg.reply({
+      content: this.renderRecipeContent(recipe, player),
+      components: buildCraftBrowseRows(player.id, recipes.length, this.canCraft(recipe, player)),
+    });
+  }
 
-    const recipe = getRecipe(prompt);
-    if (!recipe) {
-      await msg.reply(`Nie ma przepisu \`${prompt}\`. Wpisz \`.craft\` żeby zobaczyć listę.`);
-      return;
+  private renderRecipeContent(recipe: Recipe, player: PlayerStats): string {
+    const outputLine = recipe.outputResource
+      ? `${ITEMS[recipe.outputResource.itemId]?.name ?? recipe.outputResource.itemId} ×${recipe.outputResource.qty}`
+      : recipe.outputBaseId
+        ? `${ITEMS[recipe.outputBaseId]?.name ?? recipe.outputBaseId} (rzucany rarity)`
+        : '—';
+
+    const lines: string[] = [
+      `🛠️ **${recipe.id}** → ${outputLine}`,
+      `Wymagany lvl craftingu: **${recipe.craftingLevelRequired}** · Twój: **${player.skills.crafting.level}**`,
+      `Nagroda: +${recipe.xpReward} XP crafting`,
+      '',
+      '**Składniki:**',
+    ];
+    for (const [ingId, need] of Object.entries(recipe.ingredients)) {
+      const have = player.inventory.resources[ingId] ?? 0;
+      const ok = have >= need ? '✅' : '❌';
+      lines.push(`${ok} ${ITEMS[ingId]?.name ?? ingId}: **${have}/${need}**`);
     }
 
+    const reasons = this.craftBlockReasons(recipe, player);
+    if (reasons.length === 0) {
+      lines.push('', '_Możesz scraftować — kliknij **🛠️ Stwórz**._');
+    } else {
+      lines.push('', '⚠️ ' + reasons.join(' · '));
+    }
+    return lines.join('\n').slice(0, 1900);
+  }
+
+  private craftBlockReasons(recipe: Recipe, player: PlayerStats): string[] {
+    const reasons: string[] = [];
     if (player.skills.crafting.level < recipe.craftingLevelRequired) {
-      await msg.reply(
-        `Wymagany level craftingu: **${recipe.craftingLevelRequired}** (masz ${player.skills.crafting.level}).`,
-      );
+      reasons.push(`za niski lvl craftingu (wymaga ${recipe.craftingLevelRequired})`);
+    }
+    for (const [ingId, need] of Object.entries(recipe.ingredients)) {
+      const have = player.inventory.resources[ingId] ?? 0;
+      if (have < need) reasons.push(`brak ${ITEMS[ingId]?.name ?? ingId}`);
+    }
+    return reasons;
+  }
+
+  private canCraft(recipe: Recipe, player: PlayerStats): boolean {
+    return this.craftBlockReasons(recipe, player).length === 0;
+  }
+
+  private async handleNav(
+    interaction: ButtonInteraction,
+    userId: string,
+    dirArg: string | undefined,
+  ): Promise<void> {
+    const state = this.browsers.get(userId);
+    if (!state) {
+      await interaction
+        .reply({
+          content: 'Browser zamknięty — wpisz `.craft` żeby otworzyć.',
+          ephemeral: true,
+        })
+        .catch(() => {});
       return;
     }
+    const recipes = sortedRecipes();
+    const dir = dirArg === '-1' ? -1 : 1;
+    state.index = (state.index + dir + recipes.length) % recipes.length;
+    const recipe = recipes[state.index];
+    const player = this.stats.get(userId);
+    await interaction
+      .update({
+        content: this.renderRecipeContent(recipe, player),
+        components: buildCraftBrowseRows(userId, recipes.length, this.canCraft(recipe, player)),
+      })
+      .catch(() => {});
+  }
 
-    const missing: string[] = [];
-    for (const [id, qty] of Object.entries(recipe.ingredients)) {
-      if (!this.stats.hasResource(player, id, qty)) {
-        const have = player.inventory.resources[id] ?? 0;
-        missing.push(`${ITEMS[id]?.name ?? id} ×${qty} (masz ${have})`);
-      }
-    }
-    if (missing.length) {
-      await msg.reply(`Brakuje składników: ${missing.join(', ')}.`);
+  private async handleCreate(interaction: ButtonInteraction, userId: string): Promise<void> {
+    const state = this.browsers.get(userId);
+    if (!state) {
+      await interaction.reply({ content: 'Browser zamknięty.', ephemeral: true }).catch(() => {});
       return;
     }
+    const recipes = sortedRecipes();
+    const recipe = recipes[state.index];
+    const player = this.stats.get(userId);
+    const reasons = this.craftBlockReasons(recipe, player);
+    if (reasons.length > 0) {
+      await interaction
+        .reply({ content: `Nie mogę: ${reasons.join(', ')}.`, ephemeral: true })
+        .catch(() => {});
+      return;
+    }
+    const result = this.executeCraft(recipe, player);
+    if (!result.ok) {
+      await interaction
+        .reply({ content: result.message ?? 'Bug w crafcie.', ephemeral: true })
+        .catch(() => {});
+      return;
+    }
+    await interaction
+      .update({
+        content: `${this.renderRecipeContent(recipe, player)}\n\n${result.message ?? ''}`,
+        components: buildCraftBrowseRows(userId, recipes.length, this.canCraft(recipe, player)),
+      })
+      .catch(() => {});
+  }
 
+  private async handleClose(interaction: ButtonInteraction, userId: string): Promise<void> {
+    this.browsers.delete(userId);
+    await interaction
+      .update({ content: 'Browser craftingu zamknięty.', components: [] })
+      .catch(() => {});
+  }
+
+  // ── Helpers ───────────────────────────────────────────
+
+  private executeCraft(recipe: Recipe, player: PlayerStats): { ok: boolean; message?: string } {
     for (const [id, qty] of Object.entries(recipe.ingredients)) {
       this.stats.removeResource(player, id, qty);
     }
-
     let outputLine: string;
     if (recipe.outputResource) {
       const { itemId, qty } = recipe.outputResource;
@@ -57,24 +192,44 @@ export class CraftService {
     } else if (recipe.outputBaseId) {
       const item = rollItemInstance(recipe.outputBaseId);
       if (!item) {
-        await msg.reply(
-          `Bug w przepisie \`${recipe.id}\` — output \`${recipe.outputBaseId}\` nie jest equippable.`,
-        );
-        return;
+        return {
+          ok: false,
+          message: `Bug w przepisie \`${recipe.id}\` — output nie jest equippable.`,
+        };
       }
       this.stats.addItem(player, item);
       outputLine = `Wyszedł: ${fmtInstance(item)} (\`${item.uid}\`)`;
     } else {
-      await msg.reply(`Bug w przepisie \`${recipe.id}\` — brak outputu.`);
-      return;
+      return { ok: false, message: `Bug w przepisie \`${recipe.id}\` — brak outputu.` };
     }
-
     const leveled = this.stats.addSkillXp(player, 'crafting', recipe.xpReward);
     this.stats.save();
-
     const lvlMsg = leveled
       ? ` 🎉 **crafting** awansuje na poziom **${player.skills.crafting.level}**!`
       : '';
-    await msg.reply(`🛠️ Crafting udany! ${outputLine}\n+${recipe.xpReward} XP crafting.${lvlMsg}`);
+    return {
+      ok: true,
+      message: `🛠️ Crafting udany! ${outputLine}\n+${recipe.xpReward} XP crafting.${lvlMsg}`,
+    };
+  }
+
+  private async craftDirect(msg: any, recipeId: string): Promise<void> {
+    const player = this.stats.get(msg.author.id, displayName(msg));
+    const recipe = getRecipe(recipeId);
+    if (!recipe) {
+      await msg.reply(`Nie ma przepisu \`${recipeId}\`. Wpisz \`.craft\` żeby zobaczyć listę.`);
+      return;
+    }
+    const reasons = this.craftBlockReasons(recipe, player);
+    if (reasons.length > 0) {
+      await msg.reply(`Nie mogę scraftować: ${reasons.join(', ')}.`);
+      return;
+    }
+    const result = this.executeCraft(recipe, player);
+    if (!result.ok) {
+      await msg.reply(result.message ?? 'Bug w crafcie.');
+      return;
+    }
+    await msg.reply(result.message ?? '🛠️ Crafting udany!');
   }
 }
