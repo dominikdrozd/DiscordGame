@@ -1,6 +1,6 @@
-import { type ButtonInteraction } from 'discord.js';
+import { ChannelType, type ButtonInteraction } from 'discord.js';
 import type { ICommandContext } from '../../../types/command.types.js';
-import { PlayerStatsService } from './player-stats.js';
+import { PlayerStatsService, type PlayerStats } from './player-stats.js';
 import {
   type BattleCombatant,
   type BattleState,
@@ -28,33 +28,60 @@ import { BOSS_MOBS } from '../mobs/index.js';
 import { buildPlayerCombatant } from '../engine/player-combatant.js';
 import { awardReward } from './reward.service.js';
 import { buildPanelOpenerRow, buildTargetRow } from '../ui/battle-buttons.js';
+import { buildBossBrowseRows } from '../ui/boss-buttons.js';
+import { ITEMS } from './items.js';
+import { type Mob } from '../mobs/index.js';
 import { displayName, errMsg } from '../../../utils.js';
 
 interface BossBattleState extends BattleState {
   bossId: string;
 }
 
+function hasPublicThreadCreate(
+  c: unknown,
+): c is { threads: { create: (opts: unknown) => Promise<unknown> } } {
+  if (!c || typeof c !== 'object') return false;
+  if (!('threads' in c)) return false;
+  const t = c.threads;
+  if (!t || typeof t !== 'object') return false;
+  if (!('create' in t)) return false;
+  return typeof t.create === 'function';
+}
+
+interface BrowserState {
+  userId: string;
+  index: number;
+  /** Czy browser pochodzi z `menu:boss` — wtedy dodajemy ← Menu row. */
+  fromMenu: boolean;
+}
+
 const COOLDOWN_MS = 5 * 60_000;
+
+function sortedBosses(): Mob[] {
+  return Object.values(BOSS_MOBS).sort((a, b) => {
+    if (a.tier !== b.tier) return a.tier - b.tier;
+    return a.name.localeCompare(b.name);
+  });
+}
 
 export class BossService {
   private readonly states = new Map<string, BossBattleState>();
+  private readonly browsers = new Map<string, BrowserState>();
 
   constructor(private readonly stats: PlayerStatsService) {}
 
   async start(ctx: ICommandContext): Promise<void> {
     const { msg, prompt, registerThread } = ctx;
-    const player = this.stats.get(msg.author.id, displayName(msg));
 
     if (!prompt) {
       const lines = ['👹 **Bossowie:**'];
-      const sorted = Object.values(BOSS_MOBS).sort((a, b) => a.tier - b.tier);
-      for (const b of sorted) {
+      for (const b of sortedBosses()) {
         const c = b.toCombatant();
         lines.push(
           `• \`${b.id}\` (T${b.tier}) — **${b.name}** (${c.hp} HP, +${c.damageBonus} dmg) — ${b.description}`,
         );
       }
-      lines.push('', 'Użycie: `.boss <id>`.');
+      lines.push('', 'Użycie: `.boss <id>` lub `.menu` → 👹 Bossowie (interaktywny browser).');
       await msg.reply(lines.join('\n').slice(0, 1900));
       return;
     }
@@ -65,9 +92,10 @@ export class BossService {
       return;
     }
 
-    const remaining = this.stats.remainingCooldown(player, 'boss');
-    if (remaining > 0) {
-      await msg.reply(`Boss-cooldown: jeszcze ${Math.ceil(remaining / 1000)} s.`);
+    const player = this.stats.get(msg.author.id, displayName(msg));
+    const cooldownMsg = this.cooldownReason(player);
+    if (cooldownMsg) {
+      await msg.reply(cooldownMsg);
       return;
     }
 
@@ -82,7 +110,88 @@ export class BossService {
       await msg.reply(`Nie udało się otworzyć wątku: ${errMsg(e)}`);
       return;
     }
+    await this.startBattle(thread, player, def);
+  }
 
+  /** Browser bossów wywołany z `menu:boss` — ◀/▶ + opis + Atakuj + ← Menu. */
+  async openFromInteraction(interaction: ButtonInteraction): Promise<void> {
+    const userId = interaction.user.id;
+    const userName = interaction.user.globalName || interaction.user.username;
+    this.stats.get(userId, userName);
+    const bosses = sortedBosses();
+    if (bosses.length === 0) {
+      await interaction.update({ content: 'Brak bossów.', components: [] }).catch(() => {});
+      return;
+    }
+    const state: BrowserState = { userId, index: 0, fromMenu: true };
+    this.browsers.set(userId, state);
+    await this.renderBrowser(interaction, state);
+  }
+
+  private cooldownReason(player: PlayerStats): string | null {
+    const remaining = this.stats.remainingCooldown(player, 'boss');
+    if (remaining > 0) return `Boss-cooldown: jeszcze ${Math.ceil(remaining / 1000)} s.`;
+    return null;
+  }
+
+  private renderBossDetails(def: Mob, player: PlayerStats): string {
+    const c = def.toCombatant();
+    const lines: string[] = [
+      `👹 **${def.name}** (Tier ${def.tier})`,
+      `_${def.description}_`,
+      '',
+      `🩸 HP: **${c.hp}** · ⚔️ Dmg: **+${c.damageBonus}**` +
+        (c.defenseBonus !== undefined ? ` · 🛡️ Def: **+${c.defenseBonus}**` : '') +
+        (c.critBonus !== undefined ? ` · 💥 Crit: **${(c.critBonus * 100).toFixed(0)}%**` : '') +
+        (c.potionsLeft > 0 ? ` · 🧪 Potki: **${c.potionsLeft}**` : ''),
+    ];
+    if (def.skills.length > 0) {
+      lines.push(`✨ Skille: ${def.skills.join(', ')}`);
+    }
+    if (def.rewards) {
+      lines.push('', '**Nagrody:**');
+      lines.push(`• +${def.rewards.xp} XP PvP` + (def.rewards.combatXp ? `, +${def.rewards.combatXp} XP combat` : ''));
+      if (def.rewards.lootTable && def.rewards.lootTable.length > 0) {
+        const drops = def.rewards.lootTable
+          .map((entry) => {
+            const name = ITEMS[entry.itemId]?.name ?? entry.itemId;
+            const qty =
+              entry.qtyMin && entry.qtyMax && entry.qtyMin !== entry.qtyMax
+                ? `${entry.qtyMin}-${entry.qtyMax}`
+                : `${entry.qtyMin ?? 1}`;
+            return `${name} ×${qty} (waga ${entry.weight})`;
+          })
+          .join(', ');
+        lines.push(`• Loot (${def.rewards.rolls ?? 1} rolli): ${drops}`);
+      }
+      if (def.rewards.dropPool && def.rewards.dropPool.length > 0) {
+        const pool = def.rewards.dropPool.map((id) => ITEMS[id]?.name ?? id).join(', ');
+        const chance = Math.round((def.rewards.guaranteedDropChance ?? 0) * 100);
+        lines.push(`• 🎁 Rzadki drop (${chance}%): ${pool}`);
+      }
+    }
+    const cdLeft = this.stats.remainingCooldown(player, 'boss');
+    if (cdLeft > 0) {
+      lines.push('', `⏳ **Cooldown:** ${Math.ceil(cdLeft / 1000)}s`);
+    }
+    lines.push('', `🎯 \`.boss ${def.id}\` (lub kliknij **⚔️ Atakuj**)`);
+    return lines.join('\n').slice(0, 1900);
+  }
+
+  private async renderBrowser(interaction: ButtonInteraction, state: BrowserState): Promise<void> {
+    const bosses = sortedBosses();
+    const def = bosses[state.index];
+    const player = this.stats.get(state.userId);
+    const canFight = !this.cooldownReason(player);
+    await interaction
+      .update({
+        content: this.renderBossDetails(def, player),
+        components: buildBossBrowseRows(state.userId, bosses.length, canFight, state.fromMenu),
+      })
+      .catch(() => {});
+  }
+
+  private async startBattle(thread: any, player: PlayerStats, def: Mob): Promise<void> {
     const playerCombatRaw = buildPlayerCombatant(this.stats, player);
     const playerCombatant: BattleCombatant = {
       ...playerCombatRaw,
@@ -122,12 +231,106 @@ export class BossService {
   async handleInteraction(interaction: ButtonInteraction): Promise<void> {
     if (!interaction.isButton?.()) return;
     const id = interaction.customId;
+    if (id.startsWith('bbr:')) return this.handleBrowse(interaction);
     if (id.startsWith('pnl:')) return this.handlePanel(interaction);
     if (id.startsWith('bat:')) return this.handleAction(interaction);
     if (id.startsWith('tgt:')) return this.handleTarget(interaction);
     if (id.startsWith('itmpick:')) return this.handleItemPick(interaction);
     if (id.startsWith('sklpick:')) return this.handleSklPick(interaction);
     if (id.startsWith('skltgt:')) return this.handleSklTarget(interaction);
+  }
+
+  private async handleBrowse(interaction: ButtonInteraction): Promise<void> {
+    const parts = interaction.customId.split(':');
+    const action = parts[1];
+    const userId = parts[2];
+    const arg = parts[3];
+
+    if (interaction.user.id !== userId) {
+      await interaction
+        .reply({ content: 'To nie twój browser.', ephemeral: true })
+        .catch(() => {});
+      return;
+    }
+    const state = this.browsers.get(userId);
+    if (!state) {
+      await interaction
+        .reply({
+          content: 'Browser zamknięty — wpisz `.menu` lub `.boss <id>`.',
+          ephemeral: true,
+        })
+        .catch(() => {});
+      return;
+    }
+    const bosses = sortedBosses();
+
+    if (action === 'nav') {
+      const dir = arg === '-1' ? -1 : 1;
+      state.index = (state.index + dir + bosses.length) % bosses.length;
+      await this.renderBrowser(interaction, state);
+      return;
+    }
+    if (action === 'enter') {
+      await this.handleBrowseEnter(interaction, state, bosses);
+      return;
+    }
+    if (action === 'close') {
+      this.browsers.delete(userId);
+      await interaction
+        .update({ content: 'Browser bossów zamknięty.', components: [] })
+        .catch(() => {});
+    }
+  }
+
+  private async handleBrowseEnter(
+    interaction: ButtonInteraction,
+    state: BrowserState,
+    bosses: Mob[],
+  ): Promise<void> {
+    const def = bosses[state.index];
+    const player = this.stats.get(state.userId);
+    const cooldownMsg = this.cooldownReason(player);
+    if (cooldownMsg) {
+      await interaction.reply({ content: cooldownMsg, ephemeral: true }).catch(() => {});
+      return;
+    }
+    const channel: unknown = interaction.channel;
+    if (!hasPublicThreadCreate(channel)) {
+      await interaction
+        .reply({
+          content: 'Nie mogę otworzyć wątku w tym kanale — użyj `.boss ' + def.id + '`.',
+          ephemeral: true,
+        })
+        .catch(() => {});
+      return;
+    }
+    let thread: unknown;
+    try {
+      thread = await channel.threads.create({
+        name: `Boss: ${player.name} vs ${def.name}`.slice(0, 100),
+        autoArchiveDuration: 60,
+        type: ChannelType.PublicThread,
+      });
+    } catch (e) {
+      await interaction
+        .reply({ content: `Nie udało się otworzyć wątku: ${errMsg(e)}`, ephemeral: true })
+        .catch(() => {});
+      return;
+    }
+    if (!thread || typeof thread !== 'object' || !('id' in thread) || typeof thread.id !== 'string') {
+      await interaction
+        .reply({ content: 'Wątek bossa utworzony, ale brak API.', ephemeral: true })
+        .catch(() => {});
+      return;
+    }
+    this.browsers.delete(state.userId);
+    await interaction
+      .update({
+        content: `⚔️ **${def.name}** — wątek otwarty: <#${thread.id}>`,
+        components: [],
+      })
+      .catch(() => {});
+    await this.startBattle(thread, player, def);
   }
 
   private async handlePanel(interaction: ButtonInteraction): Promise<void> {

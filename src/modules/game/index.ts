@@ -113,6 +113,7 @@ export function registerGameCommands(manager: CommandManager, services: GameServ
     dialog,
     expeditions,
     crafting,
+    bosses,
   );
 
   manager.register(new DuelCommand(duels));

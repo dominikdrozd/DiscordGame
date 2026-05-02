@@ -3,7 +3,6 @@ import type { ICommandContext } from '../../../types/command.types.js';
 import { PlayerStatsService, type PlayerStats } from './player-stats.js';
 import { PartyService } from './party.js';
 import { CITIES, getCity, listCities, type City } from '../cities/index.js';
-import { BOSS_MOBS } from '../mobs/index.js';
 import { EXPEDITIONS, REGION_LVL_REQ } from '../engine/encounters.js';
 import { CLASSES, findSubclass, findSubclass2 } from '../classes/index.js';
 import { RACES } from '../races/index.js';
@@ -15,6 +14,7 @@ import { GatheringCommand } from '../commands/gathering.command.js';
 import { DialogService } from './dialog.service.js';
 import { ExpeditionService } from './expedition.service.js';
 import { CraftService } from './craft.service.js';
+import { BossService } from './boss.service.js';
 
 export interface MenuGatherers {
   mine: GatheringCommand;
@@ -42,6 +42,7 @@ export class MenuService {
     private readonly dialog: DialogService,
     private readonly expeditions: ExpeditionService,
     private readonly crafting: CraftService,
+    private readonly bosses: BossService,
   ) {}
 
   async handle(ctx: ICommandContext): Promise<void> {
@@ -98,7 +99,7 @@ export class MenuService {
       return this.dialog.startFromInteraction(interaction, npcId);
     }
     if (action === 'craft') return this.crafting.openFromInteraction(interaction);
-    if (action === 'boss') return this.update(interaction, this.renderBossList(player), true);
+    if (action === 'boss') return this.bosses.openFromInteraction(interaction);
     if (action === 'dungeon') return this.update(interaction, this.renderDungeonList(player), true);
     if (action === 'mine') return this.runGather(interaction, player, this.gatherers.mine);
     if (action === 'fish') return this.runGather(interaction, player, this.gatherers.fish);
@@ -328,17 +329,6 @@ export class MenuService {
     await interaction
       .update({ content: lines.join('\n').slice(0, 1900), components: rows })
       .catch(() => {});
-  }
-
-  private renderBossList(p: PlayerStats): string {
-    const lines: string[] = ['👹 **Bossowie**', '_Wpisz_ `.boss <id>` _żeby zaatakować._', ''];
-    const sorted = Object.values(BOSS_MOBS).sort((a, b) => a.tier - b.tier);
-    for (const b of sorted) {
-      const c = b.toCombatant();
-      lines.push(`• \`${b.id}\` (T${b.tier}) — **${b.name}** (${c.hp} HP, +${c.damageBonus} dmg)`);
-    }
-    void p;
-    return lines.join('\n');
   }
 
   private renderDungeonList(p: PlayerStats): string {
