@@ -40,6 +40,15 @@ export class DungeonService {
 
   constructor(private readonly stats: PlayerStatsService) {}
 
+  /** True jeśli któryś niezakończony dungeon state ma tego gracza po team 0. */
+  hasActiveFor(playerId: string): boolean {
+    for (const state of this.states.values()) {
+      if (state.finished) continue;
+      if (state.combatants.some((c) => c.team === 0 && c.id === playerId && c.hp > 0)) return true;
+    }
+    return false;
+  }
+
   async start(ctx: ICommandContext): Promise<void> {
     const { msg, prompt, registerThread } = ctx;
     const player = this.stats.get(msg.author.id, displayName(msg));

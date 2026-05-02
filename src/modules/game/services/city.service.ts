@@ -1,12 +1,83 @@
+import { ChannelType, type ButtonInteraction } from 'discord.js';
 import type { ICommandContext } from '../../../types/command.types.js';
-import { PlayerStatsService } from './player-stats.js';
-import { CITIES, getCity, listCities, type Merchant } from '../cities/index.js';
+import { PlayerStatsService, type PlayerStats } from './player-stats.js';
+import { CITIES, getCity, listCities, type City, type Merchant } from '../cities/index.js';
 import { ITEMS } from './items.js';
 import { REGION_LVL_REQ } from '../engine/encounters.js';
-import { displayName } from '../../../utils.js';
+import { displayName, errMsg } from '../../../utils.js';
+import { buildShopItemRows, buildShopCloseRow } from '../ui/shop-buttons.js';
+import { closeBattleThread } from '../engine/battle-helpers.js';
+
+interface ShopItem {
+  merchantId: string;
+  merchantName: string;
+  merchantDescription: string;
+  itemId: string;
+  buyPrice: number;
+  sellPrice: number;
+}
+
+interface ShopState {
+  userId: string;
+  cityId: string;
+  cityName: string;
+  items: ShopItem[];
+  /** map itemId → discord message id (do refresh poszczególnej wiadomości po qty pick z ephemeral). */
+  itemMessageIds: Map<string, string>;
+  thread: ShopThread;
+  /** zestaw itemId które są w sellMode (po Sprzedaj, przed pickiem qty). */
+  sellModeItems: Set<string>;
+  /** auto-close timer (5 min idle). */
+  idleTimer?: NodeJS.Timeout;
+}
+
+interface ShopThread {
+  id: string;
+  send: (payload: unknown) => Promise<{ id: string }>;
+  setArchived: (state: boolean) => Promise<unknown>;
+  members?: { add: (userId: string) => Promise<unknown> };
+  messages: { fetch: (id: string) => Promise<{ edit: (payload: unknown) => Promise<unknown> }> };
+}
+
+const SHOP_IDLE_TIMEOUT_MS = 5 * 60_000;
+
+function shopKey(cityId: string, userId: string): string {
+  return `${cityId}:${userId}`;
+}
+
+function flattenStock(city: City): ShopItem[] {
+  const out: ShopItem[] = [];
+  for (const m of city.merchants) {
+    for (const s of m.stock) {
+      out.push({
+        merchantId: m.id,
+        merchantName: m.name,
+        merchantDescription: m.description,
+        itemId: s.itemId,
+        buyPrice: s.buyPrice,
+        sellPrice: Math.floor(s.buyPrice * m.sellMultiplier),
+      });
+    }
+  }
+  return out;
+}
+
+function isShopThread(t: unknown): t is ShopThread {
+  if (!t || typeof t !== 'object') return false;
+  if (!('id' in t) || typeof t.id !== 'string') return false;
+  if (!('send' in t) || typeof t.send !== 'function') return false;
+  if (!('setArchived' in t) || typeof t.setArchived !== 'function') return false;
+  if (!('messages' in t) || !t.messages || typeof t.messages !== 'object') return false;
+  return true;
+}
 
 export class CityService {
-  constructor(private readonly stats: PlayerStatsService) {}
+  private readonly shops = new Map<string, ShopState>();
+
+  constructor(
+    private readonly stats: PlayerStatsService,
+    private readonly isInDungeon: (userId: string) => boolean = () => false,
+  ) {}
 
   async handle(ctx: ICommandContext): Promise<void> {
     const { msg, prompt } = ctx;
@@ -15,12 +86,45 @@ export class CityService {
 
     if (!sub) return this.list(msg);
     if (sub === 'info') return this.info(msg, args[1]);
+    if (sub === 'shop') return this.openShop(ctx, args[1]);
     if (sub === 'buy') return this.buy(msg, args[1], args[2], args[3]);
     if (sub === 'sell') return this.sell(msg, args[1], args[2]);
 
     await msg.reply(
-      'Użycie: `.city` / `.city info <id>` / `.city buy <city> <item> [qty]` / `.city sell <item> [qty]`.',
+      'Użycie: `.city` / `.city info <id>` / `.city shop <id>` / `.city buy <city> <item> [qty]` / `.city sell <item> [qty]`.',
     );
+  }
+
+  async handleInteraction(interaction: ButtonInteraction): Promise<void> {
+    if (!interaction.isButton?.()) return;
+    if (!interaction.customId.startsWith('shop:')) return;
+    const parts = interaction.customId.split(':');
+    const action = parts[1];
+    const cityId = parts[2];
+    const userId = parts[3];
+    const itemId = parts[4];
+    const arg = parts[5];
+
+    if (interaction.user.id !== userId) {
+      await interaction.reply({ content: 'To nie twój sklep.', ephemeral: true }).catch(() => {});
+      return;
+    }
+    const state = this.shops.get(shopKey(cityId, userId));
+    if (!state) {
+      await interaction
+        .reply({
+          content: 'Sklep już zamknięty — otwórz go ponownie `.city shop <id>`.',
+          ephemeral: true,
+        })
+        .catch(() => {});
+      return;
+    }
+    this.resetIdleTimer(state);
+
+    if (action === 'buy') return this.handleBuy(interaction, state, itemId);
+    if (action === 'sell') return this.handleSellMode(interaction, state, itemId);
+    if (action === 'sellqty') return this.handleSellQty(interaction, state, itemId, arg);
+    if (action === 'close') return this.handleClose(interaction, state);
   }
 
   private async list(msg: any): Promise<void> {
@@ -34,7 +138,7 @@ export class CityService {
     }
     lines.push(
       '',
-      'Użycie: `.city info <id>` żeby zobaczyć handlarzy. `.city buy <city> <item> [qty]` / `.city sell <item> [qty]`.',
+      'Użycie: `.city info <id>` (handlarze) · `.city shop <id>` (interaktywny sklep w prywatnym wątku) · `.city buy/sell` (klasyczne).',
     );
     await msg.reply(lines.join('\n').slice(0, 1900));
   }
@@ -73,9 +177,279 @@ export class CityService {
     lines.push(
       '',
       `_Twoje złoto:_ 💰 **${player.gold}**`,
-      `Kup: \`.city buy ${city.id} <item_id> [qty]\` · Sprzedaj: \`.city sell <item_id> [qty]\`.`,
+      `Otwórz interaktywny sklep w prywatnym wątku: \`.city shop ${city.id}\`.`,
     );
     await msg.reply(lines.join('\n').slice(0, 1900));
+  }
+
+  private async openShop(ctx: ICommandContext, cityId: string | undefined): Promise<void> {
+    const { msg, registerThread } = ctx;
+    if (!cityId) {
+      await msg.reply('Użycie: `.city shop <id>`.');
+      return;
+    }
+    const city = getCity(cityId);
+    if (!city) {
+      await msg.reply(`Nie ma miasta \`${cityId}\`.`);
+      return;
+    }
+    const player = this.stats.get(msg.author.id, displayName(msg));
+
+    if (player.activeExpedition) {
+      await msg.reply(
+        '🚫 Jesteś na ekspedycji — wróć i zbierz nagrody (`.expedition claim`) zanim pójdziesz na zakupy.',
+      );
+      return;
+    }
+    if (this.isInDungeon(player.id)) {
+      await msg.reply('🚫 Jesteś w dungeonie — najpierw skończ walkę.');
+      return;
+    }
+
+    const minLvl = REGION_LVL_REQ[city.region];
+    if (player.skills.combat.level < minLvl) {
+      await msg.reply(
+        `🚫 **${city.name}** wymaga combat lvl **${minLvl}**. Masz ${player.skills.combat.level}.`,
+      );
+      return;
+    }
+    if (this.shops.has(shopKey(city.id, msg.author.id))) {
+      await msg.reply(
+        'Masz już otwarty sklep w tym mieście — zamknij poprzedni zanim otworzysz nowy.',
+      );
+      return;
+    }
+    const items = flattenStock(city);
+    if (items.length === 0) {
+      await msg.reply(`W **${city.name}** nikt nic nie sprzedaje.`);
+      return;
+    }
+
+    let thread: unknown;
+    try {
+      thread = await msg.channel.threads.create({
+        name: `Sklep: ${city.name}`.slice(0, 100),
+        autoArchiveDuration: 60,
+        type: ChannelType.PrivateThread,
+        invitable: false,
+      });
+    } catch {
+      // fallback: public thread przywiązany do wiadomości jeśli prywatny niedostępny
+      try {
+        thread = await msg.startThread({
+          name: `Sklep: ${city.name}`.slice(0, 100),
+          autoArchiveDuration: 60,
+        });
+      } catch (e) {
+        await msg.reply(`Nie udało się otworzyć wątku sklepu: ${errMsg(e)}`);
+        return;
+      }
+    }
+    if (!isShopThread(thread)) {
+      await msg.reply('Wątek sklepu został utworzony, ale nie ma wymaganego API.');
+      return;
+    }
+    if (thread.members) {
+      await thread.members.add(msg.author.id).catch(() => {});
+    }
+    if (thread.id) registerThread(thread);
+
+    const state: ShopState = {
+      userId: msg.author.id,
+      cityId: city.id,
+      cityName: city.name,
+      items,
+      itemMessageIds: new Map(),
+      thread,
+      sellModeItems: new Set(),
+    };
+
+    await thread
+      .send({
+        content: `🛒 **${city.name}** — witaj w sklepie. Kup lub sprzedaj klikając guziki przy każdym itemie. Sklep zamknie się sam po 5 min braku interakcji.`,
+      })
+      .catch(() => {});
+
+    let groupedByMerchant = '';
+    for (const item of items) {
+      if (item.merchantId !== groupedByMerchant) {
+        await thread
+          .send({
+            content: `__**${item.merchantName}**__ — _${item.merchantDescription}_`,
+          })
+          .catch(() => {});
+        groupedByMerchant = item.merchantId;
+      }
+      const sent = await thread
+        .send({
+          content: this.renderItemContent(item, player, false),
+          components: buildShopItemRows({
+            cityId: state.cityId,
+            userId: state.userId,
+            itemId: item.itemId,
+            buyPrice: item.buyPrice,
+            haveQty: player.inventory.resources[item.itemId] ?? 0,
+            playerGold: player.gold,
+            sellMode: false,
+          }),
+        })
+        .catch(() => null);
+      if (sent && typeof sent === 'object' && 'id' in sent && typeof sent.id === 'string') {
+        state.itemMessageIds.set(item.itemId, sent.id);
+      }
+    }
+
+    await thread
+      .send({
+        content: '_Gdy skończysz zakupy, kliknij guzik poniżej:_',
+        components: buildShopCloseRow(state.cityId, state.userId),
+      })
+      .catch(() => {});
+
+    this.shops.set(shopKey(city.id, msg.author.id), state);
+    this.resetIdleTimer(state);
+  }
+
+  private renderItemContent(item: ShopItem, player: PlayerStats, sellMode: boolean): string {
+    const itemName = ITEMS[item.itemId]?.name ?? item.itemId;
+    const have = player.inventory.resources[item.itemId] ?? 0;
+    const lines = [
+      `**${itemName}**`,
+      `Kupno: **${item.buyPrice}** zł · Skup: **${item.sellPrice}** zł`,
+      `Masz w plecaku: **${have}** szt. · Twoje złoto: 💰 **${player.gold}**`,
+    ];
+    if (sellMode) lines.push('Wybierz ile sprzedać:');
+    return lines.join('\n');
+  }
+
+  private resetIdleTimer(state: ShopState): void {
+    if (state.idleTimer) clearTimeout(state.idleTimer);
+    state.idleTimer = setTimeout(() => {
+      this.autoCloseShop(state).catch(() => {});
+    }, SHOP_IDLE_TIMEOUT_MS);
+    state.idleTimer.unref?.();
+  }
+
+  private async autoCloseShop(state: ShopState): Promise<void> {
+    if (!this.shops.has(shopKey(state.cityId, state.userId))) return;
+    this.shops.delete(shopKey(state.cityId, state.userId));
+    await closeBattleThread(state.thread, '⏰ Sklep zamknięty po 5 min braku interakcji.');
+  }
+
+  private findItem(state: ShopState, itemId: string): ShopItem | undefined {
+    return state.items.find((i) => i.itemId === itemId);
+  }
+
+  private async refreshItemMessage(
+    interaction: ButtonInteraction,
+    state: ShopState,
+    item: ShopItem,
+  ): Promise<void> {
+    const player = this.stats.get(state.userId);
+    const sellMode = state.sellModeItems.has(item.itemId);
+    await interaction
+      .update({
+        content: this.renderItemContent(item, player, sellMode),
+        components: buildShopItemRows({
+          cityId: state.cityId,
+          userId: state.userId,
+          itemId: item.itemId,
+          buyPrice: item.buyPrice,
+          haveQty: player.inventory.resources[item.itemId] ?? 0,
+          playerGold: player.gold,
+          sellMode,
+        }),
+      })
+      .catch(() => {});
+  }
+
+  private async handleBuy(
+    interaction: ButtonInteraction,
+    state: ShopState,
+    itemId: string | undefined,
+  ): Promise<void> {
+    const item = itemId ? this.findItem(state, itemId) : undefined;
+    if (!item) {
+      await interaction.reply({ content: 'Nieznany item.', ephemeral: true }).catch(() => {});
+      return;
+    }
+    const player = this.stats.get(state.userId);
+    if (!this.stats.hasGold(player, item.buyPrice)) {
+      await interaction
+        .reply({
+          content: `Brakuje złota — masz ${player.gold}, potrzebujesz ${item.buyPrice}.`,
+          ephemeral: true,
+        })
+        .catch(() => {});
+      return;
+    }
+    this.stats.removeGold(player, item.buyPrice);
+    this.stats.addResource(player, item.itemId, 1);
+    this.stats.save();
+    state.sellModeItems.delete(item.itemId);
+    await this.refreshItemMessage(interaction, state, item);
+  }
+
+  private async handleSellMode(
+    interaction: ButtonInteraction,
+    state: ShopState,
+    itemId: string | undefined,
+  ): Promise<void> {
+    const item = itemId ? this.findItem(state, itemId) : undefined;
+    if (!item) {
+      await interaction.reply({ content: 'Nieznany item.', ephemeral: true }).catch(() => {});
+      return;
+    }
+    const player = this.stats.get(state.userId);
+    const have = player.inventory.resources[item.itemId] ?? 0;
+    if (have <= 0) {
+      await interaction
+        .reply({ content: 'Nie masz tego itemu w plecaku.', ephemeral: true })
+        .catch(() => {});
+      return;
+    }
+    state.sellModeItems.add(item.itemId);
+    await this.refreshItemMessage(interaction, state, item);
+  }
+
+  private async handleSellQty(
+    interaction: ButtonInteraction,
+    state: ShopState,
+    itemId: string | undefined,
+    qtyArg: string | undefined,
+  ): Promise<void> {
+    const item = itemId ? this.findItem(state, itemId) : undefined;
+    if (!item) {
+      await interaction.reply({ content: 'Nieznany item.', ephemeral: true }).catch(() => {});
+      return;
+    }
+    const qty = Math.max(1, parseInt(qtyArg ?? '1', 10) || 1);
+    const player = this.stats.get(state.userId);
+    const have = player.inventory.resources[item.itemId] ?? 0;
+    const sellQty = Math.min(qty, have);
+    if (sellQty <= 0) {
+      state.sellModeItems.delete(item.itemId);
+      await this.refreshItemMessage(interaction, state, item);
+      return;
+    }
+    this.stats.removeResource(player, item.itemId, sellQty);
+    this.stats.addGold(player, item.sellPrice * sellQty);
+    this.stats.save();
+    const remaining = player.inventory.resources[item.itemId] ?? 0;
+    if (remaining <= 0) state.sellModeItems.delete(item.itemId);
+    await this.refreshItemMessage(interaction, state, item);
+  }
+
+  private async handleClose(interaction: ButtonInteraction, state: ShopState): Promise<void> {
+    if (state.idleTimer) clearTimeout(state.idleTimer);
+    this.shops.delete(shopKey(state.cityId, state.userId));
+    await interaction
+      .update({
+        content: `🛒 Sklep w **${state.cityName}** zamknięty. Wracaj do nas!`,
+        components: [],
+      })
+      .catch(() => {});
+    await closeBattleThread(state.thread, '🛒 Wątek sklepu archiwizowany.');
   }
 
   private async buy(
@@ -106,7 +480,8 @@ export class CityService {
       await msg.reply(`W **${city.name}** nikt nie sprzedaje \`${itemId}\`.`);
       return;
     }
-    const stockEntry = merchantWithStock.stock.find((s) => s.itemId === itemId)!;
+    const stockEntry = merchantWithStock.stock.find((s) => s.itemId === itemId);
+    if (!stockEntry) return;
     const qty = Math.max(1, parseInt(qtyArg ?? '1', 10) || 1);
     const totalCost = stockEntry.buyPrice * qty;
     if (!this.stats.hasGold(player, totalCost)) {
@@ -140,7 +515,6 @@ export class CityService {
     }
     const qty = Math.max(1, Math.min(have, parseInt(qtyArg ?? `${have}`, 10) || have));
 
-    // Znajdź najlepszą ofertę spośród miast dostępnych dla gracza (combat lvl).
     let bestOffer: { city: string; merchant: Merchant; price: number } | undefined;
     for (const city of Object.values(CITIES)) {
       const minLvl = REGION_LVL_REQ[city.region];

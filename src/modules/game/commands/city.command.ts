@@ -1,3 +1,4 @@
+import { type ButtonInteraction } from 'discord.js';
 import type { ICommand, ICommandContext } from '../../../types/command.types.js';
 import { CityService } from '../services/city.service.js';
 
@@ -5,7 +6,7 @@ export class CityCommand implements ICommand {
   readonly name = 'city';
   readonly prefix = '.city';
   readonly description =
-    'Miasta i handel. `.city` lista; `.city info <id>` handlarze; `.city buy <city> <item> [qty]` kup; `.city sell <item> [qty]` sprzedaj po najlepszej cenie.';
+    'Miasta i handel. `.city` lista; `.city info <id>` handlarze; `.city shop <id>` interaktywny sklep; `.city buy <city> <item> [qty]` kup; `.city sell <item> [qty]` sprzedaj.';
   readonly requiresPrompt = false;
 
   constructor(private readonly city: CityService) {}
@@ -21,5 +22,9 @@ export class CityCommand implements ICommand {
 
   async execute(ctx: ICommandContext): Promise<void> {
     return this.city.handle(ctx);
+  }
+
+  async handleInteraction(interaction: ButtonInteraction): Promise<void> {
+    return this.city.handleInteraction(interaction);
   }
 }

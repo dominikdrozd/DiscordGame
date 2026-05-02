@@ -31,26 +31,26 @@ import { CityCommand } from './commands/city.command.js';
 export interface GameServices {
   stats: PlayerStatsService;
   party: PartyService;
+  expeditions: ExpeditionService;
 }
 
 export function createGameServices(): GameServices {
-  return {
-    stats: new PlayerStatsService(),
-    party: new PartyService(),
-  };
+  const stats = new PlayerStatsService();
+  const party = new PartyService();
+  const expeditions = new ExpeditionService(stats, party);
+  return { stats, party, expeditions };
 }
 
 export function registerGameCommands(manager: CommandManager, services: GameServices): void {
-  const { stats, party } = services;
+  const { stats, party, expeditions } = services;
 
   // services state-bearing, paired 1:1 z komendą
   const duels = new DuelService(stats, party);
   const bosses = new BossService(stats);
   const dungeons = new DungeonService(stats);
-  const expeditions = new ExpeditionService(stats, party);
   const crafting = new CraftService(stats);
   const inventory = new InventoryService(stats);
-  const city = new CityService(stats);
+  const city = new CityService(stats, (id) => dungeons.hasActiveFor(id));
 
   manager.register(new DuelCommand(duels));
   manager.register(new BossCommand(bosses));
@@ -72,7 +72,9 @@ export function registerGameCommands(manager: CommandManager, services: GameServ
 }
 
 export function startAmbushLoop(client: Client, services: GameServices): AmbushService {
-  const ambush = new AmbushService(client, services.stats, services.party);
+  const ambush = new AmbushService(client, services.stats, services.party, (id, line) =>
+    services.expeditions.logAmbush(id, line),
+  );
   ambush.start();
   return ambush;
 }

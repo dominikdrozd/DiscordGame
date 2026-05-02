@@ -1,3 +1,4 @@
+import { type ButtonInteraction } from 'discord.js';
 import type { ICommand, ICommandContext } from '../../../types/command.types.js';
 import { ExpeditionService } from '../services/expedition.service.js';
 
@@ -5,7 +6,7 @@ export class ExpeditionCommand implements ICommand {
   readonly name = 'expedition';
   readonly prefix = '.expedition';
   readonly description =
-    'Wyprawy czasowe. `.expedition` lista; `.expedition start <id>` rozpoczyna; `.expedition status` postęp; `.expedition claim` odbiera nagrody po zakończeniu.';
+    'Wyprawy. `.expedition` interaktywny browser; `.expedition start <id>` rozpoczyna; `.expedition status`; `.expedition claim` odbiera nagrody.';
   readonly requiresPrompt = false;
 
   constructor(private readonly expeditions: ExpeditionService) {}
@@ -21,5 +22,9 @@ export class ExpeditionCommand implements ICommand {
 
   async execute(ctx: ICommandContext): Promise<void> {
     return this.expeditions.handle(ctx);
+  }
+
+  async handleInteraction(interaction: ButtonInteraction): Promise<void> {
+    return this.expeditions.handleInteraction(interaction);
   }
 }

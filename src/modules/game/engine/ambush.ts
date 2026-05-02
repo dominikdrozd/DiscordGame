@@ -59,6 +59,7 @@ export class AmbushService {
     private readonly client: Client,
     private readonly stats: PlayerStatsService,
     private readonly party: PartyService,
+    private readonly logAmbush: (playerId: string, line: string) => void = () => {},
   ) {}
 
   start(): void {
@@ -465,6 +466,10 @@ export class AmbushService {
       for (const pc of playerCombatants) {
         const p = this.stats.get(pc.id, pc.name);
         p.activeExpedition = null;
+        this.logAmbush(
+          p.id,
+          `💀 Padłeś w ambushu — wyprawa do ${def?.name ?? state.expedition.destination} przerwana.`,
+        );
       }
       this.stats.save();
       await state.thread.send(
@@ -484,6 +489,10 @@ export class AmbushService {
         lines.push(
           `• <@${p.id}>: ${dropLabels.length ? dropLabels.join(', ') : '(nic)'} (+25 XP combat${leveled ? ' 🎉 LEVEL UP!' : ''})`,
         );
+        this.logAmbush(
+          p.id,
+          `🏆 Pokonano bandę: ${dropLabels.length ? dropLabels.join(', ') : 'brak lootu'} (+25 XP combat).`,
+        );
       }
       lines.push('Wyprawa kontynuowana.');
       this.stats.save();
@@ -502,6 +511,7 @@ export class AmbushService {
     for (const pc of state.combatants.filter((c) => c.team === 0)) {
       const p = this.stats.get(pc.id, pc.name);
       p.activeExpedition = null;
+      this.logAmbush(p.id, `⏰ Timeout w ambushu — wyprawa przepadła.`);
     }
     this.stats.save();
     await state.thread
