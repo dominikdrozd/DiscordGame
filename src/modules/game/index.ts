@@ -28,12 +28,25 @@ import { ClassCommand } from './commands/class.command.js';
 import { PartyCommand } from './commands/party.command.js';
 import { CityCommand } from './commands/city.command.js';
 import { MenuCommand } from './commands/menu.command.js';
-import { MenuService } from './services/menu.service.js';
+import { MenuService, type MenuShopOpener } from './services/menu.service.js';
+import { DialogService } from './services/dialog.service.js';
+import { TalkCommand } from './commands/talk.command.js';
 
 export interface GameServices {
   stats: PlayerStatsService;
   party: PartyService;
   expeditions: ExpeditionService;
+}
+
+function hasThreadCreate(
+  c: unknown,
+): c is { threads: { create: (opts: unknown) => Promise<unknown> } } {
+  if (!c || typeof c !== 'object') return false;
+  if (!('threads' in c)) return false;
+  const t = c.threads;
+  if (!t || typeof t !== 'object') return false;
+  if (!('create' in t)) return false;
+  return typeof t.create === 'function';
 }
 
 export function createGameServices(): GameServices {
@@ -53,10 +66,52 @@ export function registerGameCommands(manager: CommandManager, services: GameServ
   const crafting = new CraftService(stats);
   const inventory = new InventoryService(stats);
   const city = new CityService(stats, (id) => dungeons.hasActiveFor(id));
+  const dialog = new DialogService(stats);
+  const cityCommand = new CityCommand(city);
+  const talkCommand = new TalkCommand(dialog);
   const mineCmd = new MineCommand(stats);
   const fishCmd = new FishCommand(stats);
   const chopCmd = new ChopCommand(stats);
-  const menu = new MenuService(stats, party, { mine: mineCmd, fish: fishCmd, chop: chopCmd });
+
+  // Adapter: button click "🛒 Sklep" w widoku miasta → CityService.openShopForUser
+  // z thread-routingiem do CityCommand (żeby wątek miał TTL i dispatch wiadomości).
+  const shopOpener: MenuShopOpener = {
+    openShopFromInteraction: async (interaction, cityIdArg) => {
+      const reply = async (content: string): Promise<unknown> => {
+        if (interaction.replied || interaction.deferred) {
+          return interaction.followUp({ content, ephemeral: true });
+        }
+        return interaction.reply({ content, ephemeral: true });
+      };
+      const channelCandidate: unknown = interaction.channel;
+      if (!hasThreadCreate(channelCandidate)) {
+        await reply('Nie mogę otworzyć sklepu — ten kanał nie wspiera prywatnych wątków.');
+        return;
+      }
+      const message = interaction.message;
+      const startThreadFallback =
+        message && typeof message.startThread === 'function'
+          ? (opts: { name: string; autoArchiveDuration: number }) => message.startThread(opts)
+          : undefined;
+      await city.openShopForUser({
+        cityId: cityIdArg,
+        userId: interaction.user.id,
+        userName: interaction.user.globalName || interaction.user.username,
+        channel: channelCandidate,
+        registerThread: (thread) => manager.registerThreadFor(thread, cityCommand),
+        reply,
+        startThreadFallback,
+      });
+    },
+  };
+
+  const menu = new MenuService(
+    stats,
+    party,
+    { mine: mineCmd, fish: fishCmd, chop: chopCmd },
+    shopOpener,
+    dialog,
+  );
 
   manager.register(new DuelCommand(duels));
   manager.register(new BossCommand(bosses));
@@ -74,7 +129,8 @@ export function registerGameCommands(manager: CommandManager, services: GameServ
   manager.register(new SkillsCommand(stats));
   manager.register(new RaceCommand(stats));
   manager.register(new ClassCommand(stats));
-  manager.register(new CityCommand(city));
+  manager.register(cityCommand);
+  manager.register(talkCommand);
   manager.register(new MenuCommand(menu));
 }
 

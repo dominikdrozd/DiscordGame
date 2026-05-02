@@ -2,7 +2,7 @@ import { type ButtonInteraction } from 'discord.js';
 import type { ICommandContext } from '../../../types/command.types.js';
 import { PlayerStatsService, type PlayerStats } from './player-stats.js';
 import { PartyService } from './party.js';
-import { CITIES, listCities } from '../cities/index.js';
+import { CITIES, getCity, listCities, type City } from '../cities/index.js';
 import { BOSS_MOBS } from '../mobs/index.js';
 import { EXPEDITIONS, REGION_LVL_REQ, expeditionLvlBracket } from '../engine/encounters.js';
 import { listRecipes } from './recipes.js';
@@ -11,12 +11,23 @@ import { RACES } from '../races/index.js';
 import { fmtResource, fmtInstance } from './items.js';
 import { displayName } from '../../../utils.js';
 import { buildMenuRows, buildBackToMenuRow } from '../ui/menu-buttons.js';
+import { buildCityListRows, buildCityViewRows } from '../ui/city-buttons.js';
 import { GatheringCommand } from '../commands/gathering.command.js';
+import { DialogService } from './dialog.service.js';
 
 export interface MenuGatherers {
   mine: GatheringCommand;
   fish: GatheringCommand;
   chop: GatheringCommand;
+}
+
+export interface MenuShopOpener {
+  /**
+   * Wywoływane gdy gracz kliknie 🛒 w widoku miasta. Implementacja w
+   * `registerGameCommands` przepina rejestrację wątku do `CityCommand`,
+   * żeby wątek miał poprawny TTL i routing wiadomości.
+   */
+  openShopFromInteraction(interaction: ButtonInteraction, cityId: string): Promise<void>;
 }
 
 const DUNGEONS_LIST = ['spizarnia_babci', 'smocza_dziupla'];
@@ -26,6 +37,8 @@ export class MenuService {
     private readonly stats: PlayerStatsService,
     private readonly party: PartyService,
     private readonly gatherers: MenuGatherers,
+    private readonly shop: MenuShopOpener,
+    private readonly dialog: DialogService,
   ) {}
 
   async handle(ctx: ICommandContext): Promise<void> {
@@ -42,7 +55,8 @@ export class MenuService {
     if (!interaction.customId.startsWith('menu:')) return;
     const parts = interaction.customId.split(':');
     const action = parts[1];
-    const userId = parts[2];
+    // userId zawsze na końcu — dla starych akcji index=2, dla city-* z parametrami index=3 lub 4
+    const userId = parts[parts.length - 1];
 
     if (interaction.user.id !== userId) {
       await interaction.reply({ content: 'To nie twoje menu.', ephemeral: true }).catch(() => {});
@@ -65,7 +79,21 @@ export class MenuService {
     if (action === 'skills') return this.update(interaction, this.renderSkills(player), true);
     if (action === 'party') return this.update(interaction, this.renderParty(player), true);
     if (action === 'exp') return this.update(interaction, this.renderExpList(player), true);
-    if (action === 'city') return this.update(interaction, this.renderCityList(player), true);
+    if (action === 'city' || action === 'citylist') {
+      return this.renderCityListView(interaction, player);
+    }
+    if (action === 'citypick') {
+      const cityId = parts[2];
+      return this.renderCityView(interaction, player, cityId);
+    }
+    if (action === 'cityshop') {
+      const cityId = parts[2];
+      return this.shop.openShopFromInteraction(interaction, cityId);
+    }
+    if (action === 'citytalk') {
+      const npcId = parts[3];
+      return this.dialog.startFromInteraction(interaction, npcId);
+    }
     if (action === 'craft') return this.update(interaction, this.renderCraftList(player), true);
     if (action === 'boss') return this.update(interaction, this.renderBossList(player), true);
     if (action === 'dungeon') return this.update(interaction, this.renderDungeonList(player), true);
@@ -245,21 +273,73 @@ export class MenuService {
     return lines.join('\n');
   }
 
-  private renderCityList(p: PlayerStats): string {
+  /**
+   * Widok listy miast — buttony zamiast tekstowych ID. Każdy button reprezentuje
+   * jedno miasto (disabled gdy combat lvl niewystarczający).
+   */
+  private async renderCityListView(
+    interaction: ButtonInteraction,
+    p: PlayerStats,
+  ): Promise<void> {
+    const cities = listCities().sort((a, b) => a.region - b.region);
+    const isAccessible = (c: City): boolean => p.skills.combat.level >= REGION_LVL_REQ[c.region];
     const lines: string[] = [
       `🏛️ **Miasta** — twoje złoto: 💰 **${p.gold}** zł`,
-      '_Otwórz interaktywny sklep przez_ `.city shop <id>` _w prywatnym wątku._',
+      'Wybierz miasto guzikiem. Dostępne też: `.city info <id>` / `.city shop <id>` / `.talk <city> <npc>`.',
       '',
     ];
-    for (const c of listCities().sort((a, b) => a.region - b.region)) {
-      const minLvl = REGION_LVL_REQ[c.region];
-      const lock = p.skills.combat.level < minLvl ? ` 🔒 (combat ${minLvl}+)` : '';
+    for (const c of cities) {
+      const accessible = isAccessible(c);
+      const lock = accessible ? '' : ` 🔒 (combat ${REGION_LVL_REQ[c.region]}+)`;
       lines.push(
-        `• \`${c.id}\` — **${c.name}** (R${c.region})${lock} — ${c.merchants.length} handlarzy`,
+        `• **${c.name}** (R${c.region})${lock} — ${c.merchants.length} handlarzy, ${c.npcs.length} NPC`,
       );
     }
+    const cityRows = buildCityListRows(cities, p.id, isAccessible);
+    const backRow = buildBackToMenuRow(p.id);
+    await interaction
+      .update({ content: lines.join('\n').slice(0, 1900), components: [...cityRows, backRow] })
+      .catch(() => {});
     void CITIES;
-    return lines.join('\n');
+  }
+
+  /**
+   * Widok wybranego miasta — sklep + buttony per NPC + powrót do listy.
+   * Jeśli combat lvl za niski → blokujemy z komunikatem.
+   */
+  private async renderCityView(
+    interaction: ButtonInteraction,
+    p: PlayerStats,
+    cityId: string,
+  ): Promise<void> {
+    const city = getCity(cityId);
+    if (!city) {
+      await this.update(interaction, `Nie znam miasta \`${cityId}\`.`, true);
+      return;
+    }
+    const minLvl = REGION_LVL_REQ[city.region];
+    if (p.skills.combat.level < minLvl) {
+      await this.update(
+        interaction,
+        `🚫 **${city.name}** wymaga combat lvl **${minLvl}**. Masz ${p.skills.combat.level}.`,
+        true,
+      );
+      return;
+    }
+    const lines: string[] = [
+      `🏛️ **${city.name}** (Region ${city.region})`,
+      city.description,
+      '',
+      `💰 Twoje złoto: **${p.gold}** zł · Handlarzy: ${city.merchants.length} · NPC: ${city.npcs.length}`,
+      '',
+      'Klik **🛒 Sklep** otwiera prywatny wątek (jak `.city shop <id>`). Klik **💬 NPC** rozpoczyna rozmowę (jak `.talk ' +
+        city.id +
+        ' <npc>`).',
+    ];
+    const rows = buildCityViewRows(city.id, city.npcs, p.id);
+    await interaction
+      .update({ content: lines.join('\n').slice(0, 1900), components: rows })
+      .catch(() => {});
   }
 
   private renderCraftList(p: PlayerStats): string {

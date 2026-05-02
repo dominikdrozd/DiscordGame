@@ -82,10 +82,15 @@ export class CommandManager {
     }
   }
 
-  private registerThread(thread: any, command: ICommand): void {
+  /** Public — używane też przez interaction handlery (np. menu otwierający sklep). */
+  registerThreadFor(thread: any, command: ICommand): void {
     if (!thread?.id) return;
     this.threadInfo.set(thread.id, { command, thread });
     this.scheduleThreadDelete(thread.id);
+  }
+
+  private registerThread(thread: any, command: ICommand): void {
+    this.registerThreadFor(thread, command);
   }
 
   forgetThread(threadId: string): void {

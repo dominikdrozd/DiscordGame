@@ -1,4 +1,5 @@
 import { City, type Merchant } from './city.js';
+import { Npc } from '../npcs/npc.js';
 
 export class DwarvenFortress extends City {
   readonly id = 'krasnoludzka_twierdza';
@@ -6,6 +7,7 @@ export class DwarvenFortress extends City {
   readonly description =
     'Potężne miasto wykute wewnątrz góry. Najlepsi rzemieślnicy, najtwardsze złoża.';
   readonly region = 3;
+  readonly npcs: Npc[] = [];
   readonly merchants: Merchant[] = [
     {
       id: 'mistrz_ruda_grom',

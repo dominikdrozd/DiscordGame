@@ -1,4 +1,5 @@
 import { City, type Merchant } from './city.js';
+import { Npc } from '../npcs/npc.js';
 
 export class BlackCitadel extends City {
   readonly id = 'czarna_cytadela';
@@ -6,6 +7,7 @@ export class BlackCitadel extends City {
   readonly description =
     'Mroczna forteca stanowiąca ostatni bastion cywilizacji w Przeklętej Północy.';
   readonly region = 4;
+  readonly npcs: Npc[] = [];
   readonly merchants: Merchant[] = [
     {
       id: 'arcymag_zelosz',

@@ -188,74 +188,110 @@ export class CityService {
       await msg.reply('Użycie: `.city shop <id>`.');
       return;
     }
-    const city = getCity(cityId);
+    await this.openShopForUser({
+      cityId,
+      userId: msg.author.id,
+      userName: displayName(msg),
+      channel: msg.channel,
+      registerThread,
+      reply: (content: string) => msg.reply(content),
+      startThreadFallback: (opts: { name: string; autoArchiveDuration: number }) =>
+        msg.startThread(opts),
+    });
+  }
+
+  /**
+   * Niskopoziomowy entry point sklepu — używany zarówno z `.city shop <id>`
+   * (przez `openShop`) jak i z buttona menu (przez `openShopFromInteraction`).
+   *
+   * Wymaga: kanału z `threads.create` (dla prywatnego wątku), `registerThread`
+   * z `CommandManager` (dla TTL cleanup), `reply` (do błędów) i opcjonalnego
+   * `startThreadFallback` jeśli prywatne wątki niedostępne.
+   */
+  async openShopForUser(args: {
+    cityId: string;
+    userId: string;
+    userName: string;
+    channel: { threads?: { create: (opts: unknown) => Promise<unknown> } };
+    registerThread: (thread: unknown) => void;
+    reply: (content: string) => Promise<unknown>;
+    startThreadFallback?: (opts: {
+      name: string;
+      autoArchiveDuration: number;
+    }) => Promise<unknown>;
+  }): Promise<void> {
+    const city = getCity(args.cityId);
     if (!city) {
-      await msg.reply(`Nie ma miasta \`${cityId}\`.`);
+      await args.reply(`Nie ma miasta \`${args.cityId}\`.`);
       return;
     }
-    const player = this.stats.get(msg.author.id, displayName(msg));
+    const player = this.stats.get(args.userId, args.userName);
 
     if (player.activeExpedition) {
-      await msg.reply(
+      await args.reply(
         '🚫 Jesteś na ekspedycji — wróć i zbierz nagrody (`.expedition claim`) zanim pójdziesz na zakupy.',
       );
       return;
     }
     if (this.isInDungeon(player.id)) {
-      await msg.reply('🚫 Jesteś w dungeonie — najpierw skończ walkę.');
+      await args.reply('🚫 Jesteś w dungeonie — najpierw skończ walkę.');
       return;
     }
 
     const minLvl = REGION_LVL_REQ[city.region];
     if (player.skills.combat.level < minLvl) {
-      await msg.reply(
+      await args.reply(
         `🚫 **${city.name}** wymaga combat lvl **${minLvl}**. Masz ${player.skills.combat.level}.`,
       );
       return;
     }
-    if (this.shops.has(shopKey(city.id, msg.author.id))) {
-      await msg.reply(
+    if (this.shops.has(shopKey(city.id, args.userId))) {
+      await args.reply(
         'Masz już otwarty sklep w tym mieście — zamknij poprzedni zanim otworzysz nowy.',
       );
       return;
     }
     const items = flattenStock(city);
     if (items.length === 0) {
-      await msg.reply(`W **${city.name}** nikt nic nie sprzedaje.`);
+      await args.reply(`W **${city.name}** nikt nic nie sprzedaje.`);
       return;
     }
 
     let thread: unknown;
     try {
-      thread = await msg.channel.threads.create({
+      if (!args.channel.threads?.create) throw new Error('channel has no threads.create');
+      thread = await args.channel.threads.create({
         name: `Sklep: ${city.name}`.slice(0, 100),
         autoArchiveDuration: 60,
         type: ChannelType.PrivateThread,
         invitable: false,
       });
     } catch {
-      // fallback: public thread przywiązany do wiadomości jeśli prywatny niedostępny
+      if (!args.startThreadFallback) {
+        await args.reply('Nie udało się otworzyć wątku sklepu (brak uprawnień).');
+        return;
+      }
       try {
-        thread = await msg.startThread({
+        thread = await args.startThreadFallback({
           name: `Sklep: ${city.name}`.slice(0, 100),
           autoArchiveDuration: 60,
         });
       } catch (e) {
-        await msg.reply(`Nie udało się otworzyć wątku sklepu: ${errMsg(e)}`);
+        await args.reply(`Nie udało się otworzyć wątku sklepu: ${errMsg(e)}`);
         return;
       }
     }
     if (!isShopThread(thread)) {
-      await msg.reply('Wątek sklepu został utworzony, ale nie ma wymaganego API.');
+      await args.reply('Wątek sklepu został utworzony, ale nie ma wymaganego API.');
       return;
     }
     if (thread.members) {
-      await thread.members.add(msg.author.id).catch(() => {});
+      await thread.members.add(args.userId).catch(() => {});
     }
-    if (thread.id) registerThread(thread);
+    if (thread.id) args.registerThread(thread);
 
     const state: ShopState = {
-      userId: msg.author.id,
+      userId: args.userId,
       cityId: city.id,
       cityName: city.name,
       items,
@@ -306,7 +342,7 @@ export class CityService {
       })
       .catch(() => {});
 
-    this.shops.set(shopKey(city.id, msg.author.id), state);
+    this.shops.set(shopKey(city.id, args.userId), state);
     this.resetIdleTimer(state);
   }
 
