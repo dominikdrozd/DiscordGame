@@ -129,6 +129,11 @@ export class CityService {
 
   private async list(msg: any): Promise<void> {
     const player = this.stats.get(msg.author.id, displayName(msg));
+    await msg.reply(this.renderList(player));
+  }
+
+  /** Public render helper — używany z `.city` i z `/city list`. */
+  renderList(player: PlayerStats): string {
     const lines: string[] = ['🏛️ **Miasta:**', `_Twoje złoto:_ 💰 **${player.gold}**`, ''];
     for (const c of listCities().sort((a, b) => a.region - b.region)) {
       const minLvl = REGION_LVL_REQ[c.region];
@@ -138,9 +143,9 @@ export class CityService {
     }
     lines.push(
       '',
-      'Użycie: `.city info <id>` (handlarze) · `.city shop <id>` (interaktywny sklep w prywatnym wątku) · `.city buy/sell` (klasyczne).',
+      'Użycie: `.city info <id>` / `/city info` · `.city shop <id>` / `/city shop` · `/city buy|sell`.',
     );
-    await msg.reply(lines.join('\n').slice(0, 1900));
+    return lines.join('\n').slice(0, 1900);
   }
 
   private async info(msg: any, cityId: string | undefined): Promise<void> {
@@ -148,18 +153,17 @@ export class CityService {
       await msg.reply('Użycie: `.city info <id>`.');
       return;
     }
-    const city = getCity(cityId);
-    if (!city) {
-      await msg.reply(`Nie ma miasta \`${cityId}\`. Wpisz \`.city\` żeby zobaczyć listę.`);
-      return;
-    }
     const player = this.stats.get(msg.author.id, displayName(msg));
+    await msg.reply(this.renderInfo(player, cityId));
+  }
+
+  /** Public — używane z `/city info`. */
+  renderInfo(player: PlayerStats, cityId: string): string {
+    const city = getCity(cityId);
+    if (!city) return `Nie ma miasta \`${cityId}\`. Wpisz \`/city list\` żeby zobaczyć listę.`;
     const minLvl = REGION_LVL_REQ[city.region];
     if (player.skills.combat.level < minLvl) {
-      await msg.reply(
-        `🚫 **${city.name}** leży w Regionie ${city.region} (${minLvl}+ combat lvl). Masz ${player.skills.combat.level}.`,
-      );
-      return;
+      return `🚫 **${city.name}** leży w Regionie ${city.region} (${minLvl}+ combat lvl). Masz ${player.skills.combat.level}.`;
     }
     const lines: string[] = [
       `🏛️ **${city.name}** (Region ${city.region})`,
@@ -177,9 +181,9 @@ export class CityService {
     lines.push(
       '',
       `_Twoje złoto:_ 💰 **${player.gold}**`,
-      `Otwórz interaktywny sklep w prywatnym wątku: \`.city shop ${city.id}\`.`,
+      `Otwórz interaktywny sklep: \`/city shop city_id:${city.id}\`.`,
     );
-    await msg.reply(lines.join('\n').slice(0, 1900));
+    return lines.join('\n').slice(0, 1900);
   }
 
   private async openShop(ctx: ICommandContext, cityId: string | undefined): Promise<void> {
@@ -488,68 +492,33 @@ export class CityService {
     await deleteThreadNow(state.thread, '🛒 Wątek sklepu zamknięty przez gracza — usuwam.');
   }
 
-  private async buy(
-    msg: any,
-    cityId: string | undefined,
-    itemId: string | undefined,
-    qtyArg: string | undefined,
-  ): Promise<void> {
-    if (!cityId || !itemId) {
-      await msg.reply('Użycie: `.city buy <city_id> <item_id> [qty]`.');
-      return;
-    }
+  /** Public — buy bez msg context, zwraca string status. */
+  tryBuy(player: PlayerStats, cityId: string, itemId: string, qty: number): string {
     const city = getCity(cityId);
-    if (!city) {
-      await msg.reply(`Nie ma miasta \`${cityId}\`.`);
-      return;
-    }
-    const player = this.stats.get(msg.author.id, displayName(msg));
+    if (!city) return `Nie ma miasta \`${cityId}\`.`;
     const minLvl = REGION_LVL_REQ[city.region];
     if (player.skills.combat.level < minLvl) {
-      await msg.reply(
-        `🚫 **${city.name}** wymaga combat lvl **${minLvl}**. Masz ${player.skills.combat.level}.`,
-      );
-      return;
+      return `🚫 **${city.name}** wymaga combat lvl **${minLvl}**. Masz ${player.skills.combat.level}.`;
     }
     const merchantWithStock = city.merchants.find((m) => m.stock.some((s) => s.itemId === itemId));
-    if (!merchantWithStock) {
-      await msg.reply(`W **${city.name}** nikt nie sprzedaje \`${itemId}\`.`);
-      return;
-    }
+    if (!merchantWithStock) return `W **${city.name}** nikt nie sprzedaje \`${itemId}\`.`;
     const stockEntry = merchantWithStock.stock.find((s) => s.itemId === itemId);
-    if (!stockEntry) return;
-    const qty = Math.max(1, parseInt(qtyArg ?? '1', 10) || 1);
+    if (!stockEntry) return `W **${city.name}** nikt nie sprzedaje \`${itemId}\`.`;
     const totalCost = stockEntry.buyPrice * qty;
     if (!this.stats.hasGold(player, totalCost)) {
-      await msg.reply(`Brakuje złota: potrzebujesz **${totalCost}**, masz **${player.gold}**.`);
-      return;
+      return `Brakuje złota: potrzebujesz **${totalCost}**, masz **${player.gold}**.`;
     }
     this.stats.removeGold(player, totalCost);
     this.stats.addResource(player, itemId, qty);
     this.stats.save();
-    await msg.reply(
-      `🛒 **${merchantWithStock.name}** sprzedaje ci **${ITEMS[itemId]?.name ?? itemId} ×${qty}** za **${totalCost}** zł. Zostało: 💰 ${player.gold}.`,
-    );
+    return `🛒 **${merchantWithStock.name}** sprzedaje ci **${ITEMS[itemId]?.name ?? itemId} ×${qty}** za **${totalCost}** zł. Zostało: 💰 ${player.gold}.`;
   }
 
-  private async sell(
-    msg: any,
-    itemId: string | undefined,
-    qtyArg: string | undefined,
-  ): Promise<void> {
-    if (!itemId) {
-      await msg.reply(
-        'Użycie: `.city sell <item_id> [qty]` (sprzedaż w aktualnie odwiedzanym mieście — wybierane automatycznie po najwyższej cenie skupu).',
-      );
-      return;
-    }
-    const player = this.stats.get(msg.author.id, displayName(msg));
+  /** Public — sell auto-finds best offer, zwraca string. */
+  trySell(player: PlayerStats, itemId: string, requestedQty: number | undefined): string {
     const have = player.inventory.resources[itemId] ?? 0;
-    if (have <= 0) {
-      await msg.reply(`Nie masz \`${itemId}\` w plecaku.`);
-      return;
-    }
-    const qty = Math.max(1, Math.min(have, parseInt(qtyArg ?? `${have}`, 10) || have));
+    if (have <= 0) return `Nie masz \`${itemId}\` w plecaku.`;
+    const qty = Math.max(1, Math.min(have, requestedQty ?? have));
 
     let bestOffer: { city: string; merchant: Merchant; price: number } | undefined;
     for (const city of Object.values(CITIES)) {
@@ -565,17 +534,43 @@ export class CityService {
       }
     }
     if (!bestOffer) {
-      await msg.reply(
-        `Żaden handlarz w odwiedzanych miastach nie skupuje \`${itemId}\`. Sprawdź \`.city info <id>\` żeby zobaczyć stocky.`,
-      );
-      return;
+      return `Żaden handlarz w odwiedzanych miastach nie skupuje \`${itemId}\`.`;
     }
     const totalEarned = bestOffer.price * qty;
     this.stats.removeResource(player, itemId, qty);
     this.stats.addGold(player, totalEarned);
     this.stats.save();
-    await msg.reply(
-      `💰 **${bestOffer.merchant.name}** w **${bestOffer.city}** kupuje **${ITEMS[itemId]?.name ?? itemId} ×${qty}** za **${totalEarned}** zł (po ${bestOffer.price}/szt). Złoto: ${player.gold}.`,
-    );
+    return `💰 **${bestOffer.merchant.name}** w **${bestOffer.city}** kupuje **${ITEMS[itemId]?.name ?? itemId} ×${qty}** za **${totalEarned}** zł (po ${bestOffer.price}/szt). Złoto: ${player.gold}.`;
+  }
+
+  private async buy(
+    msg: any,
+    cityId: string | undefined,
+    itemId: string | undefined,
+    qtyArg: string | undefined,
+  ): Promise<void> {
+    if (!cityId || !itemId) {
+      await msg.reply('Użycie: `.city buy <city_id> <item_id> [qty]`.');
+      return;
+    }
+    const player = this.stats.get(msg.author.id, displayName(msg));
+    const qty = Math.max(1, parseInt(qtyArg ?? '1', 10) || 1);
+    await msg.reply(this.tryBuy(player, cityId, itemId, qty));
+  }
+
+  private async sell(
+    msg: any,
+    itemId: string | undefined,
+    qtyArg: string | undefined,
+  ): Promise<void> {
+    if (!itemId) {
+      await msg.reply(
+        'Użycie: `.city sell <item_id> [qty]` (sprzedaż auto-wybiera handlarza z najwyższym skupem).',
+      );
+      return;
+    }
+    const player = this.stats.get(msg.author.id, displayName(msg));
+    const requestedQty = qtyArg ? parseInt(qtyArg, 10) || undefined : undefined;
+    await msg.reply(this.trySell(player, itemId, requestedQty));
   }
 }

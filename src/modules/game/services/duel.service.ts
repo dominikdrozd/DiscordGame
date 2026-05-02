@@ -1,4 +1,9 @@
-import { type ButtonInteraction } from 'discord.js';
+import {
+  ChannelType,
+  MessageFlags,
+  type ButtonInteraction,
+  type ChatInputCommandInteraction,
+} from 'discord.js';
 import type { ICommandContext } from '../../../types/command.types.js';
 import { PlayerStatsService, type PlayerStats } from './player-stats.js';
 import { PartyService, type Party } from './party.js';
@@ -28,6 +33,17 @@ import {
 import { buildPanelOpenerRow, buildTargetRow } from '../ui/battle-buttons.js';
 import { displayName, errMsg } from '../../../utils.js';
 
+function hasThreadCreateLocal(
+  c: unknown,
+): c is { threads: { create: (opts: unknown) => Promise<unknown> } } {
+  if (!c || typeof c !== 'object') return false;
+  if (!('threads' in c)) return false;
+  const t = c.threads;
+  if (!t || typeof t !== 'object') return false;
+  if (!('create' in t)) return false;
+  return typeof t.create === 'function';
+}
+
 interface DuelBattleState extends BattleState {
   /** kopia PlayerStats do logowania na koniec walki */
   pStats: Map<string, PlayerStats>;
@@ -41,6 +57,72 @@ export class DuelService {
     private readonly stats: PlayerStatsService,
     private readonly party: PartyService,
   ) {}
+
+  /** Slash `/duel user:@target` — ephemeral confirm + public thread z walką. */
+  async startFromSlash(interaction: ChatInputCommandInteraction): Promise<void> {
+    const opponent = interaction.options.getUser('user', true);
+    if (opponent.id === interaction.user.id) {
+      await interaction
+        .reply({ content: 'Nie możesz pojedynkować się ze sobą.', flags: MessageFlags.Ephemeral })
+        .catch(() => {});
+      return;
+    }
+    if (opponent.bot) {
+      await interaction
+        .reply({ content: 'Z botami się nie biję, znajdź sobie człowieka.', flags: MessageFlags.Ephemeral })
+        .catch(() => {});
+      return;
+    }
+    const channel: unknown = interaction.channel;
+    if (!hasThreadCreateLocal(channel)) {
+      await interaction
+        .reply({
+          content: 'Ten kanał nie wspiera wątków — użyj `.duel @user` w innym kanale.',
+          flags: MessageFlags.Ephemeral,
+        })
+        .catch(() => {});
+      return;
+    }
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => {});
+    const myParty = this.party.getByMember(interaction.user.id);
+    const oppParty = this.party.getByMember(opponent.id);
+    if (myParty && oppParty && myParty.id !== oppParty.id) {
+      await interaction
+        .editReply({ content: 'Party-duel ze slash nie jest jeszcze wspierany — użyj `.duel @user`.' })
+        .catch(() => {});
+      return;
+    }
+
+    const stats1 = this.stats.get(
+      interaction.user.id,
+      interaction.user.globalName || interaction.user.username,
+    );
+    const stats2 = this.stats.get(opponent.id, opponent.globalName || opponent.username);
+
+    let thread: unknown;
+    try {
+      thread = await channel.threads.create({
+        name: `Duel: ${stats1.name} vs ${opponent.username}`.slice(0, 100),
+        autoArchiveDuration: 60,
+        type: ChannelType.PublicThread,
+      });
+    } catch (e) {
+      await interaction
+        .editReply({ content: `Nie udało się otworzyć wątku: ${errMsg(e)}` })
+        .catch(() => {});
+      return;
+    }
+    if (!thread || typeof thread !== 'object' || !('id' in thread) || typeof thread.id !== 'string') {
+      await interaction
+        .editReply({ content: 'Wątek utworzony, ale brak API.' })
+        .catch(() => {});
+      return;
+    }
+    await this.startBattleInThread(thread, stats1, stats2, false);
+    await interaction
+      .editReply({ content: `⚔️ Pojedynek otwarty: <#${thread.id}>` })
+      .catch(() => {});
+  }
 
   async start(ctx: ICommandContext): Promise<void> {
     const { msg, registerThread } = ctx;
@@ -74,7 +156,19 @@ export class DuelService {
 
     const stats1 = this.stats.get(msg.author.id, displayName(msg));
     const stats2 = this.stats.get(opponent.id, opponent.globalName || opponent.username);
+    await this.startBattleInThread(thread, stats1, stats2, false);
+  }
 
+  /**
+   * Wspólny entry-point — wymaga pre-utworzonego wątku. Używany z `start(ctx)`
+   * (`.duel @user`) i z `startFromSlash` (`/duel user:@user`).
+   */
+  async startBattleInThread(
+    thread: any,
+    stats1: PlayerStats,
+    stats2: PlayerStats,
+    isPartyDuel: boolean,
+  ): Promise<void> {
     const p1Raw = buildPlayerCombatant(this.stats, stats1);
     const p2Raw = buildPlayerCombatant(this.stats, stats2);
 
@@ -89,7 +183,7 @@ export class DuelService {
       promptMessageIds: new Map(),
       roundNumber: 1,
       finished: false,
-      isPartyDuel: false,
+      isPartyDuel,
       pStats: new Map([
         [stats1.id, stats1],
         [stats2.id, stats2],

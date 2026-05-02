@@ -1,4 +1,9 @@
-import { type ButtonInteraction } from 'discord.js';
+import {
+  ChannelType,
+  MessageFlags,
+  type ButtonInteraction,
+  type ChatInputCommandInteraction,
+} from 'discord.js';
 import type { ICommandContext } from '../../../types/command.types.js';
 import { PlayerStatsService } from './player-stats.js';
 import {
@@ -37,6 +42,17 @@ interface DungeonBattleState extends BattleState {
   currentBossId: string;
 }
 
+function hasThreadCreateLocal(
+  c: unknown,
+): c is { threads: { create: (opts: unknown) => Promise<unknown> } } {
+  if (!c || typeof c !== 'object') return false;
+  if (!('threads' in c)) return false;
+  const t = c.threads;
+  if (!t || typeof t !== 'object') return false;
+  if (!('create' in t)) return false;
+  return typeof t.create === 'function';
+}
+
 const COOLDOWN_MS = 30 * 60_000;
 
 export class DungeonService {
@@ -51,6 +67,68 @@ export class DungeonService {
       if (state.combatants.some((c) => c.team === 0 && c.id === playerId && c.hp > 0)) return true;
     }
     return false;
+  }
+
+  /** Slash `/dungeon id:<id>` — ephemeral confirm + public thread z walką. */
+  async startFromSlash(interaction: ChatInputCommandInteraction, dungeonId: string): Promise<void> {
+    const def = DUNGEONS[dungeonId];
+    if (!def) {
+      await interaction
+        .reply({
+          content: `Nie ma dungeona \`${dungeonId}\`. Wpisz \`/dungeon\` żeby zobaczyć listę.`,
+          flags: MessageFlags.Ephemeral,
+        })
+        .catch(() => {});
+      return;
+    }
+    const player = this.stats.get(
+      interaction.user.id,
+      interaction.user.globalName || interaction.user.username,
+    );
+    const remaining = this.stats.remainingCooldown(player, 'dungeon');
+    if (remaining > 0) {
+      await interaction
+        .reply({
+          content: `Dungeon-cooldown: jeszcze ${Math.ceil(remaining / 1000)} s.`,
+          flags: MessageFlags.Ephemeral,
+        })
+        .catch(() => {});
+      return;
+    }
+    const channel: unknown = interaction.channel;
+    if (!hasThreadCreateLocal(channel)) {
+      await interaction
+        .reply({
+          content: 'Ten kanał nie wspiera wątków — użyj `.dungeon <id>` w innym kanale.',
+          flags: MessageFlags.Ephemeral,
+        })
+        .catch(() => {});
+      return;
+    }
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => {});
+    let thread: unknown;
+    try {
+      thread = await channel.threads.create({
+        name: `Dungeon: ${player.name} — ${def.name}`.slice(0, 100),
+        autoArchiveDuration: 60,
+        type: ChannelType.PublicThread,
+      });
+    } catch (e) {
+      await interaction
+        .editReply({ content: `Nie udało się otworzyć wątku: ${errMsg(e)}` })
+        .catch(() => {});
+      return;
+    }
+    if (!thread || typeof thread !== 'object' || !('id' in thread) || typeof thread.id !== 'string') {
+      await interaction
+        .editReply({ content: 'Wątek utworzony, ale brak API.' })
+        .catch(() => {});
+      return;
+    }
+    await this.startBattleInThread(thread, player, def);
+    await interaction
+      .editReply({ content: `🏰 Dungeon otwarty: <#${thread.id}>` })
+      .catch(() => {});
   }
 
   async start(ctx: ICommandContext): Promise<void> {
@@ -91,6 +169,15 @@ export class DungeonService {
       return;
     }
 
+    await this.startBattleInThread(thread, player, def);
+  }
+
+  /** Wspólny entry — wymaga pre-utworzonego wątku. */
+  async startBattleInThread(
+    thread: any,
+    player: import('./player-stats.js').PlayerStats,
+    def: import('../engine/encounters.js').DungeonDef,
+  ): Promise<void> {
     const playerRaw = buildPlayerCombatant(this.stats, player);
     const playerCombatant: BattleCombatant = {
       ...playerRaw,

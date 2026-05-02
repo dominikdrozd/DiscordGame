@@ -1,12 +1,28 @@
-import type { ButtonInteraction } from 'discord.js';
-import type { ICommand, ICommandContext } from '../../../types/command.types.js';
+import {
+  SlashCommandBuilder,
+  type ButtonInteraction,
+  type ChatInputCommandInteraction,
+} from 'discord.js';
+import type {
+  ICommand,
+  ICommandContext,
+  ISlashCommand,
+} from '../../../types/command.types.js';
 import { DuelService } from '../services/duel.service.js';
 
-export class DuelCommand implements ICommand {
+export class DuelCommand implements ICommand, ISlashCommand {
   readonly name = 'duel';
   readonly prefix = '.duel';
   readonly description =
-    'Pojedynek PvP. Użycie: `.duel @przeciwnik`. Walka rundowa w wątku — w każdej rundzie obaj gracze wybierają akcję jednocześnie (atak/obrona/mikstura), potem akcje rozliczają się razem. Wygrana daje XP i poziomy.';
+    'Pojedynek PvP. `/duel user:@przeciwnik` lub `.duel @user`. Walka rundowa w wątku.';
+
+  readonly slashDefinition = new SlashCommandBuilder()
+    .setName('duel')
+    .setDescription('Pojedynek PvP — walka rundowa w wątku')
+    .addUserOption((o) =>
+      o.setName('user').setDescription('Przeciwnik').setRequired(true),
+    )
+    .toJSON();
 
   constructor(private readonly duels: DuelService) {}
 
@@ -20,6 +36,10 @@ export class DuelCommand implements ICommand {
 
   async execute(ctx: ICommandContext): Promise<void> {
     return this.duels.start(ctx);
+  }
+
+  async executeSlash(interaction: ChatInputCommandInteraction): Promise<void> {
+    return this.duels.startFromSlash(interaction);
   }
 
   async handleInteraction(interaction: ButtonInteraction): Promise<void> {

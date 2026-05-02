@@ -1,13 +1,27 @@
-import type { ButtonInteraction } from 'discord.js';
-import type { ICommand, ICommandContext } from '../../../types/command.types.js';
+import {
+  MessageFlags,
+  SlashCommandBuilder,
+  type ButtonInteraction,
+  type ChatInputCommandInteraction,
+} from 'discord.js';
+import type {
+  ICommand,
+  ICommandContext,
+  ISlashCommand,
+} from '../../../types/command.types.js';
 import { InventoryService } from '../services/inventory.service.js';
 
-export class InventoryCommand implements ICommand {
+export class InventoryCommand implements ICommand, ISlashCommand {
   readonly name = 'inv';
   readonly prefix = '.inv';
   readonly description =
-    'Otwiera plecak w prywatnym wątku — każdy unikalny przedmiot ma swój przycisk Załóż/Zdejmij. Z menu też dostępne (`.menu` → 🎒 Plecak).';
+    'Otwiera plecak w prywatnym wątku — `/inv` lub `.inv`. Każdy item ma toggle Załóż/Zdejmij.';
   readonly requiresPrompt = false;
+
+  readonly slashDefinition = new SlashCommandBuilder()
+    .setName('inv')
+    .setDescription('Otwórz plecak w prywatnym wątku')
+    .toJSON();
 
   constructor(private readonly inventory: InventoryService) {}
 
@@ -24,7 +38,53 @@ export class InventoryCommand implements ICommand {
     return this.inventory.show(ctx);
   }
 
+  async executeSlash(interaction: ChatInputCommandInteraction): Promise<void> {
+    const channel: unknown = interaction.channel;
+    if (!hasThreadCreate(channel)) {
+      await interaction
+        .reply({
+          content: 'Ten kanał nie wspiera prywatnych wątków.',
+          flags: MessageFlags.Ephemeral,
+        })
+        .catch(() => {});
+      return;
+    }
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => {});
+    let errorMsg: string | undefined;
+    let openSucceeded = false;
+    await this.inventory.openInventoryForUser({
+      userId: interaction.user.id,
+      userName: interaction.user.globalName || interaction.user.username,
+      channel,
+      registerThread: () => {
+        openSucceeded = true;
+      },
+      reply: async (content: string): Promise<unknown> => {
+        errorMsg = content;
+        return undefined;
+      },
+    });
+    if (errorMsg && !openSucceeded) {
+      await interaction.editReply({ content: errorMsg }).catch(() => {});
+    } else {
+      await interaction
+        .editReply({ content: '🎒 Plecak otwarty w prywatnym wątku.' })
+        .catch(() => {});
+    }
+  }
+
   async handleInteraction(interaction: ButtonInteraction): Promise<void> {
     return this.inventory.handleInteraction(interaction);
   }
+}
+
+function hasThreadCreate(
+  c: unknown,
+): c is { threads: { create: (opts: unknown) => Promise<unknown> } } {
+  if (!c || typeof c !== 'object') return false;
+  if (!('threads' in c)) return false;
+  const t = c.threads;
+  if (!t || typeof t !== 'object') return false;
+  if (!('create' in t)) return false;
+  return typeof t.create === 'function';
 }

@@ -72,7 +72,7 @@ export function registerGameCommands(manager: CommandManager, services: GameServ
   const inventoryCommand = new InventoryCommand(inventory);
   const city = new CityService(stats, (id) => dungeons.hasActiveFor(id));
   const dialog = new DialogService(stats);
-  const cityCommand = new CityCommand(city);
+  const cityCommand = new CityCommand(city, stats);
   const talkCommand = new TalkCommand(dialog);
   const mineCmd = new MineCommand(stats);
   const fishCmd = new FishCommand(stats);
