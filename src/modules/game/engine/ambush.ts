@@ -38,6 +38,7 @@ import {
   handleSkillPick,
   handleSkillTarget,
   ackStaleInteraction,
+  closeBattleThread,
 } from './battle-helpers.js';
 
 const AMBUSH_CHECK_INTERVAL_MS = parseInt(process.env.AMBUSH_CHECK_INTERVAL_MS || '300000', 10);
@@ -128,6 +129,8 @@ export class AmbushService {
       const exp = player.activeExpedition;
       if (!exp || !exp.channelId) continue;
       if (exp.endsAt <= now) continue;
+      // skip jeśli ten gracz/party już jest w trakcie aktywnego ambush
+      if (this.hasActiveAmbushForPlayer(player.id)) continue;
       // dedupe per party
       if (exp.partyId) {
         if (handledParties.has(exp.partyId)) continue;
@@ -144,6 +147,15 @@ export class AmbushService {
         await this.triggerAmbush(player.id);
       }
     }
+  }
+
+  /** True jeśli któryś niezakończony ambush state ma tego gracza po stronie team 0. */
+  private hasActiveAmbushForPlayer(playerId: string): boolean {
+    for (const state of this.states.values()) {
+      if (state.finished) continue;
+      if (state.combatants.some((c) => c.team === 0 && c.id === playerId && c.hp > 0)) return true;
+    }
+    return false;
   }
 
   private async triggerPartyAmbush(party: Party): Promise<void> {
@@ -339,7 +351,11 @@ export class AmbushService {
   }
 
   private async handleTarget(interaction: ButtonInteraction): Promise<void> {
-    const [, battleId, combatantId, kind, targetId] = interaction.customId.split(':');
+    // customId: `tgt:battleId:combatantId:kind:targetId` — targetId może zawierać ':'
+    // (mob ids mają format `enemy:type:suffix`), więc rest-join.
+    const parts = interaction.customId.split(':');
+    const [, battleId, combatantId, kind] = parts;
+    const targetId = parts.slice(4).join(':');
     const state = this.states.get(battleId);
     if (!state || state.finished) {
       await ackStaleInteraction(interaction);
@@ -359,14 +375,39 @@ export class AmbushService {
     }
     if (kind === 'atk') {
       const target = findCombatant(state, targetId);
+      const me = findCombatant(state, combatantId);
       if (!target || target.hp <= 0) {
-        await interaction.update({ content: 'Cel padł.', components: [] }).catch(() => {});
-        return;
+        if (!me) {
+          await interaction.update({ content: 'Cel padł.', components: [] }).catch(() => {});
+          return;
+        }
+        const enemies = aliveEnemies(state, me);
+        if (enemies.length === 0) {
+          state.pending.set(combatantId, { kind: 'defend' });
+          await interaction
+            .update({ content: 'Cel padł — brak innych wrogów, idziesz w obronę.', components: [] })
+            .catch(() => {});
+        } else if (enemies.length === 1) {
+          state.pending.set(combatantId, { kind: 'attack', targetId: enemies[0].id });
+          await interaction
+            .update({
+              content: `Cel padł — atakujesz **${enemies[0].name}**.`,
+              components: [],
+            })
+            .catch(() => {});
+        } else {
+          const row = buildTargetRow(battleId, combatantId, 'atk', enemies);
+          await interaction
+            .update({ content: 'Cel padł — wybierz innego:', components: [row] })
+            .catch(() => {});
+          return; // czekamy na ponowny klik
+        }
+      } else {
+        state.pending.set(combatantId, { kind: 'attack', targetId });
+        await interaction
+          .update({ content: `Wybrany: **${target.name}**.`, components: [] })
+          .catch(() => {});
       }
-      state.pending.set(combatantId, { kind: 'attack', targetId });
-      await interaction
-        .update({ content: `Wybrany: **${target.name}**.`, components: [] })
-        .catch(() => {});
     } else {
       await interaction
         .update({ content: `Nieznany kind \`${kind}\`.`, components: [] })
@@ -443,6 +484,10 @@ export class AmbushService {
       this.stats.save();
       await state.thread.send(lines.join('\n').slice(0, 1900));
     }
+    await closeBattleThread(
+      state.thread,
+      '🏁 Walka zakończona — wątek archiwizujemy. Wracajcie na wyprawę!',
+    );
     this.states.delete(state.id);
   }
 
@@ -459,6 +504,7 @@ export class AmbushService {
         `⏰ Brak akcji w czasie — wyprawa pada (auto-fail po ${AMBUSH_TIMEOUT_MS / 60_000} min).`,
       )
       .catch(() => {});
+    await closeBattleThread(state.thread, '🏁 Wątek zamknięty po timeoucie.');
     this.states.delete(state.id);
   }
 

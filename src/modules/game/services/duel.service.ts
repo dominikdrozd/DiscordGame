@@ -20,6 +20,7 @@ import {
   handleSkillPick,
   handleSkillTarget,
   ackStaleInteraction,
+  closeBattleThread,
 } from '../engine/battle-helpers.js';
 import { buildActionRow, buildPanelOpenerRow, buildTargetRow } from '../ui/battle-buttons.js';
 import { displayName, errMsg } from '../../../utils.js';
@@ -306,7 +307,9 @@ export class DuelService {
   }
 
   private async handleTarget(interaction: ButtonInteraction): Promise<void> {
-    const [, battleId, combatantId, kind, targetId] = interaction.customId.split(':');
+    const parts = interaction.customId.split(':');
+    const [, battleId, combatantId, kind] = parts;
+    const targetId = parts.slice(4).join(':');
     const state = this.states.get(battleId);
     if (!state || state.finished) {
       await ackStaleInteraction(interaction);
@@ -381,6 +384,7 @@ export class DuelService {
     syncConsumablesAfterBattle(this.stats, state);
     if (result.draw) {
       await state.thread.send(`💀 **REMIS!** Wszyscy padli w tej samej rundzie — brak XP.`);
+      await closeBattleThread(state.thread, '🏁 Pojedynek zakończony — wątek archiwizujemy.');
       this.states.delete(state.id);
       return;
     }
@@ -408,6 +412,7 @@ export class DuelService {
           ...loseLines,
         ].join('\n'),
       );
+      await closeBattleThread(state.thread, '🏁 Party-duel zakończony — wątek archiwizujemy.');
       this.states.delete(state.id);
       return;
     }
@@ -429,6 +434,7 @@ export class DuelService {
         `📈 ${winnerCombatant.name} L${award.winner.level} (${award.winner.xp} XP, ${award.winner.wins}W/${award.winner.losses}L) | ${loserCombatant.name} L${award.loser.level} (${award.loser.xp} XP, ${award.loser.wins}W/${award.loser.losses}L).${levelMsg}`,
       ].join('\n'),
     );
+    await closeBattleThread(state.thread, '🏁 Pojedynek zakończony — wątek archiwizujemy.');
     this.states.delete(state.id);
   }
 

@@ -18,6 +18,7 @@ import {
   handleSkillPick,
   handleSkillTarget,
   ackStaleInteraction,
+  closeBattleThread,
 } from '../engine/battle-helpers.js';
 import { DUNGEONS } from '../engine/encounters.js';
 import { BOSS_MOBS } from '../mobs/index.js';
@@ -220,7 +221,9 @@ export class DungeonService {
   }
 
   private async handleTarget(interaction: ButtonInteraction): Promise<void> {
-    const [, battleId, combatantId, kind, targetId] = interaction.customId.split(':');
+    const parts = interaction.customId.split(':');
+    const [, battleId, combatantId, kind] = parts;
+    const targetId = parts.slice(4).join(':');
     const state = this.states.get(battleId);
     if (!state || state.finished) {
       await ackStaleInteraction(interaction);
@@ -293,6 +296,10 @@ export class DungeonService {
             '\n',
           ),
         );
+        await closeBattleThread(
+          state.thread,
+          '🏁 Dungeon zakończony porażką — wątek archiwizujemy.',
+        );
         this.states.delete(state.id);
         return;
       }
@@ -327,6 +334,7 @@ export class DungeonService {
             ...finalAward.lines,
           ].join('\n'),
         );
+        await closeBattleThread(state.thread, '🏁 Dungeon ukończony — wątek archiwizujemy.');
         this.states.delete(state.id);
         return;
       }

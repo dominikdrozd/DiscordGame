@@ -21,6 +21,28 @@ export async function ackStaleInteraction(interaction: ButtonInteraction): Promi
     .catch(() => {});
 }
 
+interface ClosableThread {
+  send(message: string): Promise<unknown>;
+  setArchived(state: boolean): Promise<unknown>;
+}
+
+function isClosableThread(t: unknown): t is ClosableThread {
+  if (!t || typeof t !== 'object') return false;
+  if (!('send' in t) || typeof t.send !== 'function') return false;
+  if (!('setArchived' in t) || typeof t.setArchived !== 'function') return false;
+  return true;
+}
+
+/**
+ * Wysyła pożegnalny komunikat i archiwizuje wątek po zakończonej walce.
+ * Archiwizacja zostawia historię, ale wątek znika z listy aktywnych.
+ */
+export async function closeBattleThread(thread: unknown, postscript: string): Promise<void> {
+  if (!isClosableThread(thread)) return;
+  await thread.send(postscript).catch(() => {});
+  await thread.setArchived(true).catch(() => {});
+}
+
 export async function openItemPicker(
   interaction: ButtonInteraction,
   battleId: string,
@@ -153,7 +175,10 @@ export async function handleSkillTarget(
   interaction: ButtonInteraction,
   state: BattleState,
 ): Promise<boolean> {
-  const [, battleId, combatantId, skillId, targetId] = interaction.customId.split(':');
+  // customId: `skltgt:battleId:combatantId:skillId:targetId` — targetId może mieć ':'
+  const parts = interaction.customId.split(':');
+  const [, battleId, combatantId, skillId] = parts;
+  const targetId = parts.slice(4).join(':');
   if (state.id !== battleId) return false;
   if (interaction.user.id !== combatantId) return false;
   if (state.pending.has(combatantId)) return false;

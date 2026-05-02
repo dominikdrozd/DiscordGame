@@ -19,6 +19,7 @@ import {
   handleSkillPick,
   handleSkillTarget,
   ackStaleInteraction,
+  closeBattleThread,
 } from '../engine/battle-helpers.js';
 import { BOSS_MOBS } from '../mobs/index.js';
 import { buildPlayerCombatant } from '../engine/player-combatant.js';
@@ -222,7 +223,9 @@ export class BossService {
   }
 
   private async handleTarget(interaction: ButtonInteraction): Promise<void> {
-    const [, battleId, combatantId, kind, targetId] = interaction.customId.split(':');
+    const parts = interaction.customId.split(':');
+    const [, battleId, combatantId, kind] = parts;
+    const targetId = parts.slice(4).join(':');
     const state = this.states.get(battleId);
     if (!state || state.finished) {
       await ackStaleInteraction(interaction);
@@ -327,6 +330,7 @@ export class BossService {
     }
     syncConsumablesAfterBattle(this.stats, state);
     this.stats.save();
+    await closeBattleThread(state.thread, '🏁 Walka z bossem zakończona — wątek archiwizujemy.');
     this.states.delete(state.id);
   }
 
