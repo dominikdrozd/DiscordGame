@@ -27,6 +27,8 @@ import { RaceCommand } from './commands/race.command.js';
 import { ClassCommand } from './commands/class.command.js';
 import { PartyCommand } from './commands/party.command.js';
 import { CityCommand } from './commands/city.command.js';
+import { MenuCommand } from './commands/menu.command.js';
+import { MenuService } from './services/menu.service.js';
 
 export interface GameServices {
   stats: PlayerStatsService;
@@ -51,15 +53,19 @@ export function registerGameCommands(manager: CommandManager, services: GameServ
   const crafting = new CraftService(stats);
   const inventory = new InventoryService(stats);
   const city = new CityService(stats, (id) => dungeons.hasActiveFor(id));
+  const mineCmd = new MineCommand(stats);
+  const fishCmd = new FishCommand(stats);
+  const chopCmd = new ChopCommand(stats);
+  const menu = new MenuService(stats, party, { mine: mineCmd, fish: fishCmd, chop: chopCmd });
 
   manager.register(new DuelCommand(duels));
   manager.register(new BossCommand(bosses));
   manager.register(new DungeonCommand(dungeons));
   manager.register(new ExpeditionCommand(expeditions));
   manager.register(new PartyCommand(party));
-  manager.register(new MineCommand(stats));
-  manager.register(new FishCommand(stats));
-  manager.register(new ChopCommand(stats));
+  manager.register(mineCmd);
+  manager.register(fishCmd);
+  manager.register(chopCmd);
   manager.register(new CraftCommand(crafting));
   manager.register(new EquipCommand(stats));
   manager.register(new UnequipCommand(stats));
@@ -69,6 +75,7 @@ export function registerGameCommands(manager: CommandManager, services: GameServ
   manager.register(new RaceCommand(stats));
   manager.register(new ClassCommand(stats));
   manager.register(new CityCommand(city));
+  manager.register(new MenuCommand(menu));
 }
 
 export function startAmbushLoop(client: Client, services: GameServices): AmbushService {

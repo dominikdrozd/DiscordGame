@@ -1,5 +1,5 @@
 import type { ICommand, ICommandContext } from '../../../types/command.types.js';
-import { PlayerStatsService, type SkillName } from '../services/player-stats.js';
+import { PlayerStatsService, type PlayerStats, type SkillName } from '../services/player-stats.js';
 import { rollLoot, type LootEntry } from '../services/loot.js';
 import { fmtResource, type ToolKind } from '../services/items.js';
 import { displayName } from '../../../utils.js';
@@ -48,21 +48,24 @@ export abstract class GatheringCommand implements ICommand {
   async execute(ctx: ICommandContext): Promise<void> {
     const { msg } = ctx;
     const player = this.stats.get(msg.author.id, displayName(msg));
+    await msg.reply(this.runGather(player));
+  }
 
+  /**
+   * Pure gather attempt — modyfikuje state gracza i zwraca wynik jako string.
+   * Wywoływane z `execute` (msg) i z menu/button-handlerów.
+   */
+  runGather(player: PlayerStats): string {
     if (this.cfg.requiredTool) {
       const tool = this.stats.equippedItem(player, 'tool');
       if (!tool || tool.toolKind !== this.cfg.requiredTool) {
-        await msg.reply(
-          `Potrzebujesz założonego narzędzia typu **${this.cfg.requiredTool}**. Skraftuj jakieś przez \`.craft\` i załóż przez \`.equip <uid>\`.`,
-        );
-        return;
+        return `Potrzebujesz założonego narzędzia typu **${this.cfg.requiredTool}**. Skraftuj jakieś przez \`.craft\` i załóż przez \`.equip <uid>\`.`;
       }
     }
 
     const remaining = this.stats.remainingCooldown(player, this.cfg.cooldownKey);
     if (remaining > 0) {
-      await msg.reply(`Jeszcze ${Math.ceil(remaining / 1000)} s do następnej próby.`);
-      return;
+      return `Jeszcze ${Math.ceil(remaining / 1000)} s do następnej próby.`;
     }
 
     const skillLevel = player.skills[this.cfg.skill].level;
@@ -72,8 +75,7 @@ export abstract class GatheringCommand implements ICommand {
 
     if (!loot) {
       this.stats.save();
-      await msg.reply(this.cfg.emptyMessage);
-      return;
+      return this.cfg.emptyMessage;
     }
 
     this.stats.addResource(player, loot.itemId, loot.qty);
@@ -83,8 +85,6 @@ export abstract class GatheringCommand implements ICommand {
     const lvlMsg = leveled
       ? ` 🎉 **${this.cfg.skill}** awansuje na poziom **${player.skills[this.cfg.skill].level}**!`
       : '';
-    await msg.reply(
-      `${this.cfg.successPrefix} ${fmtResource(loot.itemId, loot.qty)} (+${this.cfg.xpPerSuccess} XP ${this.cfg.skill}).${lvlMsg}`,
-    );
+    return `${this.cfg.successPrefix} ${fmtResource(loot.itemId, loot.qty)} (+${this.cfg.xpPerSuccess} XP ${this.cfg.skill}).${lvlMsg}`;
   }
 }
