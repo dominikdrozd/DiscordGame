@@ -14,6 +14,8 @@ import { rollItemInstance, fmtInstance, ITEMS } from './items.js';
 import { displayName } from '../../../utils.js';
 import { AMBUSH_MOB_CLASSES_BY_ID } from '../mobs/index.js';
 import { buildExpBrowseRows, buildExpActiveRows } from '../ui/expedition-buttons.js';
+import { CLASSES, findSubclass, findSubclass2 } from '../classes/index.js';
+import { RACES } from '../races/index.js';
 
 const MAX_LOG_LINES = 25;
 
@@ -149,6 +151,26 @@ export class ExpeditionService {
     if (exp.ambushTiers && exp.ambushTiers.length) {
       lines.push(`_Tiery ambush: ${exp.ambushTiers.join(', ')}_`);
     }
+
+    const partyEntity = this.party.getByMember(player.id);
+    if (partyEntity) {
+      const isLeader = partyEntity.leaderId === player.id;
+      lines.push(
+        '',
+        `**Wchodzisz z party** _(${partyEntity.members.length} os., ${isLeader ? 'jesteś liderem' : 'lider: <@' + partyEntity.leaderId + '>'}):_`,
+      );
+      for (const memberId of partyEntity.members) {
+        const member = this.stats.get(memberId);
+        const tag = memberId === partyEntity.leaderId ? '👑 ' : '• ';
+        lines.push(`${tag}${this.fmtMember(member)}`);
+      }
+      if (!isLeader) {
+        lines.push('_Tylko lider może rozpocząć wyprawę._');
+      }
+    } else {
+      lines.push('', `**Wchodzisz solo:**`, `• ${this.fmtMember(player)}`);
+    }
+
     lines.push('', `🎯 \`.expedition start ${exp.id}\` (lub kliknij **🗺️ Wejdź**)`);
     return lines.join('\n').slice(0, 1900);
   }
@@ -165,6 +187,9 @@ export class ExpeditionService {
     } else {
       lines.push(`⏳ Pozostało **${Math.ceil(left / 60_000)}** min.`);
     }
+
+    lines.push('', ...this.renderPartySection(player));
+
     const log = this.logs.get(player.id) ?? [];
     if (log.length > 0) {
       lines.push('', '**Log walk:**');
@@ -173,6 +198,64 @@ export class ExpeditionService {
       lines.push('', '_(jeszcze brak ambushów na tej wyprawie)_');
     }
     return lines.join('\n').slice(0, 1900);
+  }
+
+  private renderPartySection(player: PlayerStats): string[] {
+    const partyId = player.activeExpedition?.partyId;
+    if (!partyId) {
+      return ['**Wyprawa solo:**', `• ${this.fmtMember(player)}`];
+    }
+    const party = this.party.get(partyId);
+    if (!party) {
+      return [`**Party:** \`${partyId}\` (nie znaleziono w rejestrze)`, `• ${this.fmtMember(player)}`];
+    }
+    const leader = this.stats.get(party.leaderId);
+    const leaderDisplay = leader.name === leader.id ? `<@${leader.id}>` : leader.name;
+    const lines: string[] = [
+      `**Party** _(lider: ${leaderDisplay}, ${party.members.length} osób):_`,
+    ];
+    for (const memberId of party.members) {
+      const member = this.stats.get(memberId);
+      const tag = memberId === party.leaderId ? '👑 ' : '• ';
+      lines.push(`${tag}${this.fmtMember(member)}`);
+    }
+    return lines;
+  }
+
+  private fmtMember(p: PlayerStats): string {
+    const raceName = p.raceId ? (RACES[p.raceId]?.name ?? p.raceId) : '—';
+    const cls = p.classId ? CLASSES[p.classId] : undefined;
+    const sub1 = p.classId && p.subclassId ? findSubclass(p.classId, p.subclassId) : undefined;
+    const sub2 =
+      p.classId && p.subclassId && p.subclass2Id
+        ? findSubclass2(p.classId, p.subclassId, p.subclass2Id)
+        : undefined;
+    const classDisplay = cls
+      ? `${cls.name}${sub1 ? ` / ${sub1.name}` : ''}${sub2 ? ` / ${sub2.name}` : ''}`
+      : '—';
+    const hp = this.stats.hpFor(p);
+    const dmg = this.stats.damageBonus(p);
+    const def = this.stats.defenseBonus(p);
+    const crit = this.stats.critBonus(p);
+    const sp = this.stats.spellPower(p);
+    // name === id znaczy że gracz nigdy nie wpisał komendy bota — pokaż mention,
+    // żeby Discord renderował username zamiast surowego snowflake'a.
+    const display = p.name === p.id ? `<@${p.id}>` : `**${p.name}**`;
+    const weapon = this.stats.equippedItem(p, 'weapon');
+    const armor = this.stats.equippedItem(p, 'armor');
+    const tool = this.stats.equippedItem(p, 'tool');
+    const eqParts: string[] = [];
+    if (weapon) eqParts.push(`⚔️ ${weapon.name}`);
+    if (armor) eqParts.push(`🛡️ ${armor.name}`);
+    if (tool) eqParts.push(`🔧 ${tool.name}`);
+    const eqLine = eqParts.length ? eqParts.join(' · ') : '_(brak ekwipunku)_';
+    return [
+      `${display} (combat L${p.skills.combat.level})`,
+      `   • Rasa: ${raceName} · Klasa: ${classDisplay}`,
+      `   • HP: ${hp} · Dmg: +${dmg} · Def: +${def} · Crit: +${crit.toFixed(1)} · SP: ${sp}`,
+      `   • STR ${p.primary.str} · AGI ${p.primary.agi} · WIT ${p.primary.wit} · INT ${p.primary.int}`,
+      `   • Eq: ${eqLine}`,
+    ].join('\n');
   }
 
   private canEnter(exp: ExpeditionDef, player: PlayerStats): boolean {
