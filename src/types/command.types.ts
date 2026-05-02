@@ -1,4 +1,5 @@
 import type {
+  AutocompleteInteraction,
   ChatInputCommandInteraction,
   Client,
   RESTPostAPIChatInputApplicationCommandsJSONBody,
@@ -34,6 +35,12 @@ export interface ISlashCommand {
   readonly slashDefinition: RESTPostAPIChatInputApplicationCommandsJSONBody;
   /** Handle the slash command interaction. */
   executeSlash(interaction: ChatInputCommandInteraction): Promise<void>;
+  /**
+   * Optional autocomplete handler — called for any string option marked
+   * `setAutocomplete(true)` in the slash definition. Should respond
+   * quickly (3s timeout) with up to 25 choices.
+   */
+  autocomplete?(interaction: AutocompleteInteraction): Promise<void>;
 }
 
 export function hasSlashCommand<T>(cmd: T): cmd is T & ISlashCommand {

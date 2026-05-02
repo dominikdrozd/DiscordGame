@@ -1,4 +1,8 @@
-import { type ButtonInteraction } from 'discord.js';
+import {
+  MessageFlags,
+  type ButtonInteraction,
+  type ChatInputCommandInteraction,
+} from 'discord.js';
 import type { ICommandContext } from '../../../types/command.types.js';
 import { PlayerStatsService, type PlayerStats } from './player-stats.js';
 import { listRecipes, getRecipe, type Recipe } from './recipes.js';
@@ -72,6 +76,38 @@ export class CraftService {
         false,
       ),
     });
+  }
+
+  /**
+   * Browser craftingu ze slash `/craft` — pierwszy reply ephemeral,
+   * bez ← Menu rowu.
+   */
+  async openFromSlash(interaction: ChatInputCommandInteraction): Promise<void> {
+    const userId = interaction.user.id;
+    const userName = interaction.user.globalName || interaction.user.username;
+    const player = this.stats.get(userId, userName);
+    const recipes = sortedRecipes();
+    if (recipes.length === 0) {
+      await interaction
+        .reply({ content: 'Brak przepisów.', flags: MessageFlags.Ephemeral })
+        .catch(() => {});
+      return;
+    }
+    const state: BrowserState = { userId, index: 0, fromMenu: false };
+    this.browsers.set(userId, state);
+    const recipe = recipes[state.index];
+    await interaction
+      .reply({
+        content: this.renderRecipeContent(recipe, player),
+        components: buildCraftBrowseRows(
+          player.id,
+          recipes.length,
+          this.canCraft(recipe, player),
+          false,
+        ),
+        flags: MessageFlags.Ephemeral,
+      })
+      .catch(() => {});
   }
 
   /**

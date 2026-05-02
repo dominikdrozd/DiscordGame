@@ -1,16 +1,33 @@
-import type { ICommand, ICommandContext } from '../../../types/command.types.js';
-import { PlayerStatsService } from '../services/player-stats.js';
+import {
+  MessageFlags,
+  SlashCommandBuilder,
+  type ChatInputCommandInteraction,
+} from 'discord.js';
+import type {
+  ICommand,
+  ICommandContext,
+  ISlashCommand,
+} from '../../../types/command.types.js';
+import { PlayerStatsService, type PlayerStats } from '../services/player-stats.js';
 import { fmtInstance } from '../services/items.js';
 import { RACES } from '../races/index.js';
 import { CLASSES, findSubclass, findSubclass2 } from '../classes/index.js';
 import { displayName } from '../../../utils.js';
 
-export class StatsCommand implements ICommand {
+export class StatsCommand implements ICommand, ISlashCommand {
   readonly name = 'stats';
   readonly prefix = '.stats';
   readonly description =
-    'Pokazuje profil gracza: poziom PvP, skille, atrybuty, ekwipunek, statystyki walki. Użycie: `.stats` lub `.stats @user`.';
+    'Pokazuje profil gracza: poziom PvP, skille, atrybuty, ekwipunek, statystyki walki. Użycie: `.stats` lub `.stats @user` lub `/stats [user]`.';
   readonly requiresPrompt = false;
+
+  readonly slashDefinition = new SlashCommandBuilder()
+    .setName('stats')
+    .setDescription('Pokaż profil gracza (statystyki, skille, ekwipunek)')
+    .addUserOption((o) =>
+      o.setName('user').setDescription('Czyje stats pokazać (domyślnie twoje)').setRequired(false),
+    )
+    .toJSON();
 
   constructor(private readonly stats: PlayerStatsService) {}
 
@@ -29,7 +46,22 @@ export class StatsCommand implements ICommand {
     const name =
       target.id === msg.author.id ? displayName(msg) : target.globalName || target.username;
     const p = this.stats.get(target.id, name);
+    await msg.reply(this.renderProfile(p));
+  }
 
+  async executeSlash(interaction: ChatInputCommandInteraction): Promise<void> {
+    const targetUser = interaction.options.getUser('user') ?? interaction.user;
+    const name =
+      targetUser.id === interaction.user.id
+        ? interaction.user.globalName || interaction.user.username
+        : targetUser.globalName || targetUser.username;
+    const p = this.stats.get(targetUser.id, name);
+    await interaction
+      .reply({ content: this.renderProfile(p), flags: MessageFlags.Ephemeral })
+      .catch(() => {});
+  }
+
+  private renderProfile(p: PlayerStats): string {
     const lines: string[] = [];
     const raceName = p.raceId ? (RACES[p.raceId]?.name ?? p.raceId) : '— (ustaw `.race pick <id>`)';
     const classObj = p.classId ? CLASSES[p.classId] : undefined;
@@ -77,6 +109,6 @@ export class StatsCommand implements ICommand {
       );
     }
 
-    await msg.reply(lines.join('\n').slice(0, 1900));
+    return lines.join('\n').slice(0, 1900);
   }
 }

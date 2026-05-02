@@ -1,4 +1,8 @@
-import { type ButtonInteraction } from 'discord.js';
+import {
+  MessageFlags,
+  type ButtonInteraction,
+  type ChatInputCommandInteraction,
+} from 'discord.js';
 import type { ICommandContext } from '../../../types/command.types.js';
 import { PlayerStatsService, type PlayerStats } from './player-stats.js';
 import { PartyService, type Party } from './party.js';
@@ -122,6 +126,42 @@ export class ExpeditionService {
    * Zamiast nowej wiadomości używa `interaction.update` (zachowuje pojedynczą
    * wiadomość menu) i dodaje row "← Menu" pod buttonami.
    */
+  /**
+   * Browser ekspedycji ze slash `/expedition` — pierwszy reply ephemeral.
+   * Bez ← Menu rowu (slash niezależny od menu).
+   */
+  async openFromSlash(interaction: ChatInputCommandInteraction): Promise<void> {
+    const userId = interaction.user.id;
+    const userName = interaction.user.globalName || interaction.user.username;
+    const player = this.stats.get(userId, userName);
+    const state: BrowserState = {
+      userId,
+      index: 0,
+      channelId: interaction.channel?.id,
+      fromMenu: false,
+    };
+    this.browsers.set(userId, state);
+    if (player.activeExpedition) {
+      await interaction
+        .reply({
+          content: this.renderActiveContent(player),
+          components: buildExpActiveRows(player.id, this.canClaim(player), false),
+          flags: MessageFlags.Ephemeral,
+        })
+        .catch(() => {});
+      return;
+    }
+    const sorted = sortedExpeditions();
+    const exp = sorted[state.index];
+    await interaction
+      .reply({
+        content: this.renderExpDetails(exp, player),
+        components: buildExpBrowseRows(player.id, sorted.length, this.canEnter(exp, player), false),
+        flags: MessageFlags.Ephemeral,
+      })
+      .catch(() => {});
+  }
+
   async openFromInteraction(interaction: ButtonInteraction): Promise<void> {
     const userId = interaction.user.id;
     const userName = interaction.user.globalName || interaction.user.username;

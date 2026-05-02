@@ -1,13 +1,26 @@
-import { type ButtonInteraction } from 'discord.js';
-import type { ICommand, ICommandContext } from '../../../types/command.types.js';
+import {
+  SlashCommandBuilder,
+  type ButtonInteraction,
+  type ChatInputCommandInteraction,
+} from 'discord.js';
+import type {
+  ICommand,
+  ICommandContext,
+  ISlashCommand,
+} from '../../../types/command.types.js';
 import { ExpeditionService } from '../services/expedition.service.js';
 
-export class ExpeditionCommand implements ICommand {
+export class ExpeditionCommand implements ICommand, ISlashCommand {
   readonly name = 'expedition';
   readonly prefix = '.expedition';
   readonly description =
-    'Wyprawy. `.expedition` interaktywny browser; `.expedition start <id>` rozpoczyna; `.expedition status`; `.expedition claim` odbiera nagrody.';
+    'Wyprawy. `/expedition` browser ephemeral; `.expedition` browser publiczny; `.expedition start/claim/status` subkomendy.';
   readonly requiresPrompt = false;
+
+  readonly slashDefinition = new SlashCommandBuilder()
+    .setName('expedition')
+    .setDescription('Otwórz browser wypraw (ephemeral) lub zarządzaj aktywną wyprawą')
+    .toJSON();
 
   constructor(private readonly expeditions: ExpeditionService) {}
 
@@ -22,6 +35,10 @@ export class ExpeditionCommand implements ICommand {
 
   async execute(ctx: ICommandContext): Promise<void> {
     return this.expeditions.handle(ctx);
+  }
+
+  async executeSlash(interaction: ChatInputCommandInteraction): Promise<void> {
+    return this.expeditions.openFromSlash(interaction);
   }
 
   async handleInteraction(interaction: ButtonInteraction): Promise<void> {

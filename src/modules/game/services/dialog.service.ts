@@ -2,7 +2,9 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  MessageFlags,
   type ButtonInteraction,
+  type ChatInputCommandInteraction,
 } from 'discord.js';
 import { PlayerStatsService, type PlayerStats } from './player-stats.js';
 import { findNpcCity, getNpc } from '../npcs/index.js';
@@ -73,6 +75,43 @@ export class DialogService {
       .update({
         content: this.renderNode(npc, node, player),
         components: buildDialogOptionRows(npc.id, node.options, player.id),
+      })
+      .catch(() => {});
+  }
+
+  /**
+   * Start dialogu ze slash `/talk` — ephemeral reply zamiast publicznego.
+   */
+  async startFromSlash(
+    interaction: ChatInputCommandInteraction,
+    npcId: string,
+  ): Promise<void> {
+    const npc = getNpc(npcId);
+    if (!npc) {
+      await interaction
+        .reply({ content: `Nie znam NPC \`${npcId}\`.`, flags: MessageFlags.Ephemeral })
+        .catch(() => {});
+      return;
+    }
+    const player = this.stats.get(
+      interaction.user.id,
+      interaction.user.globalName || interaction.user.username,
+    );
+    const node = npc.dialog.getNode(npc.dialog.startNodeId);
+    if (!node) {
+      await interaction
+        .reply({
+          content: `Dialog \`${npc.id}\` nie ma startNode.`,
+          flags: MessageFlags.Ephemeral,
+        })
+        .catch(() => {});
+      return;
+    }
+    await interaction
+      .reply({
+        content: this.renderNode(npc, node, player),
+        components: buildDialogOptionRows(npc.id, node.options, player.id),
+        flags: MessageFlags.Ephemeral,
       })
       .catch(() => {});
   }

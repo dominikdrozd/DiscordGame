@@ -1,4 +1,5 @@
 import type {
+  AutocompleteInteraction,
   ChatInputCommandInteraction,
   Client,
   RESTPostAPIChatInputApplicationCommandsJSONBody,
@@ -107,6 +108,20 @@ export class CommandManager {
             .reply({ content: `Błąd: ${errMsg(e)}`, ephemeral: true })
             .catch(() => {});
         }
+      }
+      return;
+    }
+  }
+
+  async dispatchAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
+    for (const cmd of this.commands) {
+      if (!hasSlashCommand(cmd)) continue;
+      if (cmd.slashDefinition.name !== interaction.commandName) continue;
+      if (!cmd.autocomplete) return;
+      try {
+        await cmd.autocomplete(interaction);
+      } catch (e) {
+        console.error(`[manager] dispatchAutocomplete ${cmd.name}:`, errMsg(e));
       }
       return;
     }

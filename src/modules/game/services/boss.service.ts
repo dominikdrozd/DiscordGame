@@ -1,4 +1,9 @@
-import { ChannelType, type ButtonInteraction } from 'discord.js';
+import {
+  ChannelType,
+  MessageFlags,
+  type ButtonInteraction,
+  type ChatInputCommandInteraction,
+} from 'discord.js';
 import type { ICommandContext } from '../../../types/command.types.js';
 import { PlayerStatsService, type PlayerStats } from './player-stats.js';
 import {
@@ -126,6 +131,34 @@ export class BossService {
     const state: BrowserState = { userId, index: 0, fromMenu: true };
     this.browsers.set(userId, state);
     await this.renderBrowser(interaction, state);
+  }
+
+  /**
+   * Browser bossów z slash command `/boss` — pierwsza odpowiedź to ephemeral
+   * reply (zamiast update). Bez ← Menu rowu (slash nie ma menu skąd wracać).
+   */
+  async openFromSlash(interaction: ChatInputCommandInteraction): Promise<void> {
+    const userId = interaction.user.id;
+    const userName = interaction.user.globalName || interaction.user.username;
+    const player = this.stats.get(userId, userName);
+    const bosses = sortedBosses();
+    if (bosses.length === 0) {
+      await interaction
+        .reply({ content: 'Brak bossów.', flags: MessageFlags.Ephemeral })
+        .catch(() => {});
+      return;
+    }
+    const state: BrowserState = { userId, index: 0, fromMenu: false };
+    this.browsers.set(userId, state);
+    const def = bosses[state.index];
+    const canFight = !this.cooldownReason(player);
+    await interaction
+      .reply({
+        content: this.renderBossDetails(def, player),
+        components: buildBossBrowseRows(state.userId, bosses.length, canFight, false),
+        flags: MessageFlags.Ephemeral,
+      })
+      .catch(() => {});
   }
 
   private cooldownReason(player: PlayerStats): string | null {

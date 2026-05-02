@@ -1,4 +1,14 @@
-import type { ICommand, ICommandContext } from '../../../types/command.types.js';
+import {
+  MessageFlags,
+  SlashCommandBuilder,
+  type ChatInputCommandInteraction,
+  type RESTPostAPIChatInputApplicationCommandsJSONBody,
+} from 'discord.js';
+import type {
+  ICommand,
+  ICommandContext,
+  ISlashCommand,
+} from '../../../types/command.types.js';
 import { PlayerStatsService, type PlayerStats, type SkillName } from '../services/player-stats.js';
 import { rollLoot, type LootEntry } from '../services/loot.js';
 import { fmtResource, type ToolKind } from '../services/items.js';
@@ -18,13 +28,19 @@ export interface GatheringConfig {
   successPrefix: string;
 }
 
-export abstract class GatheringCommand implements ICommand {
+export abstract class GatheringCommand implements ICommand, ISlashCommand {
   readonly requiresPrompt = false;
+  readonly slashDefinition: RESTPostAPIChatInputApplicationCommandsJSONBody;
 
   constructor(
     protected readonly stats: PlayerStatsService,
     protected readonly cfg: GatheringConfig,
-  ) {}
+  ) {
+    this.slashDefinition = new SlashCommandBuilder()
+      .setName(cfg.name)
+      .setDescription(cfg.description.slice(0, 100))
+      .toJSON();
+  }
 
   get name() {
     return this.cfg.name;
@@ -49,6 +65,16 @@ export abstract class GatheringCommand implements ICommand {
     const { msg } = ctx;
     const player = this.stats.get(msg.author.id, displayName(msg));
     await msg.reply(this.runGather(player));
+  }
+
+  async executeSlash(interaction: ChatInputCommandInteraction): Promise<void> {
+    const player = this.stats.get(
+      interaction.user.id,
+      interaction.user.globalName || interaction.user.username,
+    );
+    await interaction
+      .reply({ content: this.runGather(player), flags: MessageFlags.Ephemeral })
+      .catch(() => {});
   }
 
   /**

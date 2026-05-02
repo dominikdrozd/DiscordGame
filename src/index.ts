@@ -80,6 +80,10 @@ client.on(Events.MessageCreate, async (msg) => {
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
+  if (interaction.isAutocomplete()) {
+    await manager.dispatchAutocomplete(interaction);
+    return;
+  }
   if (interaction.isChatInputCommand()) {
     await manager.dispatchSlash(interaction);
     return;
