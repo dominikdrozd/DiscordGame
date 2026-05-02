@@ -6,7 +6,7 @@ import { ITEMS } from './items.js';
 import { REGION_LVL_REQ } from '../engine/encounters.js';
 import { displayName, errMsg } from '../../../utils.js';
 import { buildShopItemRows, buildShopCloseRow } from '../ui/shop-buttons.js';
-import { closeBattleThread } from '../engine/battle-helpers.js';
+import { deleteThreadNow } from '../engine/battle-helpers.js';
 
 interface ShopItem {
   merchantId: string;
@@ -369,7 +369,7 @@ export class CityService {
   private async autoCloseShop(state: ShopState): Promise<void> {
     if (!this.shops.has(shopKey(state.cityId, state.userId))) return;
     this.shops.delete(shopKey(state.cityId, state.userId));
-    await closeBattleThread(state.thread, '⏰ Sklep zamknięty po 5 min braku interakcji.');
+    await deleteThreadNow(state.thread, '⏰ Sklep zamknięty po 5 min braku interakcji.');
   }
 
   private findItem(state: ShopState, itemId: string): ShopItem | undefined {
@@ -485,7 +485,7 @@ export class CityService {
         components: [],
       })
       .catch(() => {});
-    await closeBattleThread(state.thread, '🛒 Wątek sklepu archiwizowany.');
+    await deleteThreadNow(state.thread, '🛒 Wątek sklepu zamknięty przez gracza — usuwam.');
   }
 
   private async buy(

@@ -54,6 +54,10 @@ function scheduleThreadDelete(thread: unknown, delayMs: number): void {
  * Po `THREAD_DELETE_DELAY_MS` (120s) wątek znika żeby nie spamował listy
  * zarchiwizowanych. Archiwizacja jest natychmiast — gracze widzą "wątek
  * zarchiwizowany" i wiedzą ile czasu mają na przeczytanie.
+ *
+ * Używane głównie przy AUTO-zakończeniu (koniec walki, idle timeout) gdzie
+ * gracz może chcieć rzucić okiem na log. Dla user-initiated close (klik
+ * "Zamknij") użyj `deleteThreadNow`.
  */
 export async function closeBattleThread(thread: unknown, postscript: string): Promise<void> {
   if (!isClosableThread(thread)) return;
@@ -63,6 +67,38 @@ export async function closeBattleThread(thread: unknown, postscript: string): Pr
     .catch(() => {});
   await thread.setArchived(true).catch(() => {});
   scheduleThreadDelete(thread, THREAD_DELETE_DELAY_MS);
+}
+
+interface DeletableThread {
+  send: (message: string) => Promise<unknown>;
+  delete: (reason?: string) => Promise<unknown>;
+}
+
+function isDeletableThread(t: unknown): t is DeletableThread {
+  if (!t || typeof t !== 'object') return false;
+  if (!('send' in t) || typeof t.send !== 'function') return false;
+  if (!('delete' in t) || typeof t.delete !== 'function') return false;
+  return true;
+}
+
+/**
+ * Natychmiast usuwa wątek po user-initiated close (klik "✖ Zamknij" w
+ * sklepie/plecaku). Pomija archiwizację + 120s delay — user świadomie
+ * zamknął, nie ma po co zostawiać artefaktu.
+ *
+ * Optymistyczny: postscript wysyłamy ale delete leci od razu (Discord
+ * delete usuwa też wiadomości historyczne).
+ */
+export async function deleteThreadNow(thread: unknown, postscript: string): Promise<void> {
+  if (!isDeletableThread(thread)) {
+    if (isClosableThread(thread)) {
+      await thread.send(postscript).catch(() => {});
+      await thread.setArchived(true).catch(() => {});
+    }
+    return;
+  }
+  await thread.send(postscript).catch(() => {});
+  await thread.delete('User closed thread').catch(() => {});
 }
 
 interface SendableChannel {

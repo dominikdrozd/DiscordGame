@@ -9,7 +9,7 @@ import type { ICommandContext } from '../../../types/command.types.js';
 import { PlayerStatsService, type PlayerStats } from './player-stats.js';
 import { fmtResource, fmtInstance, type ItemInstance } from './items.js';
 import { displayName, errMsg } from '../../../utils.js';
-import { closeBattleThread } from '../engine/battle-helpers.js';
+import { deleteThreadNow } from '../engine/battle-helpers.js';
 
 interface InventoryState {
   userId: string;
@@ -277,7 +277,7 @@ export class InventoryService {
     await interaction
       .update({ content: `🎒 Plecak zamknięty. Wpisz \`.inv\` aby otworzyć ponownie.`, components: [] })
       .catch(() => {});
-    await closeBattleThread(state.thread, '🎒 Wątek plecaka archiwizujemy.');
+    await deleteThreadNow(state.thread, '🎒 Wątek plecaka zamknięty przez gracza — usuwam.');
   }
 
   private resetIdleTimer(state: InventoryState): void {
@@ -291,7 +291,7 @@ export class InventoryService {
   private async autoClose(state: InventoryState): Promise<void> {
     if (!this.states.has(state.userId)) return;
     this.states.delete(state.userId);
-    await closeBattleThread(state.thread, '⏰ Plecak zamknięty po 5 min braku interakcji.');
+    await deleteThreadNow(state.thread, '⏰ Plecak zamknięty po 5 min braku interakcji.');
   }
 
   private renderSummary(player: PlayerStats): string {

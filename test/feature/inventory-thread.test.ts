@@ -207,6 +207,9 @@ describe('InventoryService — thread-based plecak', () => {
     expect(close.update).toHaveBeenCalledWith(
       expect.objectContaining({ content: expect.stringContaining('Plecak zamknięty') }),
     );
+    // User-initiated close → wątek usunięty od razu (bez archiwizacji + delay)
+    expect(thread.delete).toHaveBeenCalledTimes(1);
+    expect(thread.setArchived).not.toHaveBeenCalled();
 
     // Po close — drugie otwarcie powinno działać
     reply.mockClear();

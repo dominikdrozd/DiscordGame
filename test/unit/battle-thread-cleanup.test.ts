@@ -1,5 +1,6 @@
 import {
   closeBattleThread,
+  deleteThreadNow,
   postBattleSummary,
   THREAD_DELETE_DELAY_MS,
 } from '../../src/modules/game/engine/battle-helpers.js';
@@ -47,6 +48,32 @@ describe('closeBattleThread', () => {
 
   test('THREAD_DELETE_DELAY_MS to 120_000 (120s)', () => {
     expect(THREAD_DELETE_DELAY_MS).toBe(120_000);
+  });
+});
+
+describe('deleteThreadNow', () => {
+  test('wysyła postscript i usuwa wątek od razu (bez archiwizacji + delay)', async () => {
+    const thread = makeThread();
+    await deleteThreadNow(thread, '🛒 User zamknął.');
+    expect(thread.send).toHaveBeenCalledWith('🛒 User zamknął.');
+    expect(thread.delete).toHaveBeenCalledTimes(1);
+    expect(thread.setArchived).not.toHaveBeenCalled();
+  });
+
+  test('fallback do archive+postscript gdy thread nie ma .delete', async () => {
+    const thread = makeThread();
+    const partial: { send: jest.Mock; setArchived: jest.Mock } = {
+      send: thread.send,
+      setArchived: thread.setArchived,
+    };
+    await deleteThreadNow(partial, 'Bez delete API');
+    expect(partial.send).toHaveBeenCalledWith('Bez delete API');
+    expect(partial.setArchived).toHaveBeenCalledWith(true);
+  });
+
+  test('milczy gdy thread w ogóle nie pasuje', async () => {
+    await expect(deleteThreadNow(null, '...')).resolves.toBeUndefined();
+    await expect(deleteThreadNow({}, '...')).resolves.toBeUndefined();
   });
 });
 
