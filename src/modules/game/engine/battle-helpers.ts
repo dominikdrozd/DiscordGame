@@ -35,14 +35,68 @@ function isClosableThread(t: unknown): t is ClosableThread {
   return true;
 }
 
+/** Czas między archiwizacją a usunięciem wątku post-walki — chroni przed spamem zarchiwizowanych wątków. */
+export const THREAD_DELETE_DELAY_MS = 120_000;
+
+function scheduleThreadDelete(thread: unknown, delayMs: number): void {
+  if (!thread || typeof thread !== 'object') return;
+  if (!('delete' in thread)) return;
+  const fn = thread.delete;
+  if (typeof fn !== 'function') return;
+  const timer = setTimeout(() => {
+    Promise.resolve(fn.call(thread, 'Battle thread auto-cleanup')).catch(() => {});
+  }, delayMs);
+  timer.unref?.();
+}
+
 /**
- * Wysyła pożegnalny komunikat i archiwizuje wątek po zakończonej walce.
- * Archiwizacja zostawia historię, ale wątek znika z listy aktywnych.
+ * Wysyła pożegnalny komunikat, archiwizuje wątek i planuje jego usunięcie.
+ * Po `THREAD_DELETE_DELAY_MS` (120s) wątek znika żeby nie spamował listy
+ * zarchiwizowanych. Archiwizacja jest natychmiast — gracze widzą "wątek
+ * zarchiwizowany" i wiedzą ile czasu mają na przeczytanie.
  */
 export async function closeBattleThread(thread: unknown, postscript: string): Promise<void> {
   if (!isClosableThread(thread)) return;
-  await thread.send(postscript).catch(() => {});
+  const seconds = Math.round(THREAD_DELETE_DELAY_MS / 1000);
+  await thread
+    .send(`${postscript}\n_Wątek zostanie usunięty za ${seconds}s._`)
+    .catch(() => {});
   await thread.setArchived(true).catch(() => {});
+  scheduleThreadDelete(thread, THREAD_DELETE_DELAY_MS);
+}
+
+interface SendableChannel {
+  send: (payload: { content: string } | string) => Promise<unknown>;
+}
+
+function isSendableChannel(c: unknown): c is SendableChannel {
+  if (!c || typeof c !== 'object') return false;
+  if (!('send' in c)) return false;
+  return typeof c.send === 'function';
+}
+
+function getThreadParent(thread: unknown): SendableChannel | undefined {
+  if (!thread || typeof thread !== 'object') return undefined;
+  if (!('parent' in thread)) return undefined;
+  const parent = thread.parent;
+  return isSendableChannel(parent) ? parent : undefined;
+}
+
+/**
+ * Wysyła publiczne podsumowanie po WYGRANEJ walce — na kanał-rodzic wątku
+ * (zwykły czat), żeby było widoczne dla społeczności mimo że wątek
+ * niedługo zostanie usunięty. Fallback: wysyła do wątku jeśli parent
+ * niedostępny (np. testy / DM).
+ */
+export async function postBattleSummary(thread: unknown, content: string): Promise<void> {
+  const parent = getThreadParent(thread);
+  if (parent) {
+    await parent.send(content).catch(() => {});
+    return;
+  }
+  if (isClosableThread(thread)) {
+    await thread.send(content).catch(() => {});
+  }
 }
 
 export async function openItemPicker(

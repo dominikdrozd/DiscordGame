@@ -16,13 +16,13 @@ export function buildPlayerCombatant(
   stats: PlayerStatsService,
   p: PlayerStats,
 ): Combatant & { id: string } {
-  const weapon = stats.equippedItem(p, 'weapon');
-  const armor = stats.equippedItem(p, 'armor');
-  const baseHp = stats.hpFor(p) + (armor?.stats.hp ?? 0) + (weapon?.stats.hp ?? 0);
-  const damageBonus =
-    stats.damageBonus(p) + (weapon?.stats.attack ?? 0) + (armor?.stats.attack ?? 0);
-  const defenseBonus = stats.defenseBonus(p) + (armor?.stats.defense ?? 0);
-  const critBonus = (stats.critBonus(p) + (weapon?.stats.crit ?? 0)) / 100;
+  // Wszystkie staty przez `effective*` SoT methods — UI i combat zgadzają się.
+  const baseHp = stats.effectiveMaxHp(p);
+  const damageBonus = stats.effectiveDamageBonus(p);
+  const defenseBonus = stats.effectiveDefenseBonus(p);
+  // combat.ts dodaje bazę CRIT_CHANCE (0.15) — combatant.critBonus to BONUS bez bazy.
+  const critBonus =
+    (stats.critBonus(p) + stats.critBonusFromEquipment(p)) / 100;
   const consumables = snapshotConsumables(p);
   const skills: string[] = [];
   if (p.classId) {

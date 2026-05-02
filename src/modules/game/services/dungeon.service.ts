@@ -22,6 +22,7 @@ import {
   promptHumansWithPanel,
   handlePanelOpen,
   notifyChoiceMade,
+  postBattleSummary,
 } from '../engine/battle-helpers.js';
 import { DUNGEONS } from '../engine/encounters.js';
 import { BOSS_MOBS } from '../mobs/index.js';
@@ -334,10 +335,13 @@ export class DungeonService {
         this.stats.setCooldown(playerStats, 'dungeon', COOLDOWN_MS);
         syncConsumablesAfterBattle(this.stats, state);
         this.stats.save();
-        await state.thread.send(
-          [...lines, '', `💀 **${playerCombat.name}** pada w dungeonie. Cooldown 30 min.`].join(
-            '\n',
-          ),
+        // Log walki w wątku, podsumowanie też na czat-rodzic.
+        if (lines.length > 0) {
+          await state.thread.send(lines.join('\n').slice(0, 1900));
+        }
+        await postBattleSummary(
+          state.thread,
+          `🏰 **${def.name}** — porażka.\n💀 **${playerCombat.name}** pada w dungeonie. Cooldown 30 min.`,
         );
         await closeBattleThread(
           state.thread,
@@ -369,11 +373,14 @@ export class DungeonService {
         this.stats.setCooldown(playerStats, 'dungeon', COOLDOWN_MS);
         syncConsumablesAfterBattle(this.stats, state);
         this.stats.save();
-        await state.thread.send(
+        if (lines.length > 0) {
+          await state.thread.send(lines.join('\n').slice(0, 1900));
+        }
+        await postBattleSummary(
+          state.thread,
           [
-            ...lines,
-            '',
-            `🏆 **${def.name} ukończony!** Finalna nagroda:`,
+            `🏆 **${def.name} ukończony!** Zwycięża **${playerCombat.name}**.`,
+            'Finalna nagroda:',
             ...finalAward.lines,
           ].join('\n'),
         );

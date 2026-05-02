@@ -23,6 +23,7 @@ import {
   promptHumansWithPanel,
   handlePanelOpen,
   notifyChoiceMade,
+  postBattleSummary,
 } from '../engine/battle-helpers.js';
 import { buildPanelOpenerRow, buildTargetRow } from '../ui/battle-buttons.js';
 import { displayName, errMsg } from '../../../utils.js';
@@ -379,7 +380,10 @@ export class DuelService {
   ): Promise<void> {
     syncConsumablesAfterBattle(this.stats, state);
     if (result.draw) {
-      await state.thread.send(`💀 **REMIS!** Wszyscy padli w tej samej rundzie — brak XP.`);
+      await postBattleSummary(
+        state.thread,
+        `💀 **REMIS!** Pojedynek zakończył się remisem — wszyscy padli w tej samej rundzie. Brak XP.`,
+      );
       await closeBattleThread(state.thread, '🏁 Pojedynek zakończony — wątek archiwizujemy.');
       this.states.delete(state.id);
       return;
@@ -401,9 +405,10 @@ export class DuelService {
       const loseLines = award.losers.map(
         (l) => `💀 ${l.stats.name} L${l.stats.level} (+${l.gainedXp} XP)`,
       );
-      await state.thread.send(
+      await postBattleSummary(
+        state.thread,
         [
-          `**Drużyna ${result.winnerTeam === 0 ? 'A' : 'B'}** wygrywa party-duel!`,
+          `⚔️ **Party-duel zakończony!** Drużyna **${result.winnerTeam === 0 ? 'A' : 'B'}** wygrywa.`,
           ...winLines,
           ...loseLines,
         ].join('\n'),
@@ -424,8 +429,10 @@ export class DuelService {
     const levelMsg = award.winnerLeveledUp
       ? `\n🎉 **${award.winner.name}** awansuje na poziom **${award.winner.level}**! (+1 punkt do rozdania)`
       : '';
-    await state.thread.send(
+    await postBattleSummary(
+      state.thread,
       [
+        `⚔️ **Pojedynek rozstrzygnięty!**`,
         `💀 **${loserCombatant.name}** pada! Zwycięża **${winnerCombatant.name}** (${winnerCombatant.hp}/${winnerCombatant.maxHp} HP). 🏆`,
         `📈 ${winnerCombatant.name} L${award.winner.level} (${award.winner.xp} XP, ${award.winner.wins}W/${award.winner.losses}L) | ${loserCombatant.name} L${award.loser.level} (${award.loser.xp} XP, ${award.loser.wins}W/${award.loser.losses}L).${levelMsg}`,
       ].join('\n'),

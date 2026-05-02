@@ -7,7 +7,7 @@ import { BOSS_MOBS } from '../mobs/index.js';
 import { EXPEDITIONS, REGION_LVL_REQ } from '../engine/encounters.js';
 import { CLASSES, findSubclass, findSubclass2 } from '../classes/index.js';
 import { RACES } from '../races/index.js';
-import { fmtResource, fmtInstance } from './items.js';
+import { fmtResource, fmtInstance, fmtStats } from './items.js';
 import { displayName } from '../../../utils.js';
 import { buildMenuRows, buildBackToMenuRow } from '../ui/menu-buttons.js';
 import { buildCityListRows, buildCityViewRows } from '../ui/city-buttons.js';
@@ -160,6 +160,17 @@ export class MenuService {
     const classDisplay = cls
       ? `${cls.name}${sub1 ? ` / ${sub1.name}` : ''}${sub2 ? ` / ${sub2.name}` : ''}`
       : '—';
+    const w = this.stats.equippedItem(p, 'weapon');
+    const a = this.stats.equippedItem(p, 'armor');
+    const t = this.stats.equippedItem(p, 'tool');
+    const eqLine =
+      [
+        w ? `⚔️ ${w.name} (${fmtStats(w.stats)})` : '',
+        a ? `🛡️ ${a.name} (${fmtStats(a.stats)})` : '',
+        t ? `🔧 ${t.name} (${fmtStats(t.stats)})` : '',
+      ]
+        .filter(Boolean)
+        .join(' · ') || '_(nic nie założone)_';
     return [
       `📊 **${p.name}** — pełen profil`,
       `🧬 Rasa: **${raceName}** · ⚔️ Klasa: **${classDisplay}**`,
@@ -168,8 +179,12 @@ export class MenuService {
       '**Primary:**',
       `STR ${p.primary.str} · AGI ${p.primary.agi} · WIT ${p.primary.wit} · INT ${p.primary.int}`,
       '',
-      '**Stats bojowe:**',
-      `HP: ${this.stats.hpFor(p)} · Dmg: +${this.stats.damageBonus(p)} · Def: +${this.stats.defenseBonus(p)} · Crit: +${this.stats.critBonus(p).toFixed(1)} · SP: ${this.stats.spellPower(p)}`,
+      '**Stats bojowe (z ekwipunkiem):**',
+      `HP: **${this.stats.effectiveMaxHp(p)}** · Dmg: **+${this.stats.effectiveDamageBonus(p)}** · Def: **+${this.stats.effectiveDefenseBonus(p)}** · Crit: **${this.stats.effectiveCritPercent(p).toFixed(1)}%** · SP: **${this.stats.spellPower(p)}**`,
+      `_(crit zawiera bazę 15% wspólną dla wszystkich + bonusy)_`,
+      '',
+      '**Założony ekwipunek:**',
+      eqLine,
       '',
       '**Skille zawodowe:**',
       `⛏️ Mining L${p.skills.mining.level} · 🎣 Fishing L${p.skills.fishing.level} · 🪓 Wood L${p.skills.woodcutting.level} · 🛠️ Crafting L${p.skills.crafting.level} · ⚔️ Combat L${p.skills.combat.level}`,

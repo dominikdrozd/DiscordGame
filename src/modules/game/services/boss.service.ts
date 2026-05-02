@@ -22,6 +22,7 @@ import {
   promptHumansWithPanel,
   handlePanelOpen,
   notifyChoiceMade,
+  postBattleSummary,
 } from '../engine/battle-helpers.js';
 import { BOSS_MOBS } from '../mobs/index.js';
 import { buildPlayerCombatant } from '../engine/player-combatant.js';
@@ -341,17 +342,22 @@ export class BossService {
     const player = this.stats.get(playerCombatant.id, playerCombatant.name);
     this.stats.setCooldown(player, 'boss', COOLDOWN_MS);
 
+    const def = BOSS_MOBS[state.bossId];
     if (result.draw || result.winnerTeam === 1) {
-      await state.thread.send(
-        `💀 **${playerCombatant.name} pada!** Boss się śmieje. Cooldown 5 min.`,
+      await postBattleSummary(
+        state.thread,
+        `👹 **Walka z bossem: ${def?.name ?? state.bossId}**\n💀 **${playerCombatant.name}** pada — boss się śmieje. Cooldown 5 min.`,
       );
     } else {
-      const def = BOSS_MOBS[state.bossId];
       if (!def?.rewards) {
-        await state.thread.send(`Boss \`${state.bossId}\` nie ma zdefiniowanych nagród — bug.`);
+        await postBattleSummary(
+          state.thread,
+          `Boss \`${state.bossId}\` nie ma zdefiniowanych nagród — bug.`,
+        );
       } else {
         const award = awardReward(this.stats, player, def.rewards);
-        await state.thread.send(
+        await postBattleSummary(
+          state.thread,
           [
             `🏆 **${def.name}** pokonany! Zwycięża **${playerCombatant.name}** (${playerCombatant.hp}/${playerCombatant.maxHp} HP).`,
             ...award.lines,

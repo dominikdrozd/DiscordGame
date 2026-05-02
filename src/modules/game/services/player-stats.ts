@@ -239,6 +239,55 @@ export class PlayerStatsService {
     return p.primary.int * 2;
   }
 
+  // ── Effective stats (z ekwipunkiem) ─────────────────
+  // Te metody są SoT dla wyświetlania i dla `buildPlayerCombatant`.
+  // Konwencja: wszystkie sumują bazę + primary/attribute + ekwipunek.
+
+  /** Bazowy crit % w walce (constant w `combat.ts:CRIT_CHANCE`). */
+  static readonly BASE_CRIT_PCT = 15;
+
+  /** Łączny bonus crit z ekwipunku (weapon + armor + tool). */
+  critBonusFromEquipment(p: PlayerStats): number {
+    const w = this.equippedItem(p, 'weapon');
+    const a = this.equippedItem(p, 'armor');
+    const t = this.equippedItem(p, 'tool');
+    return (w?.stats.crit ?? 0) + (a?.stats.crit ?? 0) + (t?.stats.crit ?? 0);
+  }
+
+  /** Pełen crit % w walce — baza + primary/attribute + ekwipunek. */
+  effectiveCritPercent(p: PlayerStats): number {
+    return PlayerStatsService.BASE_CRIT_PCT + this.critBonus(p) + this.critBonusFromEquipment(p);
+  }
+
+  /** Pełen max HP — base + primary + attribute + ekwipunek. */
+  effectiveMaxHp(p: PlayerStats): number {
+    const w = this.equippedItem(p, 'weapon');
+    const a = this.equippedItem(p, 'armor');
+    const t = this.equippedItem(p, 'tool');
+    return (
+      this.hpFor(p) + (w?.stats.hp ?? 0) + (a?.stats.hp ?? 0) + (t?.stats.hp ?? 0)
+    );
+  }
+
+  /** Pełen damage bonus w walce — primary/attribute + ekwipunek (weapon + armor + tool). */
+  effectiveDamageBonus(p: PlayerStats): number {
+    const w = this.equippedItem(p, 'weapon');
+    const a = this.equippedItem(p, 'armor');
+    const t = this.equippedItem(p, 'tool');
+    return (
+      this.damageBonus(p) +
+      (w?.stats.attack ?? 0) +
+      (a?.stats.attack ?? 0) +
+      (t?.stats.attack ?? 0)
+    );
+  }
+
+  /** Pełen defense bonus — primary/attribute + ekwipunek (głównie armor). */
+  effectiveDefenseBonus(p: PlayerStats): number {
+    const a = this.equippedItem(p, 'armor');
+    return this.defenseBonus(p) + (a?.stats.defense ?? 0);
+  }
+
   // ── PvP outcome ────────────────────────────────────
   awardWin(
     winnerId: string,

@@ -280,10 +280,10 @@ export class ExpeditionService {
     const classDisplay = cls
       ? `${cls.name}${sub1 ? ` / ${sub1.name}` : ''}${sub2 ? ` / ${sub2.name}` : ''}`
       : '—';
-    const hp = this.stats.hpFor(p);
-    const dmg = this.stats.damageBonus(p);
-    const def = this.stats.defenseBonus(p);
-    const crit = this.stats.critBonus(p);
+    const hp = this.stats.effectiveMaxHp(p);
+    const dmg = this.stats.effectiveDamageBonus(p);
+    const def = this.stats.effectiveDefenseBonus(p);
+    const crit = this.stats.effectiveCritPercent(p);
     const sp = this.stats.spellPower(p);
     // name === id znaczy że gracz nigdy nie wpisał komendy bota — pokaż mention,
     // żeby Discord renderował username zamiast surowego snowflake'a.
@@ -299,7 +299,7 @@ export class ExpeditionService {
     return [
       `${display} (combat L${p.skills.combat.level})`,
       `   • Rasa: ${raceName} · Klasa: ${classDisplay}`,
-      `   • HP: ${hp} · Dmg: +${dmg} · Def: +${def} · Crit: +${crit.toFixed(1)} · SP: ${sp}`,
+      `   • HP: ${hp} · Dmg: +${dmg} · Def: +${def} · Crit: ${crit.toFixed(1)}% · SP: ${sp}`,
       `   • STR ${p.primary.str} · AGI ${p.primary.agi} · WIT ${p.primary.wit} · INT ${p.primary.int}`,
       `   • Eq: ${eqLine}`,
     ].join('\n');

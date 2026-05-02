@@ -42,6 +42,7 @@ import {
   promptHumansWithPanel,
   handlePanelOpen,
   notifyChoiceMade,
+  postBattleSummary,
 } from './battle-helpers.js';
 
 const AMBUSH_CHECK_INTERVAL_MS = parseInt(process.env.AMBUSH_CHECK_INTERVAL_MS || '300000', 10);
@@ -508,11 +509,12 @@ export class AmbushService {
         );
       }
       this.stats.save();
-      await state.thread.send(
-        `💀 Druzyna pada! Wyprawa do **${def?.name ?? state.expedition.destination}** przepada dla wszystkich.`,
+      await postBattleSummary(
+        state.thread,
+        `💀 **Ambush — porażka!** Drużyna pada. Wyprawa do **${def?.name ?? state.expedition.destination}** przepada dla wszystkich.`,
       );
     } else {
-      const lines: string[] = ['🏆 Banda pokonana! Łupy:'];
+      const lines: string[] = ['🏆 **Ambush — zwycięstwo!** Banda pokonana, łupy:'];
       for (const pc of playerCombatants) {
         const p = this.stats.get(pc.id, pc.name);
         const drops = def?.lootTable ? rollLootMany(def.lootTable, p.skills.combat.level, 1) : [];
@@ -532,7 +534,7 @@ export class AmbushService {
       }
       lines.push('Wyprawa kontynuowana.');
       this.stats.save();
-      await state.thread.send(lines.join('\n').slice(0, 1900));
+      await postBattleSummary(state.thread, lines.join('\n').slice(0, 1900));
     }
     await closeBattleThread(
       state.thread,
@@ -550,11 +552,10 @@ export class AmbushService {
       this.logAmbush(p.id, `⏰ Timeout w ambushu — wyprawa przepadła.`);
     }
     this.stats.save();
-    await state.thread
-      .send(
-        `⏰ Brak akcji w czasie — wyprawa pada (auto-fail po ${AMBUSH_TIMEOUT_MS / 60_000} min).`,
-      )
-      .catch(() => {});
+    await postBattleSummary(
+      state.thread,
+      `⏰ **Ambush — timeout!** Brak akcji w czasie ${AMBUSH_TIMEOUT_MS / 60_000} min — wyprawa pada.`,
+    );
     await closeBattleThread(state.thread, '🏁 Wątek zamknięty po timeoucie.');
     this.states.delete(state.id);
   }

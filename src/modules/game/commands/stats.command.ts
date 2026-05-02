@@ -49,12 +49,13 @@ export class StatsCommand implements ICommand {
     lines.push(
       `• STR ${p.primary.str} · AGI ${p.primary.agi} · WIT ${p.primary.wit} · INT ${p.primary.int}`,
     );
-    lines.push('**Secondary (z itemów / legacy):**');
+    lines.push('**Secondary (z atrybutów):**');
     lines.push(
       `• atak +${p.attribute.attack} · obrona +${p.attribute.defense} · hp +${p.attribute.hp * 5} · krit +${p.attribute.crit}%`,
     );
+    lines.push('**Stats efektywne (z primary + ekwipunek):**');
     lines.push(
-      `• max HP w walce: **${this.stats.hpFor(p)}** · bonus dmg: **+${this.stats.damageBonus(p)}** · bonus def: **+${this.stats.defenseBonus(p)}** · crit: **${this.stats.critBonus(p)}%**`,
+      `• max HP: **${this.stats.effectiveMaxHp(p)}** · bonus dmg: **+${this.stats.effectiveDamageBonus(p)}** · bonus def: **+${this.stats.effectiveDefenseBonus(p)}** · crit: **${this.stats.effectiveCritPercent(p).toFixed(1)}%** _(baza 15% + bonusy)_ · SP: **${this.stats.spellPower(p)}**`,
     );
     lines.push('');
     lines.push('**Skille:**');
