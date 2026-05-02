@@ -128,7 +128,8 @@ export class BossService {
   private async handleItemPick(interaction: ButtonInteraction): Promise<void> {
     const [, battleId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) {
+    if (!state) return; // nie moja walka — niech inny service obsłuży
+    if (state.finished) {
       await ackStaleInteraction(interaction);
       return;
     }
@@ -139,7 +140,8 @@ export class BossService {
   private async handleSklPick(interaction: ButtonInteraction): Promise<void> {
     const [, battleId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) {
+    if (!state) return; // nie moja walka — niech inny service obsłuży
+    if (state.finished) {
       await ackStaleInteraction(interaction);
       return;
     }
@@ -150,7 +152,8 @@ export class BossService {
   private async handleSklTarget(interaction: ButtonInteraction): Promise<void> {
     const [, battleId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) {
+    if (!state) return; // nie moja walka — niech inny service obsłuży
+    if (state.finished) {
       await ackStaleInteraction(interaction);
       return;
     }
@@ -161,7 +164,8 @@ export class BossService {
   private async handleAction(interaction: ButtonInteraction): Promise<void> {
     const [, battleId, combatantId, kind] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) {
+    if (!state) return; // nie moja walka — niech inny service obsłuży
+    if (state.finished) {
       await ackStaleInteraction(interaction);
       return;
     }
@@ -227,7 +231,8 @@ export class BossService {
     const [, battleId, combatantId, kind] = parts;
     const targetId = parts.slice(4).join(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) {
+    if (!state) return; // nie moja walka — niech inny service obsłuży
+    if (state.finished) {
       await ackStaleInteraction(interaction);
       return;
     }

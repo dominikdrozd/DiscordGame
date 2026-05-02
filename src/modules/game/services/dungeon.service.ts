@@ -126,7 +126,8 @@ export class DungeonService {
   private async handleItemPick(interaction: ButtonInteraction): Promise<void> {
     const [, battleId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) {
+    if (!state) return; // nie moja walka — niech inny service obsłuży
+    if (state.finished) {
       await ackStaleInteraction(interaction);
       return;
     }
@@ -137,7 +138,8 @@ export class DungeonService {
   private async handleSklPick(interaction: ButtonInteraction): Promise<void> {
     const [, battleId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) {
+    if (!state) return; // nie moja walka — niech inny service obsłuży
+    if (state.finished) {
       await ackStaleInteraction(interaction);
       return;
     }
@@ -148,7 +150,8 @@ export class DungeonService {
   private async handleSklTarget(interaction: ButtonInteraction): Promise<void> {
     const [, battleId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) {
+    if (!state) return; // nie moja walka — niech inny service obsłuży
+    if (state.finished) {
       await ackStaleInteraction(interaction);
       return;
     }
@@ -159,7 +162,8 @@ export class DungeonService {
   private async handleAction(interaction: ButtonInteraction): Promise<void> {
     const [, battleId, combatantId, kind] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) {
+    if (!state) return; // nie moja walka — niech inny service obsłuży
+    if (state.finished) {
       await ackStaleInteraction(interaction);
       return;
     }
@@ -225,7 +229,8 @@ export class DungeonService {
     const [, battleId, combatantId, kind] = parts;
     const targetId = parts.slice(4).join(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) {
+    if (!state) return; // nie moja walka — niech inny service obsłuży
+    if (state.finished) {
       await ackStaleInteraction(interaction);
       return;
     }

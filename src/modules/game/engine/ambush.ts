@@ -92,7 +92,8 @@ export class AmbushService {
   private async handleItemPick(interaction: ButtonInteraction): Promise<void> {
     const [, battleId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) {
+    if (!state) return; // nie moja walka
+    if (state.finished) {
       await ackStaleInteraction(interaction);
       return;
     }
@@ -103,7 +104,8 @@ export class AmbushService {
   private async handleSklPick(interaction: ButtonInteraction): Promise<void> {
     const [, battleId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) {
+    if (!state) return; // nie moja walka
+    if (state.finished) {
       await ackStaleInteraction(interaction);
       return;
     }
@@ -114,7 +116,8 @@ export class AmbushService {
   private async handleSklTarget(interaction: ButtonInteraction): Promise<void> {
     const [, battleId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) {
+    if (!state) return; // nie moja walka
+    if (state.finished) {
       await ackStaleInteraction(interaction);
       return;
     }
@@ -290,7 +293,8 @@ export class AmbushService {
   private async handleAction(interaction: ButtonInteraction): Promise<void> {
     const [, battleId, combatantId, kind] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) {
+    if (!state) return; // nie moja walka
+    if (state.finished) {
       await ackStaleInteraction(interaction);
       return;
     }
@@ -357,7 +361,8 @@ export class AmbushService {
     const [, battleId, combatantId, kind] = parts;
     const targetId = parts.slice(4).join(':');
     const state = this.states.get(battleId);
-    if (!state || state.finished) {
+    if (!state) return; // nie moja walka
+    if (state.finished) {
       await ackStaleInteraction(interaction);
       return;
     }
