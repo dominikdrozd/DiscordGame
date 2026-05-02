@@ -1,5 +1,10 @@
-import type { Client } from 'discord.js';
+import type {
+  ChatInputCommandInteraction,
+  Client,
+  RESTPostAPIChatInputApplicationCommandsJSONBody,
+} from 'discord.js';
 import type { ICommand } from '../types/command.types.js';
+import { hasSlashCommand } from '../types/command.types.js';
 import { errMsg } from '../utils.js';
 
 interface InteractionHandler {
@@ -79,6 +84,31 @@ export class CommandManager {
       } catch (e) {
         console.error(`[manager] handleInteraction ${cmd.name}:`, errMsg(e));
       }
+    }
+  }
+
+  /** Lista slash-command JSON definitions do rejestracji w Discord. */
+  slashDefinitions(): RESTPostAPIChatInputApplicationCommandsJSONBody[] {
+    return this.commands
+      .filter(hasSlashCommand)
+      .map((c) => c.slashDefinition);
+  }
+
+  async dispatchSlash(interaction: ChatInputCommandInteraction): Promise<void> {
+    for (const cmd of this.commands) {
+      if (!hasSlashCommand(cmd)) continue;
+      if (cmd.slashDefinition.name !== interaction.commandName) continue;
+      try {
+        await cmd.executeSlash(interaction);
+      } catch (e) {
+        console.error(`[manager] dispatchSlash ${cmd.name}:`, errMsg(e));
+        if (!interaction.replied && !interaction.deferred) {
+          await interaction
+            .reply({ content: `Błąd: ${errMsg(e)}`, ephemeral: true })
+            .catch(() => {});
+        }
+      }
+      return;
     }
   }
 

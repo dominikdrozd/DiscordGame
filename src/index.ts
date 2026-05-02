@@ -1,6 +1,7 @@
-import { Client, GatewayIntentBits, Events } from 'discord.js';
+import { Client, GatewayIntentBits, Events, REST, Routes } from 'discord.js';
 import 'dotenv/config';
 import { CommandManager } from './managers/command.manager.js';
+import { errMsg } from './utils.js';
 import { AskCommand } from './commands/ask.command.js';
 import { AskMovieCommand } from './commands/ask-movie.command.js';
 import { AskMedCommand } from './commands/ask-med.command.js';
@@ -37,6 +38,30 @@ manager.register(new ClearCommand());
 manager.register(new PurgeCommand());
 manager.register(new HelpCommand(manager));
 
+async function registerSlashCommands(applicationId: string): Promise<void> {
+  const defs = manager.slashDefinitions();
+  if (defs.length === 0) return;
+  const token = process.env.DISCORD_TOKEN || '';
+  if (!token) {
+    console.warn('[slash] brak DISCORD_TOKEN — pomijam rejestrację slash commands');
+    return;
+  }
+  const rest = new REST().setToken(token);
+  try {
+    const guildId = process.env.DISCORD_GUILD_ID;
+    // Dev: rejestracja per-guild (instant). Prod: globalna (do 1h propagacji).
+    if (guildId) {
+      await rest.put(Routes.applicationGuildCommands(applicationId, guildId), { body: defs });
+      console.log(`[slash] zarejestrowano ${defs.length} slash command(ów) w guildzie ${guildId}`);
+    } else {
+      await rest.put(Routes.applicationCommands(applicationId), { body: defs });
+      console.log(`[slash] zarejestrowano ${defs.length} slash command(ów) globalnie`);
+    }
+  } catch (e) {
+    console.error('[slash] rejestracja nieudana:', errMsg(e));
+  }
+}
+
 client.once(Events.ClientReady, (c) => {
   console.log(`Zalogowano jako ${c.user.tag}`);
   console.log(
@@ -47,6 +72,7 @@ client.once(Events.ClientReady, (c) => {
       .join(', '),
   );
   ambushService = startAmbushLoop(client, gameServices);
+  void registerSlashCommands(c.user.id);
 });
 
 client.on(Events.MessageCreate, async (msg) => {
@@ -54,6 +80,10 @@ client.on(Events.MessageCreate, async (msg) => {
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
+  if (interaction.isChatInputCommand()) {
+    await manager.dispatchSlash(interaction);
+    return;
+  }
   await manager.handleInteraction(interaction);
   if (ambushService && interaction.isButton()) {
     await ambushService.handleInteraction(interaction);

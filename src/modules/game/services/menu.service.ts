@@ -1,4 +1,4 @@
-import { type ButtonInteraction } from 'discord.js';
+import { MessageFlags, type ButtonInteraction, type ChatInputCommandInteraction } from 'discord.js';
 import type { ICommandContext } from '../../../types/command.types.js';
 import { PlayerStatsService, type PlayerStats } from './player-stats.js';
 import { PartyService } from './party.js';
@@ -58,6 +58,24 @@ export class MenuService {
       content: this.renderMain(player),
       components: buildMenuRows(player.id),
     });
+  }
+
+  /**
+   * Slash command `/menu` — odpowiedź ephemeral, widoczne tylko dla użytkownika.
+   * Click na buttony aktualizuje tę samą ephemeral wiadomość przez interaction.update.
+   */
+  async handleSlashCommand(interaction: ChatInputCommandInteraction): Promise<void> {
+    const player = this.stats.get(
+      interaction.user.id,
+      interaction.user.globalName || interaction.user.username,
+    );
+    await interaction
+      .reply({
+        content: this.renderMain(player),
+        components: buildMenuRows(player.id),
+        flags: MessageFlags.Ephemeral,
+      })
+      .catch(() => {});
   }
 
   async handleInteraction(interaction: ButtonInteraction): Promise<void> {
