@@ -297,6 +297,41 @@ export function fmtResource(id: string, qty: number): string {
   return `${emoji} ${name} ×${qty}`;
 }
 
+/**
+ * Cena sprzedaży unikalnego itemu (weapon/armor/tool) do "skupu złomu" —
+ * gracz może opylić niechciane itemy z plecaka za złoto. Cena = baza
+ * rarity + suma statów × mnożnik rarity. Tool +50% za toolTier > 1.
+ *
+ * Nie dotyczy resources/consumables — te idą przez `/city sell`.
+ */
+const RARITY_SELL_BASE: Record<Rarity, number> = {
+  common: 10,
+  uncommon: 30,
+  rare: 80,
+  epic: 200,
+  legendary: 500,
+};
+
+const RARITY_STAT_MULT: Record<Rarity, number> = {
+  common: 1,
+  uncommon: 1.5,
+  rare: 2,
+  epic: 3,
+  legendary: 4,
+};
+
+export function itemSellPrice(it: ItemInstance): number {
+  const base = RARITY_SELL_BASE[it.rarity];
+  const mult = RARITY_STAT_MULT[it.rarity];
+  const statSum =
+    (it.stats.attack ?? 0) + (it.stats.defense ?? 0) + (it.stats.hp ?? 0) + (it.stats.crit ?? 0);
+  let price = base + Math.round(statSum * mult);
+  if (it.toolTier && it.toolTier > 1) {
+    price = Math.round(price * (1 + (it.toolTier - 1) * 0.5));
+  }
+  return Math.max(1, price);
+}
+
 export const COMBAT_CONSUMABLES = new Set<string>(['potion_small']);
 
 export function isCombatConsumable(id: string): boolean {

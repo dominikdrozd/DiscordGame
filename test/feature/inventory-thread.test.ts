@@ -225,6 +225,63 @@ describe('InventoryService — thread-based plecak', () => {
     expect(thread2.send).toHaveBeenCalled();
   });
 
+  test('sell usuwa item z plecaka i dodaje złoto', async () => {
+    const player = stats.get('p1', 'Tester');
+    const initialGold = player.gold;
+    const sword = rollItemInstance('sword_iron');
+    if (!sword) throw new Error('roll failed');
+    sword.stats = { attack: 5 };
+    sword.rarity = 'common';
+    stats.addItem(player, sword);
+
+    const thread = makeThread();
+    const channel = makeChannel(thread);
+    await service.openInventoryForUser({
+      userId: 'p1',
+      userName: 'Tester',
+      channel,
+      registerThread,
+      reply,
+    });
+
+    const sellBtn = makeBtn(`inv:sell:${sword.uid}:p1`);
+    await service.handleInteraction(sellBtn as never);
+
+    expect(player.inventory.items.find((it) => it.uid === sword.uid)).toBeUndefined();
+    expect(player.gold).toBe(initialGold + 15); // common 10 + 5 atk × 1
+    expect(sellBtn.update).toHaveBeenCalledWith(
+      expect.objectContaining({ content: expect.stringContaining('Sprzedano') }),
+    );
+  });
+
+  test('sell odmawia gdy item założony — wymaga unequip', async () => {
+    const player = stats.get('p1', 'Tester');
+    const initialGold = player.gold;
+    const sword = rollItemInstance('sword_iron');
+    if (!sword) throw new Error('roll failed');
+    stats.addItem(player, sword);
+    stats.equip(player, sword.uid);
+
+    const thread = makeThread();
+    const channel = makeChannel(thread);
+    await service.openInventoryForUser({
+      userId: 'p1',
+      userName: 'Tester',
+      channel,
+      registerThread,
+      reply,
+    });
+
+    const sellBtn = makeBtn(`inv:sell:${sword.uid}:p1`);
+    await service.handleInteraction(sellBtn as never);
+
+    expect(player.inventory.items.find((it) => it.uid === sword.uid)).toBeDefined();
+    expect(player.gold).toBe(initialGold);
+    expect(sellBtn.reply).toHaveBeenCalledWith(
+      expect.objectContaining({ content: expect.stringContaining('zdejmij') }),
+    );
+  });
+
   test('rejects toggle od innego usera', async () => {
     stats.get('p1', 'Tester');
     const thread = makeThread();

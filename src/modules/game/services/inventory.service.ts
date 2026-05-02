@@ -7,7 +7,7 @@ import {
 } from 'discord.js';
 import type { ICommandContext } from '../../../types/command.types.js';
 import { PlayerStatsService, type PlayerStats } from './player-stats.js';
-import { fmtResource, fmtInstance, type ItemInstance } from './items.js';
+import { fmtResource, fmtInstance, itemSellPrice, type ItemInstance } from './items.js';
 import { displayName, errMsg } from '../../../utils.js';
 import { deleteThreadNow } from '../engine/battle-helpers.js';
 
@@ -193,6 +193,10 @@ export class InventoryService {
       const uid = parts[2];
       return this.handleToggle(interaction, state, uid);
     }
+    if (action === 'sell') {
+      const uid = parts[2];
+      return this.handleSell(interaction, state, uid);
+    }
     if (action === 'close') {
       return this.handleClose(interaction, state);
     }
@@ -237,6 +241,52 @@ export class InventoryService {
     }
 
     // Refresh summary (HP/dmg/def w nagłówku zmieniają się przy equip).
+    await this.refreshSummary(state);
+  }
+
+  private async handleSell(
+    interaction: ButtonInteraction,
+    state: InventoryState,
+    uid: string,
+  ): Promise<void> {
+    const player = this.stats.get(state.userId);
+    const item = this.stats.findItem(player, uid);
+    if (!item || !item.slot) {
+      await interaction
+        .reply({ content: 'Nie posiadasz już tego przedmiotu.', ephemeral: true })
+        .catch(() => {});
+      return;
+    }
+    if (player.equipped[item.slot] === uid) {
+      await interaction
+        .reply({
+          content: 'Najpierw zdejmij item — equipped nie sprzedasz.',
+          ephemeral: true,
+        })
+        .catch(() => {});
+      return;
+    }
+    const price = itemSellPrice(item);
+    const removed = this.stats.removeItem(player, uid);
+    if (!removed) {
+      await interaction
+        .reply({ content: 'Nie udało się usunąć itemu.', ephemeral: true })
+        .catch(() => {});
+      return;
+    }
+    this.stats.addGold(player, price);
+    this.stats.save();
+    state.itemMessageIds.delete(uid);
+
+    // Update klikniętej wiadomości — wyzeruj komponenty, pokaż info o sprzedaży.
+    await interaction
+      .update({
+        content: `💰 Sprzedano ${fmtInstance(item)} za **${price}** zł.`,
+        components: [],
+      })
+      .catch(() => {});
+
+    // Refresh summary (zmieniło się złoto + lista założonych slotów).
     await this.refreshSummary(state);
   }
 
@@ -319,7 +369,8 @@ export class InventoryService {
     const isEquipped = it.slot ? player.equipped[it.slot] === it.uid : false;
     const tag = isEquipped ? ' **[założone]**' : '';
     const slotLabel = it.slot ? ` _(slot: ${it.slot})_` : '';
-    return `${fmtInstance(it)}${slotLabel}${tag}\n\`uid: ${it.uid}\``;
+    const price = itemSellPrice(it);
+    return `${fmtInstance(it)}${slotLabel}${tag}\n💰 Skup: **${price}** zł\n\`uid: ${it.uid}\``;
   }
 
   private buildItemRow(
@@ -327,11 +378,17 @@ export class InventoryService {
     player: PlayerStats,
   ): ActionRowBuilder<ButtonBuilder> {
     const isEquipped = it.slot ? player.equipped[it.slot] === it.uid : false;
+    const price = itemSellPrice(it);
     return new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId(`inv:toggle:${it.uid}:${player.id}`)
         .setLabel(isEquipped ? '⤵️ Zdejmij' : '⤴️ Załóż')
         .setStyle(isEquipped ? ButtonStyle.Secondary : ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId(`inv:sell:${it.uid}:${player.id}`)
+        .setLabel(`💰 Sprzedaj (${price} zł)`.slice(0, 80))
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(isEquipped),
     );
   }
 
