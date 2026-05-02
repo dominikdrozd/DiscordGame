@@ -1,6 +1,6 @@
 import { Mob } from './mob.js';
 
-export class MalaStazystkaDemonow extends Mob {
+export class DemonIntern extends Mob {
   readonly id = 'mala_stazystka_demonow';
   readonly name = 'Mała Stażystka Demonów';
   readonly hp = 90;

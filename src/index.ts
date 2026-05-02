@@ -8,11 +8,7 @@ import { MovieOfTheDayCommand } from './commands/movie-of-the-day.command.js';
 import { ClearCommand } from './commands/clear.command.js';
 import { PurgeCommand } from './commands/purge.command.js';
 import { HelpCommand } from './commands/help.command.js';
-import {
-  createGameServices,
-  registerGameCommands,
-  startAmbushLoop,
-} from './modules/game/index.js';
+import { createGameServices, registerGameCommands, startAmbushLoop } from './modules/game/index.js';
 
 const client = new Client({
   intents: [

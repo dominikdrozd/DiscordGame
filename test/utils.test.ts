@@ -20,7 +20,10 @@ describe('utils', () => {
 
   describe('displayName', () => {
     test('uses member.displayName if available', () => {
-      const msg = { author: { username: 'u1', globalName: null }, member: { displayName: 'Nick1' } };
+      const msg = {
+        author: { username: 'u1', globalName: null },
+        member: { displayName: 'Nick1' },
+      };
       expect(displayName(msg as any)).toBe('Nick1');
     });
 

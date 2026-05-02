@@ -7,10 +7,7 @@ import {
 } from './battle-state.js';
 import { getSkill, isOnCooldown } from '../skills/index.js';
 
-export function chooseAiAction(
-  state: BattleState,
-  c: BattleCombatant,
-): BattleAction {
+export function chooseAiAction(state: BattleState, c: BattleCombatant): BattleAction {
   const enemies = aliveEnemies(state, c);
   if (enemies.length === 0) return { kind: 'defend' };
 

@@ -1,9 +1,4 @@
-import {
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  type ButtonInteraction,
-} from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, type ButtonInteraction } from 'discord.js';
 import type { ICommand, ICommandContext } from '../types/command.types.js';
 import type { CommandManager } from '../managers/command.manager.js';
 
@@ -50,9 +45,7 @@ export class HelpCommand implements ICommand {
   }
 
   private buildPages(): string[] {
-    const lines = this.manager
-      .list()
-      .map((c) => `• \`${c.prefix.trim()}\` — ${c.description}`);
+    const lines = this.manager.list().map((c) => `• \`${c.prefix.trim()}\` — ${c.description}`);
     const pages: string[] = [];
     let buf = '';
     for (const line of lines) {

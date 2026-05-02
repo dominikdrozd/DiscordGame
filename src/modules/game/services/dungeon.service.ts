@@ -1,7 +1,6 @@
 import { type ButtonInteraction } from 'discord.js';
 import type { ICommandContext } from '../../../types/command.types.js';
 import { PlayerStatsService } from './player-stats.js';
-import { type Combatant } from '../engine/combat.js';
 import {
   type BattleCombatant,
   type BattleState,
@@ -23,10 +22,7 @@ import { DUNGEONS } from '../engine/encounters.js';
 import { BOSS_MOBS } from '../mobs/index.js';
 import { buildPlayerCombatant } from '../engine/player-combatant.js';
 import { awardReward } from './reward.service.js';
-import {
-  buildActionRow,
-  buildTargetRow,
-} from '../ui/battle-buttons.js';
+import { buildActionRow, buildTargetRow } from '../ui/battle-buttons.js';
 import { displayName } from '../../../utils.js';
 
 interface DungeonBattleState extends BattleState {
@@ -166,7 +162,9 @@ export class DungeonService {
 
     if (kind === 'def') {
       state.pending.set(combatantId, { kind: 'defend' });
-      await interaction.reply({ content: 'Wybrałeś: **Obrona**.', ephemeral: true }).catch(() => {});
+      await interaction
+        .reply({ content: 'Wybrałeś: **Obrona**.', ephemeral: true })
+        .catch(() => {});
     } else if (kind === 'itm') {
       await openItemPicker(interaction, battleId, combatantId, me);
       return;
@@ -178,10 +176,14 @@ export class DungeonService {
       if (enemies.length === 0) return;
       if (enemies.length === 1) {
         state.pending.set(combatantId, { kind: 'attack', targetId: enemies[0].id });
-        await interaction.reply({ content: `Atak na **${enemies[0].name}**.`, ephemeral: true }).catch(() => {});
+        await interaction
+          .reply({ content: `Atak na **${enemies[0].name}**.`, ephemeral: true })
+          .catch(() => {});
       } else {
         const row = buildTargetRow(battleId, combatantId, 'atk', enemies);
-        await interaction.reply({ content: 'Wybierz cel:', ephemeral: true, components: [row] }).catch(() => {});
+        await interaction
+          .reply({ content: 'Wybierz cel:', ephemeral: true, components: [row] })
+          .catch(() => {});
         return;
       }
     } else {
@@ -204,7 +206,9 @@ export class DungeonService {
         return;
       }
       state.pending.set(combatantId, { kind: 'attack', targetId });
-      await interaction.update({ content: `Wybrany cel: **${target.name}**.`, components: [] }).catch(() => {});
+      await interaction
+        .update({ content: `Wybrany cel: **${target.name}**.`, components: [] })
+        .catch(() => {});
     }
     await this.maybeResolve(state);
   }
@@ -221,7 +225,8 @@ export class DungeonService {
     for (const [allyId, msgId] of state.promptMessageIds) {
       try {
         const m = await state.thread.messages.fetch(msgId).catch(() => null);
-        if (m) await m.edit({ components: [buildActionRow(state.id, allyId, true)] }).catch(() => {});
+        if (m)
+          await m.edit({ components: [buildActionRow(state.id, allyId, true)] }).catch(() => {});
       } catch {}
     }
     state.promptMessageIds.clear();
@@ -240,7 +245,9 @@ export class DungeonService {
         syncConsumablesAfterBattle(this.stats, state);
         this.stats.save();
         await state.thread.send(
-          [...lines, '', `💀 **${playerCombat.name}** pada w dungeonie. Cooldown 30 min.`].join('\n'),
+          [...lines, '', `💀 **${playerCombat.name}** pada w dungeonie. Cooldown 30 min.`].join(
+            '\n',
+          ),
         );
         this.states.delete(state.id);
         return;
@@ -250,10 +257,16 @@ export class DungeonService {
       const bossDef = BOSS_MOBS[state.currentBossId];
       if (bossDef?.rewards) {
         const award = awardReward(this.stats, playerStats, bossDef.rewards);
-        lines.push('', `✅ **Pokój ${state.roomIndex + 1}/${def.rooms.length} clear!** ${bossDef.name} pokonany.`);
+        lines.push(
+          '',
+          `✅ **Pokój ${state.roomIndex + 1}/${def.rooms.length} clear!** ${bossDef.name} pokonany.`,
+        );
         lines.push(...award.lines);
       } else {
-        lines.push('', `✅ **Pokój ${state.roomIndex + 1}/${def.rooms.length} clear!** ${bossDef?.name ?? state.currentBossId} pokonany.`);
+        lines.push(
+          '',
+          `✅ **Pokój ${state.roomIndex + 1}/${def.rooms.length} clear!** ${bossDef?.name ?? state.currentBossId} pokonany.`,
+        );
       }
 
       state.roomIndex += 1;
@@ -302,12 +315,7 @@ export class DungeonService {
     }
 
     await state.thread.send(
-      [
-        ...lines,
-        '',
-        this.fmtBoard(state),
-        `⏭ Runda ${state.roundNumber}`,
-      ].join('\n'),
+      [...lines, '', this.fmtBoard(state), `⏭ Runda ${state.roundNumber}`].join('\n'),
     );
     await this.promptHumans(state);
   }
@@ -326,7 +334,10 @@ export class DungeonService {
 
   private fmtBoard(state: DungeonBattleState): string {
     return state.combatants
-      .map((c) => `${c.name}: ${c.hp}/${c.maxHp} HP${c.controller === 'human' ? ` (mikstury: ${c.potionsLeft})` : ''}`)
+      .map(
+        (c) =>
+          `${c.name}: ${c.hp}/${c.maxHp} HP${c.controller === 'human' ? ` (mikstury: ${c.potionsLeft})` : ''}`,
+      )
       .join(' | ');
   }
 }

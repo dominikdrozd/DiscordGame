@@ -1,13 +1,6 @@
 import type { Combatant } from './combat.js';
 
-export type BuffKind =
-  | 'dot'
-  | 'hot'
-  | 'shield'
-  | 'defense_amp'
-  | 'damage_amp'
-  | 'taunt'
-  | 'slow';
+export type BuffKind = 'dot' | 'hot' | 'shield' | 'defense_amp' | 'damage_amp' | 'taunt' | 'slow';
 
 export interface Buff {
   id: string;
@@ -30,7 +23,8 @@ export function applyBuffsAtRoundEnd(c: Combatant): string[] {
       const before = c.hp;
       c.hp = Math.min(c.maxHp, c.hp + b.amount);
       const restored = c.hp - before;
-      if (restored > 0) lines.push(`🌿 **${c.name}** odzyskuje **${restored}** HP od **${b.source}**.`);
+      if (restored > 0)
+        lines.push(`🌿 **${c.name}** odzyskuje **${restored}** HP od **${b.source}**.`);
     }
     b.ttl -= 1;
   }

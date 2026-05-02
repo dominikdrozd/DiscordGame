@@ -1,6 +1,6 @@
 import { City, type Merchant } from './city.js';
 
-export class PortCykada extends City {
+export class PortCicada extends City {
   readonly id = 'port_cykada';
   readonly name = 'Port Cykada';
   readonly description = 'Miasto startowe i główny port handlowy. Tu zaczyna się każda przygoda.';
@@ -32,9 +32,7 @@ export class PortCykada extends City {
       name: 'Alchemiczka Mira',
       description: 'Mikstury i prosta alchemia.',
       sellMultiplier: 0.4,
-      stock: [
-        { itemId: 'potion_small', buyPrice: 25 },
-      ],
+      stock: [{ itemId: 'potion_small', buyPrice: 25 }],
     },
   ];
 }

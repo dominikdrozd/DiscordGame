@@ -17,9 +17,5 @@ interface Message {
 }
 
 export function displayName(m: Message): string {
-  return (
-    (m.member?.displayName as string) ||
-    (m.author.globalName as string) ||
-    m.author.username
-  );
+  return (m.member?.displayName as string) || (m.author.globalName as string) || m.author.username;
 }

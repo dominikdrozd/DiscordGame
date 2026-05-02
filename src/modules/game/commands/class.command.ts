@@ -39,13 +39,19 @@ export class ClassCommand implements ICommand {
     if (!sub) {
       const lines = ['🛡️ **Klasy:**'];
       for (const c of listClasses()) {
-        lines.push(`• \`${c.id}\` — **${c.name}** (${c.role}) — ${c.description} _bonus: ${fmtPrimary(c.primaryBonus)}_`);
+        lines.push(
+          `• \`${c.id}\` — **${c.name}** (${c.role}) — ${c.description} _bonus: ${fmtPrimary(c.primaryBonus)}_`,
+        );
       }
       const cur = player.classId
         ? `Obecnie: **${CLASSES[player.classId]?.name ?? player.classId}**` +
           (player.subclassId ? ` / ${player.subclassId}` : '')
         : 'Nie masz wybranej klasy.';
-      lines.push('', cur, 'Użycie: `.class info <id>` / `.class pick <id>` / `.class subclass <id>`.');
+      lines.push(
+        '',
+        cur,
+        'Użycie: `.class info <id>` / `.class pick <id>` / `.class subclass <id>`.',
+      );
       await msg.reply(lines.join('\n').slice(0, 1900));
       return;
     }
@@ -66,10 +72,14 @@ export class ClassCommand implements ICommand {
         '**Subklasy** (unlock @ combat lvl ' + SUBCLASS_UNLOCK_LEVEL + '):',
       ];
       for (const s of cls.subclasses) {
-        lines.push(`• \`${s.id}\` — **${s.name}** — ${s.description} _bonus: ${fmtPrimary(s.primaryBonus)}_`);
+        lines.push(
+          `• \`${s.id}\` — **${s.name}** — ${s.description} _bonus: ${fmtPrimary(s.primaryBonus)}_`,
+        );
         if (s.subclasses2 && s.subclasses2.length > 0) {
           for (const s2 of s.subclasses2) {
-            lines.push(`   ↳ \`${s2.id}\` — **${s2.name}** (tier-2 @ lvl ${SUBCLASS2_UNLOCK_LEVEL}) — ${s2.description} _bonus: ${fmtPrimary(s2.primaryBonus)}_`);
+            lines.push(
+              `   ↳ \`${s2.id}\` — **${s2.name}** (tier-2 @ lvl ${SUBCLASS2_UNLOCK_LEVEL}) — ${s2.description} _bonus: ${fmtPrimary(s2.primaryBonus)}_`,
+            );
           }
         }
       }
@@ -106,7 +116,9 @@ export class ClassCommand implements ICommand {
       if (!sc) {
         const cls = CLASSES[player.classId];
         const opts = cls ? cls.subclasses.map((s) => s.id).join(', ') : '';
-        await msg.reply(`Subklasa \`${id ?? ''}\` nie pasuje. Dostępne dla **${player.classId}**: ${opts}.`);
+        await msg.reply(
+          `Subklasa \`${id ?? ''}\` nie pasuje. Dostępne dla **${player.classId}**: ${opts}.`,
+        );
         return;
       }
       const result = this.stats.applySubclass(
@@ -141,7 +153,9 @@ export class ClassCommand implements ICommand {
       if (!sc2) {
         const sub1 = findSubclass(player.classId, player.subclassId);
         const opts = sub1?.subclasses2?.map((s) => s.id).join(', ') ?? '';
-        await msg.reply(`Tier-2 subklasa \`${id ?? ''}\` nie pasuje. Dostępne dla **${player.subclassId}**: ${opts || '(brak)'}.`);
+        await msg.reply(
+          `Tier-2 subklasa \`${id ?? ''}\` nie pasuje. Dostępne dla **${player.subclassId}**: ${opts || '(brak)'}.`,
+        );
         return;
       }
       const result = this.stats.applySubclass2(
@@ -172,12 +186,11 @@ export class ClassCommand implements ICommand {
         await msg.reply(`Nie znaleziono definicji klasy \`${player.classId}\`.`);
         return;
       }
-      const sub1 = player.subclassId
-        ? findSubclass(player.classId, player.subclassId)
-        : undefined;
-      const sub2 = player.subclass2Id && player.subclassId
-        ? findSubclass2(player.classId, player.subclassId, player.subclass2Id)
-        : undefined;
+      const sub1 = player.subclassId ? findSubclass(player.classId, player.subclassId) : undefined;
+      const sub2 =
+        player.subclass2Id && player.subclassId
+          ? findSubclass2(player.classId, player.subclassId, player.subclass2Id)
+          : undefined;
       this.stats.resetClass(player, cls.primaryBonus, sub1?.primaryBonus, sub2?.primaryBonus);
       this.stats.save();
       const parts = [`${fmtPrimary(cls.primaryBonus)} (klasa)`];
@@ -189,6 +202,8 @@ export class ClassCommand implements ICommand {
       return;
     }
 
-    await msg.reply('Użycie: `.class` / `.class info <id>` / `.class pick <id>` / `.class subclass <id>` / `.class subclass2 <id>` / `.class reset`.');
+    await msg.reply(
+      'Użycie: `.class` / `.class info <id>` / `.class pick <id>` / `.class subclass <id>` / `.class subclass2 <id>` / `.class reset`.',
+    );
   }
 }

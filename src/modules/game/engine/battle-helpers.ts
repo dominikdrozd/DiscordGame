@@ -4,7 +4,11 @@ import { findCombatant, aliveAllies, aliveEnemies } from './battle-state.js';
 import { consumablesUsed } from './player-combatant.js';
 import type { PlayerStatsService } from '../services/player-stats.js';
 import { ITEMS } from '../services/items.js';
-import { buildItemPickerRow, buildSkillPickerRow, buildSkillTargetRow } from '../ui/battle-buttons.js';
+import {
+  buildItemPickerRow,
+  buildSkillPickerRow,
+  buildSkillTargetRow,
+} from '../ui/battle-buttons.js';
 import { getSkill, isOnCooldown } from '../skills/index.js';
 
 export async function openItemPicker(
@@ -45,9 +49,7 @@ export async function recordItemPick(
       return false;
     }
     state.pending.set(combatantId, { kind: 'item' });
-    await interaction
-      .update({ content: 'Wybrałeś: 🧪 Mikstura.', components: [] })
-      .catch(() => {});
+    await interaction.update({ content: 'Wybrałeś: 🧪 Mikstura.', components: [] }).catch(() => {});
     return true;
   }
 
@@ -60,9 +62,7 @@ export async function recordItemPick(
   }
   state.pending.set(combatantId, { kind: 'item', itemId });
   const name = ITEMS[itemId]?.name ?? itemId;
-  await interaction
-    .update({ content: `Wybrałeś: **${name}**.`, components: [] })
-    .catch(() => {});
+  await interaction.update({ content: `Wybrałeś: **${name}**.`, components: [] }).catch(() => {});
   return true;
 }
 
@@ -105,7 +105,11 @@ export async function handleSkillPick(
   }
 
   // self / allEnemies / allAllies — od razu rejestrujemy
-  if (skill.targeting === 'self' || skill.targeting === 'allEnemies' || skill.targeting === 'allAllies') {
+  if (
+    skill.targeting === 'self' ||
+    skill.targeting === 'allEnemies' ||
+    skill.targeting === 'allAllies'
+  ) {
     state.pending.set(combatantId, { kind: 'skill', skillId });
     await interaction
       .update({ content: `Wybrano: **${skill.name}**.`, components: [] })
@@ -114,8 +118,7 @@ export async function handleSkillPick(
   }
 
   // ally / enemy — pokazujemy target picker
-  const targets =
-    skill.targeting === 'enemy' ? aliveEnemies(state, me) : aliveAllies(state, me);
+  const targets = skill.targeting === 'enemy' ? aliveEnemies(state, me) : aliveAllies(state, me);
   if (targets.length === 0) {
     await interaction
       .update({ content: 'Brak żywych celów dla tego skilla.', components: [] })
@@ -160,10 +163,7 @@ export async function handleSkillTarget(
   return true;
 }
 
-export function syncConsumablesAfterBattle(
-  stats: PlayerStatsService,
-  state: BattleState,
-): void {
+export function syncConsumablesAfterBattle(stats: PlayerStatsService, state: BattleState): void {
   let changed = false;
   for (const c of state.combatants) {
     if (c.controller !== 'human' || !c.consumablesStart) continue;

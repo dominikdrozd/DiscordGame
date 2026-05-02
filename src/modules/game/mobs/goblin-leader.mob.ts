@@ -1,6 +1,6 @@
 import { Mob, type MobReward, type MobTier } from './mob.js';
 
-export class GoblinLider extends Mob {
+export class GoblinLeader extends Mob {
   readonly id = 'goblin_lider';
   readonly name = 'Goblin Lider Frytkowy';
   readonly tier: MobTier = 2;

@@ -117,7 +117,10 @@ export const DRUID_SKILLS: Record<string, Skill> = {
       let cleansed = '';
       if (target.buffs && target.buffs.length > 0) {
         const debuffIdx = target.buffs.findIndex(
-          (b) => b.kind === 'dot' || b.kind === 'slow' || (b.kind === 'damage_amp' && (b.amount ?? 0) < 0),
+          (b) =>
+            b.kind === 'dot' ||
+            b.kind === 'slow' ||
+            (b.kind === 'damage_amp' && (b.amount ?? 0) < 0),
         );
         if (debuffIdx >= 0) {
           const removed = target.buffs[debuffIdx];

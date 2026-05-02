@@ -1,6 +1,6 @@
 import { Mob, type MobReward, type MobTier } from './mob.js';
 
-export class JadowyPajak extends Mob {
+export class VenomousSpider extends Mob {
   readonly id = 'jadowy_pajak';
   readonly name = 'Jadowy Pająk z Piwnicy';
   readonly tier: MobTier = 3;

@@ -25,11 +25,7 @@ export class CityService {
 
   private async list(msg: any): Promise<void> {
     const player = this.stats.get(msg.author.id, displayName(msg));
-    const lines: string[] = [
-      '🏛️ **Miasta:**',
-      `_Twoje złoto:_ 💰 **${player.gold}**`,
-      '',
-    ];
+    const lines: string[] = ['🏛️ **Miasta:**', `_Twoje złoto:_ 💰 **${player.gold}**`, ''];
     for (const c of listCities().sort((a, b) => a.region - b.region)) {
       const minLvl = REGION_LVL_REQ[c.region];
       const accessible = player.skills.combat.level >= minLvl;
@@ -105,9 +101,7 @@ export class CityService {
       );
       return;
     }
-    const merchantWithStock = city.merchants.find((m) =>
-      m.stock.some((s) => s.itemId === itemId),
-    );
+    const merchantWithStock = city.merchants.find((m) => m.stock.some((s) => s.itemId === itemId));
     if (!merchantWithStock) {
       await msg.reply(`W **${city.name}** nikt nie sprzedaje \`${itemId}\`.`);
       return;
@@ -116,9 +110,7 @@ export class CityService {
     const qty = Math.max(1, parseInt(qtyArg ?? '1', 10) || 1);
     const totalCost = stockEntry.buyPrice * qty;
     if (!this.stats.hasGold(player, totalCost)) {
-      await msg.reply(
-        `Brakuje złota: potrzebujesz **${totalCost}**, masz **${player.gold}**.`,
-      );
+      await msg.reply(`Brakuje złota: potrzebujesz **${totalCost}**, masz **${player.gold}**.`);
       return;
     }
     this.stats.removeGold(player, totalCost);
@@ -135,7 +127,9 @@ export class CityService {
     qtyArg: string | undefined,
   ): Promise<void> {
     if (!itemId) {
-      await msg.reply('Użycie: `.city sell <item_id> [qty]` (sprzedaż w aktualnie odwiedzanym mieście — wybierane automatycznie po najwyższej cenie skupu).');
+      await msg.reply(
+        'Użycie: `.city sell <item_id> [qty]` (sprzedaż w aktualnie odwiedzanym mieście — wybierane automatycznie po najwyższej cenie skupu).',
+      );
       return;
     }
     const player = this.stats.get(msg.author.id, displayName(msg));

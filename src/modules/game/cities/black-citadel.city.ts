@@ -1,9 +1,10 @@
 import { City, type Merchant } from './city.js';
 
-export class CzarnaCytadela extends City {
+export class BlackCitadel extends City {
   readonly id = 'czarna_cytadela';
   readonly name = 'Czarna Cytadela';
-  readonly description = 'Mroczna forteca stanowiąca ostatni bastion cywilizacji w Przeklętej Północy.';
+  readonly description =
+    'Mroczna forteca stanowiąca ostatni bastion cywilizacji w Przeklętej Północy.';
   readonly region = 4;
   readonly merchants: Merchant[] = [
     {
@@ -32,9 +33,7 @@ export class CzarnaCytadela extends City {
       name: 'Czarny Alchemik',
       description: 'Mikstury i znajomość rzeczy zakazanych.',
       sellMultiplier: 0.5,
-      stock: [
-        { itemId: 'potion_small', buyPrice: 35 },
-      ],
+      stock: [{ itemId: 'potion_small', buyPrice: 35 }],
     },
   ];
 }

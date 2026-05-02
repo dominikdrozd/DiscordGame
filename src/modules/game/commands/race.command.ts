@@ -67,9 +67,7 @@ export class RaceCommand implements ICommand {
         return;
       }
       this.stats.save();
-      await msg.reply(
-        `✅ Witaj, **${race.name}**! Otrzymujesz: ${fmtRaceStats(race)}.`,
-      );
+      await msg.reply(`✅ Witaj, **${race.name}**! Otrzymujesz: ${fmtRaceStats(race)}.`);
       return;
     }
 

@@ -43,9 +43,7 @@ export class PurgeCommand implements ICommand {
         .catch(() => {});
     } catch (e) {
       console.error('[purge]', (e as Error).message);
-      await msg.channel
-        .send(`Błąd przy purge: ${(e as Error).message}`)
-        .catch(() => {});
+      await msg.channel.send(`Błąd przy purge: ${(e as Error).message}`).catch(() => {});
     }
   }
 }

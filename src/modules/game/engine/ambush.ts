@@ -1,10 +1,15 @@
 import type { Client, ButtonInteraction } from 'discord.js';
-import { PlayerStatsService, type PlayerStats } from '../services/player-stats.js';
+import { PlayerStatsService } from '../services/player-stats.js';
 import { PartyService, type Party } from '../services/party.js';
 import { rollLootMany } from '../services/loot.js';
 import { ITEMS } from '../services/items.js';
 import { EXPEDITIONS, type ExpeditionDef } from './encounters.js';
-import { randomAmbushMob, ambushTierForLevel, type RandomAmbushOpts, type MobTier } from '../mobs/index.js';
+import {
+  randomAmbushMob,
+  ambushTierForLevel,
+  type RandomAmbushOpts,
+  type MobTier,
+} from '../mobs/index.js';
 
 function buildAmbushOpts(def: ExpeditionDef | undefined, combatLvl: number): RandomAmbushOpts {
   const opts: RandomAmbushOpts = {};
@@ -25,7 +30,6 @@ import {
   findCombatant,
   humansAlive,
 } from './battle-state.js';
-import { type Combatant } from './combat.js';
 import { resolveBattleRound } from './combat-battle.js';
 import { chooseAiAction } from './ai.js';
 import { buildPlayerCombatant } from './player-combatant.js';
@@ -39,10 +43,7 @@ import {
   handleSkillTarget,
 } from './battle-helpers.js';
 
-const AMBUSH_CHECK_INTERVAL_MS = parseInt(
-  process.env.AMBUSH_CHECK_INTERVAL_MS || '300000',
-  10,
-);
+const AMBUSH_CHECK_INTERVAL_MS = parseInt(process.env.AMBUSH_CHECK_INTERVAL_MS || '300000', 10);
 const AMBUSH_CHANCE = parseFloat(process.env.AMBUSH_CHANCE || '0.25');
 const AMBUSH_TIMEOUT_MS = 10 * 60_000;
 
@@ -65,9 +66,7 @@ export class AmbushService {
   start(): void {
     if (this.timer) return;
     this.timer = setInterval(() => {
-      this.tick().catch((e) =>
-        console.error('[ambush] tick fail:', (e as Error).message),
-      );
+      this.tick().catch((e) => console.error('[ambush] tick fail:', (e as Error).message));
     }, AMBUSH_CHECK_INTERVAL_MS);
     if ((this.timer as any).unref) (this.timer as any).unref();
     console.log(
@@ -151,13 +150,17 @@ export class AmbushService {
     if (!channel || !('send' in channel)) return;
 
     const announcement = await (channel as any)
-      .send(`🏹 ${members.map((m) => `<@${m.id}>`).join(' ')} — z krzaków wyskakuje banda — broń się!`)
+      .send(
+        `🏹 ${members.map((m) => `<@${m.id}>`).join(' ')} — z krzaków wyskakuje banda — broń się!`,
+      )
       .catch(() => null);
     if (!announcement) return;
-    const thread = await announcement.startThread({
-      name: `Ambush: party (${members.length})`.slice(0, 100),
-      autoArchiveDuration: 60,
-    }).catch(() => null);
+    const thread = await announcement
+      .startThread({
+        name: `Ambush: party (${members.length})`.slice(0, 100),
+        autoArchiveDuration: 60,
+      })
+      .catch(() => null);
     if (!thread) return;
 
     const playerCombatants: BattleCombatant[] = members.map((p) => ({
@@ -193,7 +196,9 @@ export class AmbushService {
     this.states.set(thread.id, state);
 
     state.timeoutHandle = setTimeout(() => {
-      this.timeoutAmbush(state).catch((e) => console.error('[ambush] party timeout fail:', (e as Error).message));
+      this.timeoutAmbush(state).catch((e) =>
+        console.error('[ambush] party timeout fail:', (e as Error).message),
+      );
     }, AMBUSH_TIMEOUT_MS);
     if ((state.timeoutHandle as any).unref) (state.timeoutHandle as any).unref();
 
@@ -254,7 +259,9 @@ export class AmbushService {
     this.states.set(thread.id, state);
 
     state.timeoutHandle = setTimeout(() => {
-      this.timeoutAmbush(state).catch((e) => console.error('[ambush] timeout fail:', (e as Error).message));
+      this.timeoutAmbush(state).catch((e) =>
+        console.error('[ambush] timeout fail:', (e as Error).message),
+      );
     }, AMBUSH_TIMEOUT_MS);
     if ((state.timeoutHandle as any).unref) (state.timeoutHandle as any).unref();
 
@@ -281,7 +288,9 @@ export class AmbushService {
 
     if (kind === 'def') {
       state.pending.set(combatantId, { kind: 'defend' });
-      await interaction.reply({ content: 'Wybrałeś: **Obrona**.', ephemeral: true }).catch(() => {});
+      await interaction
+        .reply({ content: 'Wybrałeś: **Obrona**.', ephemeral: true })
+        .catch(() => {});
     } else if (kind === 'itm') {
       await openItemPicker(interaction, battleId, combatantId, me);
       return;
@@ -293,10 +302,14 @@ export class AmbushService {
       if (enemies.length === 0) return;
       if (enemies.length === 1) {
         state.pending.set(combatantId, { kind: 'attack', targetId: enemies[0].id });
-        await interaction.reply({ content: `Atak na **${enemies[0].name}**.`, ephemeral: true }).catch(() => {});
+        await interaction
+          .reply({ content: `Atak na **${enemies[0].name}**.`, ephemeral: true })
+          .catch(() => {});
       } else {
         const row = buildTargetRow(battleId, combatantId, 'atk', enemies);
-        await interaction.reply({ content: 'Wybierz cel:', ephemeral: true, components: [row] }).catch(() => {});
+        await interaction
+          .reply({ content: 'Wybierz cel:', ephemeral: true, components: [row] })
+          .catch(() => {});
         return;
       }
     } else {
@@ -318,7 +331,9 @@ export class AmbushService {
         return;
       }
       state.pending.set(combatantId, { kind: 'attack', targetId });
-      await interaction.update({ content: `Wybrany: **${target.name}**.`, components: [] }).catch(() => {});
+      await interaction
+        .update({ content: `Wybrany: **${target.name}**.`, components: [] })
+        .catch(() => {});
     }
     await this.maybeResolve(state);
   }
@@ -334,7 +349,8 @@ export class AmbushService {
     for (const [allyId, msgId] of state.promptMessageIds) {
       try {
         const m = await state.thread.messages.fetch(msgId).catch(() => null);
-        if (m) await m.edit({ components: [buildActionRow(state.id, allyId, true)] }).catch(() => {});
+        if (m)
+          await m.edit({ components: [buildActionRow(state.id, allyId, true)] }).catch(() => {});
       } catch {}
     }
     state.promptMessageIds.clear();
@@ -347,17 +363,15 @@ export class AmbushService {
     }
 
     await state.thread.send(
-      [
-        ...result.lines,
-        '',
-        this.fmtBoard(state),
-        `⏭ Runda ${state.roundNumber}`,
-      ].join('\n'),
+      [...result.lines, '', this.fmtBoard(state), `⏭ Runda ${state.roundNumber}`].join('\n'),
     );
     await this.promptHumans(state);
   }
 
-  private async finishAmbush(state: AmbushBattleState, result: { draw?: boolean; winnerTeam?: number }): Promise<void> {
+  private async finishAmbush(
+    state: AmbushBattleState,
+    result: { draw?: boolean; winnerTeam?: number },
+  ): Promise<void> {
     if (state.timeoutHandle) clearTimeout(state.timeoutHandle);
     syncConsumablesAfterBattle(this.stats, state);
     const playerCombatants = state.combatants.filter((c) => c.team === 0);
@@ -376,9 +390,7 @@ export class AmbushService {
       const lines: string[] = ['🏆 Banda pokonana! Łupy:'];
       for (const pc of playerCombatants) {
         const p = this.stats.get(pc.id, pc.name);
-        const drops = def?.lootTable
-          ? rollLootMany(def.lootTable, p.skills.combat.level, 1)
-          : [];
+        const drops = def?.lootTable ? rollLootMany(def.lootTable, p.skills.combat.level, 1) : [];
         const dropLabels: string[] = [];
         for (const d of drops) {
           this.stats.addResource(p, d.itemId, d.qty);
@@ -405,7 +417,9 @@ export class AmbushService {
     }
     this.stats.save();
     await state.thread
-      .send(`⏰ Brak akcji w czasie — wyprawa pada (auto-fail po ${AMBUSH_TIMEOUT_MS / 60_000} min).`)
+      .send(
+        `⏰ Brak akcji w czasie — wyprawa pada (auto-fail po ${AMBUSH_TIMEOUT_MS / 60_000} min).`,
+      )
       .catch(() => {});
     this.states.delete(state.id);
   }
@@ -424,7 +438,10 @@ export class AmbushService {
 
   private fmtBoard(state: AmbushBattleState): string {
     return state.combatants
-      .map((c) => `${c.name}: ${c.hp}/${c.maxHp} HP${c.controller === 'human' ? ` (mikstury: ${c.potionsLeft})` : ''}`)
+      .map(
+        (c) =>
+          `${c.name}: ${c.hp}/${c.maxHp} HP${c.controller === 'human' ? ` (mikstury: ${c.potionsLeft})` : ''}`,
+      )
       .join(' | ');
   }
 }

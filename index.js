@@ -83,9 +83,7 @@ async function getMovieDetails(movieId) {
 
   const year = data.release_date ? data.release_date.slice(0, 4) : 'rok nieznany';
   const directorStr = directors.length ? directors.join(', ') : 'reżyser nieznany';
-  const castStr = cast.length
-    ? cast.map((c) => c.name).join(', ')
-    : 'obsada nieznana';
+  const castStr = cast.length ? cast.map((c) => c.name).join(', ') : 'obsada nieznana';
   const rating =
     typeof data.vote_average === 'number' && data.vote_count
       ? `${data.vote_average.toFixed(1)}/10 (TMDB, ${data.vote_count} głosów)`
@@ -121,14 +119,20 @@ async function runTool(call) {
   const name = call.function?.name;
   let args = call.function?.arguments ?? {};
   if (typeof args === 'string') {
-    try { args = JSON.parse(args); } catch { args = {}; }
+    try {
+      args = JSON.parse(args);
+    } catch {
+      args = {};
+    }
   }
   console.log(`[tool] -> ${name}(${JSON.stringify(args)})`);
   let result;
   if (name === 'search_movie') result = await searchMovie(args.title || '');
   else if (name === 'get_movie_details') result = await getMovieDetails(args.movie_id);
   else result = { error: `nieznane narzędzie: ${name}` };
-  console.log(`[tool] <- ${JSON.stringify(result).slice(0, 200)}${JSON.stringify(result).length > 200 ? '…' : ''}`);
+  console.log(
+    `[tool] <- ${JSON.stringify(result).slice(0, 200)}${JSON.stringify(result).length > 200 ? '…' : ''}`,
+  );
   return result;
 }
 
@@ -207,7 +211,9 @@ function streamQwen(messages, onUpdate, tools) {
             buffer = buffer.slice(nl + 1);
             if (!line) continue;
             let obj;
-            try { obj = JSON.parse(line); } catch {
+            try {
+              obj = JSON.parse(line);
+            } catch {
               console.error('[stream] parse fail:', line);
               continue;
             }
@@ -215,7 +221,9 @@ function streamQwen(messages, onUpdate, tools) {
             if (part) {
               full += part;
               chunkCount++;
-              console.log(`[stream] chunk #${chunkCount} (+1 token, ${part.length} chars): ${JSON.stringify(part)}`);
+              console.log(
+                `[stream] chunk #${chunkCount} (+1 token, ${part.length} chars): ${JSON.stringify(part)}`,
+              );
               onUpdate(full);
             }
             const tc = obj.message?.tool_calls;
@@ -229,11 +237,13 @@ function streamQwen(messages, onUpdate, tools) {
           }
         });
         res.on('end', () => {
-          console.log(`[stream] done: ${chunkCount} chunks, ${full.length} chars, prompt=${promptEvalCount} tok, generated=${evalCount} tok, tool_calls=${toolCalls.length}`);
+          console.log(
+            `[stream] done: ${chunkCount} chunks, ${full.length} chars, prompt=${promptEvalCount} tok, generated=${evalCount} tok, tool_calls=${toolCalls.length}`,
+          );
           resolve({ content: full.trim(), toolCalls });
         });
         res.on('error', reject);
-      }
+      },
     );
     req.on('error', reject);
     req.write(body);
@@ -281,8 +291,7 @@ client.once(Events.ClientReady, (c) => {
 client.on(Events.MessageCreate, async (msg) => {
   if (msg.author.bot) return;
 
-  const inOurThread =
-    msg.channel.isThread?.() && msg.channel.ownerId === client.user.id;
+  const inOurThread = msg.channel.isThread?.() && msg.channel.ownerId === client.user.id;
 
   let prompt;
   if (inOurThread) {
@@ -358,7 +367,10 @@ client.on(Events.MessageCreate, async (msg) => {
           .join(', ');
         console.log(`[round ${round}] tool_calls: ${names}`);
 
-        if (timer) { clearTimeout(timer); timer = null; }
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
         latest = `🔎 Sprawdzam: ${names}…`;
         await pushEdit();
 
@@ -375,7 +387,10 @@ client.on(Events.MessageCreate, async (msg) => {
         lastSent = latest;
       }
 
-      if (timer) { clearTimeout(timer); timer = null; }
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
       latest = answer;
       await pushEdit();
       await msg.react('✅').catch(() => {});

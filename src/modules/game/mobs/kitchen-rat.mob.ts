@@ -1,6 +1,6 @@
 import { Mob, type MobReward } from './mob.js';
 
-export class SzczurKuchenny extends Mob {
+export class KitchenRat extends Mob {
   readonly id = 'szczur_kuchenny';
   readonly name = 'Szczur Kuchenny Damian';
   readonly hp = 50;

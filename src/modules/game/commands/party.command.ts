@@ -1,9 +1,4 @@
-import {
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  type ButtonInteraction,
-} from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, type ButtonInteraction } from 'discord.js';
 import type { ICommand, ICommandContext } from '../../../types/command.types.js';
 import { PartyService, MAX_PARTY } from '../services/party.js';
 import { displayName } from '../../../utils.js';
@@ -61,7 +56,9 @@ export class PartyCommand implements ICommand {
         return;
       }
       const party = this.party.create(msg.author.id);
-      await msg.reply(`🎯 Party \`${party.id}\` założone — jesteś liderem. Zapraszaj przez \`.party invite @user\`.`);
+      await msg.reply(
+        `🎯 Party \`${party.id}\` założone — jesteś liderem. Zapraszaj przez \`.party invite @user\`.`,
+      );
       return;
     }
 
@@ -144,7 +141,9 @@ export class PartyCommand implements ICommand {
         await msg.reply(result.reason ?? 'Nie udało się wyjść.');
         return;
       }
-      await msg.reply(result.partyDisbanded ? 'Wyszedłeś — party rozwiązane.' : 'Wyszedłeś z party.');
+      await msg.reply(
+        result.partyDisbanded ? 'Wyszedłeś — party rozwiązane.' : 'Wyszedłeś z party.',
+      );
       return;
     }
 
@@ -183,7 +182,9 @@ export class PartyCommand implements ICommand {
       return;
     }
 
-    await msg.reply('Użycie: `.party` / `.party create` / `.party invite @user` / `.party accept` / `.party decline` / `.party leave` / `.party kick @user` / `.party disband`.');
+    await msg.reply(
+      'Użycie: `.party` / `.party create` / `.party invite @user` / `.party accept` / `.party decline` / `.party leave` / `.party kick @user` / `.party disband`.',
+    );
   }
 
   async handleInteraction(interaction: ButtonInteraction): Promise<void> {
@@ -215,7 +216,10 @@ export class PartyCommand implements ICommand {
     }
   }
 
-  private async replyAccept(msg: any, result: { ok: boolean; reason?: string; party?: any }): Promise<void> {
+  private async replyAccept(
+    msg: any,
+    result: { ok: boolean; reason?: string; party?: any },
+  ): Promise<void> {
     if (!result.ok) {
       await msg.reply(result.reason ?? 'Nie udało się dołączyć.');
       return;

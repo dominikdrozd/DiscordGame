@@ -1,6 +1,6 @@
 import { Mob, type MobReward } from './mob.js';
 
-export class BabaJaga extends Mob {
+export class BabaYaga extends Mob {
   readonly id = 'baba_jaga';
   readonly name = 'Baba Jaga z Bloku';
   readonly hp = 160;

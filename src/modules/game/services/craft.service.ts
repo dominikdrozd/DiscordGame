@@ -57,7 +57,9 @@ export class CraftService {
     } else if (recipe.outputBaseId) {
       const item = rollItemInstance(recipe.outputBaseId);
       if (!item) {
-        await msg.reply(`Bug w przepisie \`${recipe.id}\` — output \`${recipe.outputBaseId}\` nie jest equippable.`);
+        await msg.reply(
+          `Bug w przepisie \`${recipe.id}\` — output \`${recipe.outputBaseId}\` nie jest equippable.`,
+        );
         return;
       }
       this.stats.addItem(player, item);

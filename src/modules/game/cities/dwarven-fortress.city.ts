@@ -1,9 +1,10 @@
 import { City, type Merchant } from './city.js';
 
-export class KrasnoludzkaTwierdza extends City {
+export class DwarvenFortress extends City {
   readonly id = 'krasnoludzka_twierdza';
   readonly name = 'Krasnoludzka Twierdza';
-  readonly description = 'Potężne miasto wykute wewnątrz góry. Najlepsi rzemieślnicy, najtwardsze złoża.';
+  readonly description =
+    'Potężne miasto wykute wewnątrz góry. Najlepsi rzemieślnicy, najtwardsze złoża.';
   readonly region = 3;
   readonly merchants: Merchant[] = [
     {
@@ -22,9 +23,7 @@ export class KrasnoludzkaTwierdza extends City {
       name: 'Jubiler Targon',
       description: 'Diamenty, kryształy, ozdoby z głębi gór.',
       sellMultiplier: 0.5,
-      stock: [
-        { itemId: 'gem_diamond', buyPrice: 90 },
-      ],
+      stock: [{ itemId: 'gem_diamond', buyPrice: 90 }],
     },
     {
       id: 'kowal_thorin',

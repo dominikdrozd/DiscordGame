@@ -127,7 +127,8 @@ export function applyAttack(attacker: Combatant, defender: Combatant): string {
   const shieldOpen = consumeShield(defender, dmg);
   dmg = shieldOpen.remaining;
   defender.hp = Math.max(0, defender.hp - dmg);
-  const shieldOpenNote = shieldOpen.absorbed > 0 ? ` (tarcza pochłonęła ${shieldOpen.absorbed})` : '';
+  const shieldOpenNote =
+    shieldOpen.absorbed > 0 ? ` (tarcza pochłonęła ${shieldOpen.absorbed})` : '';
   return `⚔️ **${attacker.name}** odpala **${attackName}** i robi **${dmg}** dmg.${critTag}${shieldOpenNote}`;
 }
 

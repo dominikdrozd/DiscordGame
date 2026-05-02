@@ -18,8 +18,7 @@ export function buildPlayerCombatant(
 ): Combatant & { id: string } {
   const weapon = stats.equippedItem(p, 'weapon');
   const armor = stats.equippedItem(p, 'armor');
-  const baseHp =
-    stats.hpFor(p) + (armor?.stats.hp ?? 0) + (weapon?.stats.hp ?? 0);
+  const baseHp = stats.hpFor(p) + (armor?.stats.hp ?? 0) + (weapon?.stats.hp ?? 0);
   const damageBonus =
     stats.damageBonus(p) + (weapon?.stats.attack ?? 0) + (armor?.stats.attack ?? 0);
   const defenseBonus = stats.defenseBonus(p) + (armor?.stats.defense ?? 0);

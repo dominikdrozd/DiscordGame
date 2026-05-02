@@ -1,6 +1,5 @@
 import type { Skill } from './index.js';
 import { addBuff } from '../engine/buffs.js';
-import { applyAttack } from '../engine/combat.js';
 
 export const WARRIOR_SKILLS: Record<string, Skill> = {
   taunt: {

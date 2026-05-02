@@ -1,24 +1,14 @@
-import {
-  applyAttack,
-  applyDefend,
-  applyItem,
-  applyPotion,
-} from './combat.js';
+import { applyAttack, applyDefend, applyItem, applyPotion } from './combat.js';
 import {
   type BattleAction,
   type BattleCombatant,
   type BattleState,
   aliveAllies,
   aliveEnemies,
-  alive,
   checkFinish,
   findCombatant,
 } from './battle-state.js';
-import {
-  applyBuffsAtRoundEnd,
-  decrementCooldowns,
-  isControlled,
-} from './buffs.js';
+import { applyBuffsAtRoundEnd, decrementCooldowns, isControlled } from './buffs.js';
 import { getSkill, setCooldown } from '../skills/index.js';
 
 export interface BattleRoundResult {

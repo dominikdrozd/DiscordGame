@@ -1,6 +1,6 @@
 import { Mob, type MobReward, type MobTier } from './mob.js';
 
-export class TytanZelaza extends Mob {
+export class IronTitan extends Mob {
   readonly id = 'tytan_zelaza';
   readonly name = 'Tytan Żelaza z Huty';
   readonly tier: MobTier = 5;

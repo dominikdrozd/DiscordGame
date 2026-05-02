@@ -28,8 +28,7 @@ export abstract class Command implements ICommand {
     const { client, msg, prompt, registerThread } = ctx;
     let target: any;
     try {
-      const inOurThread =
-        msg.channel?.isThread?.() && msg.channel.ownerId === client.user?.id;
+      const inOurThread = msg.channel?.isThread?.() && msg.channel.ownerId === client.user?.id;
 
       if (inOurThread) {
         target = msg.channel;
@@ -59,8 +58,7 @@ export abstract class Command implements ICommand {
 
       const pushEdit = async () => {
         timer = null;
-        const text =
-          latest.length > 1900 ? latest.slice(0, 1900) + '…' : latest;
+        const text = latest.length > 1900 ? latest.slice(0, 1900) + '…' : latest;
         const next = text || '…';
         if (next === lastSent) return;
         lastSent = next;
@@ -93,10 +91,7 @@ export abstract class Command implements ICommand {
         }
 
         const names = toolCalls
-          .map(
-            (c: any) =>
-              `${c.function?.name}(${JSON.stringify(c.function?.arguments ?? {})})`,
-          )
+          .map((c: any) => `${c.function?.name}(${JSON.stringify(c.function?.arguments ?? {})})`)
           .join(', ');
         console.log(`[${this.name} round ${round}] tool_calls: ${names}`);
 
@@ -133,18 +128,12 @@ export abstract class Command implements ICommand {
       await msg.react('✅').catch(() => {});
     } catch (err) {
       console.error(err);
-      await (target ?? msg)
-        .send(`Błąd: ${(err as Error).message}`)
-        .catch(() => {});
+      await (target ?? msg).send(`Błąd: ${(err as Error).message}`).catch(() => {});
       await msg.react('❌').catch(() => {});
     }
   }
 
-  protected async buildHistory(
-    client: Client,
-    thread: any,
-    currentMsg: any,
-  ): Promise<any[]> {
+  protected async buildHistory(client: Client, thread: any, currentMsg: any): Promise<any[]> {
     const out: any[] = [];
     try {
       const starter = await thread.fetchStarterMessage();
@@ -154,9 +143,7 @@ export abstract class Command implements ICommand {
           const isBot = starter.author.id === client.user?.id;
           out.push({
             role: isBot ? 'assistant' : 'user',
-            content: isBot
-              ? content
-              : `[${displayName(starter)}]: ${content}`,
+            content: isBot ? content : `[${displayName(starter)}]: ${content}`,
           });
         }
       }

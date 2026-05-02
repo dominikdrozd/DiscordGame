@@ -12,9 +12,7 @@ export const ROGUE_SKILLS: Record<string, Skill> = {
     apply(_state, caster, targets) {
       const target = targets[0];
       if (!target) return `**${caster.name}** próbuje cios w plecy — ale nie ma celu.`;
-      const dmg = Math.floor(
-        (12 + Math.floor(Math.random() * 12) + caster.damageBonus) * 1.5,
-      );
+      const dmg = Math.floor((12 + Math.floor(Math.random() * 12) + caster.damageBonus) * 1.5);
       target.hp = Math.max(0, target.hp - dmg);
       return `🗡️ **${caster.name}** wbija **Cios w Plecy** w **${target.name}** za **${dmg}** dmg (ignoruje obronę).`;
     },

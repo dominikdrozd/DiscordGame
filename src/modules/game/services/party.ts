@@ -1,5 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
+import fs from 'node:fs';
+import path from 'node:path';
 
 export interface Party {
   id: string;
@@ -21,14 +21,14 @@ export class PartyService {
   private readonly file: string;
   private readonly parties: Map<string, Party> = new Map();
 
-  constructor(file = path.resolve("data/parties.json")) {
+  constructor(file = path.resolve('data/parties.json')) {
     this.file = file;
     this.load();
   }
 
   private load(): void {
     try {
-      const raw = fs.readFileSync(this.file, "utf8");
+      const raw = fs.readFileSync(this.file, 'utf8');
       const arr = JSON.parse(raw) as Party[];
       for (const p of arr) {
         if (p?.id) this.parties.set(p.id, p);
@@ -41,11 +41,7 @@ export class PartyService {
   save(): void {
     const dir = path.dirname(this.file);
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(
-      this.file,
-      JSON.stringify([...this.parties.values()], null, 2),
-      "utf8",
-    );
+    fs.writeFileSync(this.file, JSON.stringify([...this.parties.values()], null, 2), 'utf8');
   }
 
   list(): Party[] {
@@ -91,32 +87,27 @@ export class PartyService {
     targetId: string,
   ): { ok: boolean; reason?: string; party?: Party } {
     const party = this.parties.get(partyId);
-    if (!party) return { ok: false, reason: "Party nie istnieje." };
-    if (party.leaderId !== leaderId)
-      return { ok: false, reason: "Tylko lider może zapraszać." };
+    if (!party) return { ok: false, reason: 'Party nie istnieje.' };
+    if (party.leaderId !== leaderId) return { ok: false, reason: 'Tylko lider może zapraszać.' };
     if (party.members.includes(targetId))
-      return { ok: false, reason: "Ten user już jest w party." };
+      return { ok: false, reason: 'Ten user już jest w party.' };
     if (party.pendingInvites.includes(targetId))
-      return { ok: false, reason: "Zaproszenie już wysłane." };
+      return { ok: false, reason: 'Zaproszenie już wysłane.' };
     if (party.members.length + party.pendingInvites.length >= MAX_PARTY)
       return { ok: false, reason: `Party pełne (max ${MAX_PARTY}).` };
     if (this.getByMember(targetId))
-      return { ok: false, reason: "Ten user jest już w innym party." };
+      return { ok: false, reason: 'Ten user jest już w innym party.' };
     party.pendingInvites.push(targetId);
     this.save();
     return { ok: true, party };
   }
 
-  accept(
-    partyId: string,
-    userId: string,
-  ): { ok: boolean; reason?: string; party?: Party } {
+  accept(partyId: string, userId: string): { ok: boolean; reason?: string; party?: Party } {
     const party = this.parties.get(partyId);
-    if (!party) return { ok: false, reason: "Party już nie istnieje." };
+    if (!party) return { ok: false, reason: 'Party już nie istnieje.' };
     if (!party.pendingInvites.includes(userId))
-      return { ok: false, reason: "Nie masz tu zaproszenia." };
-    if (this.getByMember(userId))
-      return { ok: false, reason: "Jesteś już w innym party." };
+      return { ok: false, reason: 'Nie masz tu zaproszenia.' };
+    if (this.getByMember(userId)) return { ok: false, reason: 'Jesteś już w innym party.' };
     party.pendingInvites = party.pendingInvites.filter((id) => id !== userId);
     party.members.push(userId);
     this.save();
@@ -137,7 +128,7 @@ export class PartyService {
     partyDisbanded?: boolean;
   } {
     const party = this.getByMember(userId);
-    if (!party) return { ok: false, reason: "Nie jesteś w żadnym party." };
+    if (!party) return { ok: false, reason: 'Nie jesteś w żadnym party.' };
     party.members = party.members.filter((id) => id !== userId);
     if (party.members.length === 0) {
       this.parties.delete(party.id);
@@ -151,22 +142,17 @@ export class PartyService {
     return { ok: true };
   }
 
-  kick(
-    partyId: string,
-    leaderId: string,
-    targetId: string,
-  ): { ok: boolean; reason?: string } {
+  kick(partyId: string, leaderId: string, targetId: string): { ok: boolean; reason?: string } {
     const party = this.parties.get(partyId);
-    if (!party) return { ok: false, reason: "Party nie istnieje." };
-    if (party.leaderId !== leaderId)
-      return { ok: false, reason: "Tylko lider może wyrzucać." };
+    if (!party) return { ok: false, reason: 'Party nie istnieje.' };
+    if (party.leaderId !== leaderId) return { ok: false, reason: 'Tylko lider może wyrzucać.' };
     if (targetId === leaderId)
       return {
         ok: false,
-        reason: "Nie wyrzucisz sam siebie — użyj `.party leave`.",
+        reason: 'Nie wyrzucisz sam siebie — użyj `.party leave`.',
       };
     if (!party.members.includes(targetId))
-      return { ok: false, reason: "Tego usera nie ma w party." };
+      return { ok: false, reason: 'Tego usera nie ma w party.' };
     party.members = party.members.filter((id) => id !== targetId);
     this.save();
     return { ok: true };
@@ -174,9 +160,9 @@ export class PartyService {
 
   disband(partyId: string, leaderId: string): { ok: boolean; reason?: string } {
     const party = this.parties.get(partyId);
-    if (!party) return { ok: false, reason: "Party nie istnieje." };
+    if (!party) return { ok: false, reason: 'Party nie istnieje.' };
     if (party.leaderId !== leaderId)
-      return { ok: false, reason: "Tylko lider może rozwiązać party." };
+      return { ok: false, reason: 'Tylko lider może rozwiązać party.' };
     this.parties.delete(partyId);
     this.save();
     return { ok: true };

@@ -1,6 +1,6 @@
 import { Mob, type MobReward, type MobTier } from './mob.js';
 
-export class KsiaznaMroku extends Mob {
+export class DarkDuchess extends Mob {
   readonly id = 'ksiazna_mroku';
   readonly name = 'Księżna Mroku z Mokotowa';
   readonly tier: MobTier = 4;

@@ -1,4 +1,4 @@
-const TMDB_BASE = "https://api.themoviedb.org/3";
+const TMDB_BASE = 'https://api.themoviedb.org/3';
 
 interface SearchMovieResult {
   id: number;
@@ -13,10 +13,8 @@ interface SearchMovieResult {
 export async function searchMovie(
   title: string,
   apiKey: string,
-): Promise<
-  { error: string } | { query: string; results: SearchMovieResult[] }
-> {
-  if (!apiKey) return { error: "TMDB_API_KEY nie jest ustawiony w .env" };
+): Promise<{ error: string } | { query: string; results: SearchMovieResult[] }> {
+  if (!apiKey) return { error: 'TMDB_API_KEY nie jest ustawiony w .env' };
   const url = `${TMDB_BASE}/search/movie?api_key=${encodeURIComponent(apiKey)}&language=pl-PL&query=${encodeURIComponent(title)}`;
   const res = await fetch(url);
   if (!res.ok) return { error: `TMDB ${res.status}: ${await res.text()}` };
@@ -58,32 +56,26 @@ export async function getMovieDetails(
       cast: CastMember[];
     }
 > {
-  if (!apiKey) return { error: "TMDB_API_KEY nie jest ustawiony w .env" };
+  if (!apiKey) return { error: 'TMDB_API_KEY nie jest ustawiony w .env' };
   const url = `${TMDB_BASE}/movie/${encodeURIComponent(movieId)}?api_key=${encodeURIComponent(apiKey)}&language=pl-PL&append_to_response=credits`;
   const res = await fetch(url);
   if (!res.ok) return { error: `TMDB ${res.status}: ${await res.text()}` };
   const data = await res.json();
   const directors = (data.credits?.crew || [])
-    .filter((c: any) => c.job === "Director")
+    .filter((c: any) => c.job === 'Director')
     .map((c: any) => c.name);
   const cast = (data.credits?.cast || [])
     .slice(0, 5)
     .map((c: any) => ({ name: c.name, character: c.character }));
 
-  const year = data.release_date
-    ? data.release_date.slice(0, 4)
-    : "rok nieznany";
-  const directorStr = directors.length
-    ? directors.join(", ")
-    : "reżyser nieznany";
-  const castStr = cast.length
-    ? cast.map((c: any) => c.name).join(", ")
-    : "obsada nieznana";
+  const year = data.release_date ? data.release_date.slice(0, 4) : 'rok nieznany';
+  const directorStr = directors.length ? directors.join(', ') : 'reżyser nieznany';
+  const castStr = cast.length ? cast.map((c: any) => c.name).join(', ') : 'obsada nieznana';
   const rating =
-    typeof data.vote_average === "number" && data.vote_count
+    typeof data.vote_average === 'number' && data.vote_count
       ? `${data.vote_average.toFixed(1)}/10 (TMDB, ${data.vote_count} głosów)`
-      : "brak oceny";
-  const genres = (data.genres || []).map((g: any) => g.name).join(", ");
+      : 'brak oceny';
+  const genres = (data.genres || []).map((g: any) => g.name).join(', ');
   const titleLine =
     data.original_title && data.original_title !== data.title
       ? `„${data.title}" (oryg. „${data.original_title}", ${year})`
@@ -91,8 +83,8 @@ export async function getMovieDetails(
 
   const formatted =
     `${titleLine} — reżyseria: ${directorStr}; w obsadzie m.in. ${castStr}. ` +
-    `Gatunek: ${genres || "nieznany"}. Ocena: ${rating}. ` +
-    `${data.overview || "Brak opisu w TMDB."}`;
+    `Gatunek: ${genres || 'nieznany'}. Ocena: ${rating}. ` +
+    `${data.overview || 'Brak opisu w TMDB.'}`;
 
   return {
     formatted,
@@ -112,39 +104,38 @@ export async function getMovieDetails(
 
 export const TOOLS = [
   {
-    type: "function",
+    type: 'function',
     function: {
-      name: "search_movie",
+      name: 'search_movie',
       description:
-        "Wyszukuje film w TMDB po tytule. Zwraca listę dopasowań (id, tytuł, rok, opis, ocena). Wywołaj jako PIERWSZY krok zawsze, gdy pytanie dotyczy filmu.",
+        'Wyszukuje film w TMDB po tytule. Zwraca listę dopasowań (id, tytuł, rok, opis, ocena). Wywołaj jako PIERWSZY krok zawsze, gdy pytanie dotyczy filmu.',
       parameters: {
-        type: "object",
+        type: 'object',
         properties: {
           title: {
-            type: "string",
-            description: "Tytuł filmu (po polsku lub w oryginale).",
+            type: 'string',
+            description: 'Tytuł filmu (po polsku lub w oryginale).',
           },
         },
-        required: ["title"],
+        required: ['title'],
       },
     },
   },
   {
-    type: "function",
+    type: 'function',
     function: {
-      name: "get_movie_details",
+      name: 'get_movie_details',
       description:
-        "Pobiera szczegóły filmu z TMDB po jego id: reżyser, najważniejsi aktorzy, ocena, rok, gatunki, czas trwania, opis. Wywołaj ZAWSZE po search_movie, żeby uzyskać reżysera i obsadę przed prezentacją filmu.",
+        'Pobiera szczegóły filmu z TMDB po jego id: reżyser, najważniejsi aktorzy, ocena, rok, gatunki, czas trwania, opis. Wywołaj ZAWSZE po search_movie, żeby uzyskać reżysera i obsadę przed prezentacją filmu.',
       parameters: {
-        type: "object",
+        type: 'object',
         properties: {
           movie_id: {
-            type: "integer",
-            description:
-              "Identyfikator filmu zwrócony przez search_movie (pole id).",
+            type: 'integer',
+            description: 'Identyfikator filmu zwrócony przez search_movie (pole id).',
           },
         },
-        required: ["movie_id"],
+        required: ['movie_id'],
       },
     },
   },
@@ -152,10 +143,7 @@ export const TOOLS = [
 
 export async function getMovieOfTheDay(
   apiKey: string,
-): Promise<
-  | { error: string }
-  | Awaited<ReturnType<typeof getMovieDetails>>
-> {
+): Promise<{ error: string } | Awaited<ReturnType<typeof getMovieDetails>>> {
   if (!apiKey) return { error: 'TMDB_API_KEY nie jest ustawiony w .env' };
   const url = `${TMDB_BASE}/trending/movie/day?api_key=${encodeURIComponent(apiKey)}&language=pl-PL`;
   const res = await fetch(url);
@@ -170,7 +158,7 @@ export async function getMovieOfTheDay(
 export async function runTool(call: any, apiKey: string): Promise<any> {
   const name = call.function?.name;
   let args = call.function?.arguments ?? {};
-  if (typeof args === "string") {
+  if (typeof args === 'string') {
     try {
       args = JSON.parse(args);
     } catch {
@@ -179,13 +167,11 @@ export async function runTool(call: any, apiKey: string): Promise<any> {
   }
   console.log(`[tool] -> ${name}(${JSON.stringify(args)})`);
   let result;
-  if (name === "search_movie")
-    result = await searchMovie(args.title || "", apiKey);
-  else if (name === "get_movie_details")
-    result = await getMovieDetails(args.movie_id, apiKey);
+  if (name === 'search_movie') result = await searchMovie(args.title || '', apiKey);
+  else if (name === 'get_movie_details') result = await getMovieDetails(args.movie_id, apiKey);
   else result = { error: `nieznane narzędzie: ${name}` };
   console.log(
-    `[tool] <- ${JSON.stringify(result).slice(0, 200)}${JSON.stringify(result).length > 200 ? "…" : ""}`,
+    `[tool] <- ${JSON.stringify(result).slice(0, 200)}${JSON.stringify(result).length > 200 ? '…' : ''}`,
   );
   return result;
 }

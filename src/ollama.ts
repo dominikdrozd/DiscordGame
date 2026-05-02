@@ -1,7 +1,6 @@
 import http from 'node:http';
 
-const OLLAMA_URL =
-  process.env.OLLAMA_URL || 'http://localhost:11434/api/generate';
+const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434/api/generate';
 const CHAT_URL = OLLAMA_URL.replace(/\/api\/generate\/?$/, '/api/chat');
 
 export function streamQwen(
@@ -40,9 +39,7 @@ export function streamQwen(
         if (res.statusCode !== 200) {
           let err = '';
           res.on('data', (d) => (err += d));
-          res.on('end', () =>
-            reject(new Error(`Ollama ${res.statusCode}: ${err}`)),
-          );
+          res.on('end', () => reject(new Error(`Ollama ${res.statusCode}: ${err}`)));
           return;
         }
         res.setEncoding('utf8');

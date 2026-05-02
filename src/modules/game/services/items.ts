@@ -113,26 +113,96 @@ export const ITEMS: Record<string, ItemTemplate> = {
   wood_dab: { id: 'wood_dab', name: 'Dąb', type: 'resource', rarity: 'common' },
   wood_buk: { id: 'wood_buk', name: 'Buk', type: 'resource', rarity: 'uncommon' },
   wood_heban: { id: 'wood_heban', name: 'Heban', type: 'resource', rarity: 'rare' },
-  wood_smoczy: { id: 'wood_smoczy', name: 'Drewno Smoczego Dębu', type: 'resource', rarity: 'epic' },
-  wood_swiatowe: { id: 'wood_swiatowe', name: 'Drewno z Drzewa Świata', type: 'resource', rarity: 'legendary' },
+  wood_smoczy: {
+    id: 'wood_smoczy',
+    name: 'Drewno Smoczego Dębu',
+    type: 'resource',
+    rarity: 'epic',
+  },
+  wood_swiatowe: {
+    id: 'wood_swiatowe',
+    name: 'Drewno z Drzewa Świata',
+    type: 'resource',
+    rarity: 'legendary',
+  },
 
   // ── CONSUMABLES ────────────────────────────────────
   potion_small: { id: 'potion_small', name: 'Mała Mikstura', type: 'consumable', rarity: 'common' },
 
   // ── TOOL TEMPLATES (craftable) ─────────────────────
-  pickaxe: { id: 'pickaxe', name: 'Kilof', type: 'tool', rarity: 'common', slot: 'tool', toolKind: 'pickaxe', toolTier: 1 },
-  rod: { id: 'rod', name: 'Wędka', type: 'tool', rarity: 'common', slot: 'tool', toolKind: 'rod', toolTier: 1 },
-  axe: { id: 'axe', name: 'Siekiera', type: 'tool', rarity: 'common', slot: 'tool', toolKind: 'axe', toolTier: 1 },
+  pickaxe: {
+    id: 'pickaxe',
+    name: 'Kilof',
+    type: 'tool',
+    rarity: 'common',
+    slot: 'tool',
+    toolKind: 'pickaxe',
+    toolTier: 1,
+  },
+  rod: {
+    id: 'rod',
+    name: 'Wędka',
+    type: 'tool',
+    rarity: 'common',
+    slot: 'tool',
+    toolKind: 'rod',
+    toolTier: 1,
+  },
+  axe: {
+    id: 'axe',
+    name: 'Siekiera',
+    type: 'tool',
+    rarity: 'common',
+    slot: 'tool',
+    toolKind: 'axe',
+    toolTier: 1,
+  },
 
   // ── WEAPON TEMPLATES (craftable) ───────────────────
-  sword_iron: { id: 'sword_iron', name: 'Żelazny Miecz', type: 'weapon', rarity: 'common', slot: 'weapon' },
-  sword_silver: { id: 'sword_silver', name: 'Srebrny Miecz', type: 'weapon', rarity: 'uncommon', slot: 'weapon' },
-  sword_mithril: { id: 'sword_mithril', name: 'Mithrilowy Miecz', type: 'weapon', rarity: 'rare', slot: 'weapon' },
+  sword_iron: {
+    id: 'sword_iron',
+    name: 'Żelazny Miecz',
+    type: 'weapon',
+    rarity: 'common',
+    slot: 'weapon',
+  },
+  sword_silver: {
+    id: 'sword_silver',
+    name: 'Srebrny Miecz',
+    type: 'weapon',
+    rarity: 'uncommon',
+    slot: 'weapon',
+  },
+  sword_mithril: {
+    id: 'sword_mithril',
+    name: 'Mithrilowy Miecz',
+    type: 'weapon',
+    rarity: 'rare',
+    slot: 'weapon',
+  },
 
   // ── ARMOR TEMPLATES (craftable) ────────────────────
-  armor_iron: { id: 'armor_iron', name: 'Żelazna Zbroja', type: 'armor', rarity: 'common', slot: 'armor' },
-  armor_silver: { id: 'armor_silver', name: 'Srebrna Zbroja', type: 'armor', rarity: 'uncommon', slot: 'armor' },
-  armor_mithril: { id: 'armor_mithril', name: 'Mithrilowa Zbroja', type: 'armor', rarity: 'rare', slot: 'armor' },
+  armor_iron: {
+    id: 'armor_iron',
+    name: 'Żelazna Zbroja',
+    type: 'armor',
+    rarity: 'common',
+    slot: 'armor',
+  },
+  armor_silver: {
+    id: 'armor_silver',
+    name: 'Srebrna Zbroja',
+    type: 'armor',
+    rarity: 'uncommon',
+    slot: 'armor',
+  },
+  armor_mithril: {
+    id: 'armor_mithril',
+    name: 'Mithrilowa Zbroja',
+    type: 'armor',
+    rarity: 'rare',
+    slot: 'armor',
+  },
 };
 
 export function getTemplate(id: string): ItemTemplate | undefined {

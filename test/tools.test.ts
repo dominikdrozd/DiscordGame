@@ -16,7 +16,17 @@ describe('tools', () => {
 
     test('searches and maps results', async () => {
       const mockData = {
-        results: [{ id: 1, title: 'Movie 1', original_title: 'Orig', release_date: '2023-01-01', overview: 'Desc', vote_average: 8.5, popularity: 10 }],
+        results: [
+          {
+            id: 1,
+            title: 'Movie 1',
+            original_title: 'Orig',
+            release_date: '2023-01-01',
+            overview: 'Desc',
+            vote_average: 8.5,
+            popularity: 10,
+          },
+        ],
       };
       mockFetch.mockResolvedValueOnce({ ok: true, json: () => mockData });
 
@@ -77,7 +87,17 @@ describe('tools', () => {
     test('runs get_movie_details', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: () => ({ id: 1, title: 'T', original_title: 'T', release_date: '2000-01-01', vote_average: 5, vote_count: 1, genres: [], overview: 'X', credits: {} }),
+        json: () => ({
+          id: 1,
+          title: 'T',
+          original_title: 'T',
+          release_date: '2000-01-01',
+          vote_average: 5,
+          vote_count: 1,
+          genres: [],
+          overview: 'X',
+          credits: {},
+        }),
       });
       const call = { function: { name: 'get_movie_details', arguments: { movie_id: 1 } } };
       const res = await runTool(call, 'key');

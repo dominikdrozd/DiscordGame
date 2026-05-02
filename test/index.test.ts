@@ -1,4 +1,4 @@
-import { Client, Events, GatewayIntentBits } from 'discord.js';
+import { Client, GatewayIntentBits } from 'discord.js';
 import * as indexModule from '../src/index.js';
 import * as ollamaModule from '../src/ollama.js';
 

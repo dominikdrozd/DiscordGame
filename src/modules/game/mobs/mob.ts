@@ -52,9 +52,8 @@ export abstract class Mob {
     const mult = TIER_MULTIPLIERS[this.tier];
     const hp = Math.round(this.hp * mult);
     const damageBonus = Math.round(this.damageBonus * mult);
-    const defenseBonus = this.defenseBonus !== undefined
-      ? Math.round(this.defenseBonus * mult)
-      : undefined;
+    const defenseBonus =
+      this.defenseBonus !== undefined ? Math.round(this.defenseBonus * mult) : undefined;
     return {
       id,
       name,

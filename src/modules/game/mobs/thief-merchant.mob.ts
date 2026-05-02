@@ -1,6 +1,6 @@
 import { Mob } from './mob.js';
 
-export class KupiecZlodziej extends Mob {
+export class ThiefMerchant extends Mob {
   readonly id = 'kupiec_zlodziej';
   readonly name = 'Wędrowny Kupiec-Złodziej';
   readonly hp = 50;

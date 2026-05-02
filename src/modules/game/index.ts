@@ -40,10 +40,7 @@ export function createGameServices(): GameServices {
   };
 }
 
-export function registerGameCommands(
-  manager: CommandManager,
-  services: GameServices,
-): void {
+export function registerGameCommands(manager: CommandManager, services: GameServices): void {
   const { stats, party } = services;
 
   // services state-bearing, paired 1:1 z komendą

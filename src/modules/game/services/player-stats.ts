@@ -1,16 +1,11 @@
-import fs from "node:fs";
-import path from "node:path";
-import type { ItemInstance, ItemSlot } from "./items.js";
+import fs from 'node:fs';
+import path from 'node:path';
+import type { ItemInstance, ItemSlot } from './items.js';
 
-export type SkillName =
-  | "mining"
-  | "fishing"
-  | "woodcutting"
-  | "crafting"
-  | "combat";
+export type SkillName = 'mining' | 'fishing' | 'woodcutting' | 'crafting' | 'combat';
 
-export type AttributeName = "attack" | "defense" | "hp" | "crit";
-export type PrimaryAttribute = "str" | "agi" | "wit" | "int";
+export type AttributeName = 'attack' | 'defense' | 'hp' | 'crit';
+export type PrimaryAttribute = 'str' | 'agi' | 'wit' | 'int';
 
 export interface PrimaryStats {
   str: number;
@@ -66,13 +61,7 @@ export interface PlayerStats {
   cooldowns: Record<string, number>;
 }
 
-const SKILL_NAMES: SkillName[] = [
-  "mining",
-  "fishing",
-  "woodcutting",
-  "crafting",
-  "combat",
-];
+const SKILL_NAMES: SkillName[] = ['mining', 'fishing', 'woodcutting', 'crafting', 'combat'];
 
 function defaultPlayer(id: string, name: string): PlayerStats {
   return {
@@ -148,14 +137,14 @@ export class PlayerStatsService {
   private readonly file: string;
   private readonly stats: Map<string, PlayerStats> = new Map();
 
-  constructor(file = path.resolve("data/players.json")) {
+  constructor(file = path.resolve('data/players.json')) {
     this.file = file;
     this.load();
   }
 
   private load(): void {
     try {
-      const raw = fs.readFileSync(this.file, "utf8");
+      const raw = fs.readFileSync(this.file, 'utf8');
       const arr = JSON.parse(raw) as any[];
       for (const s of arr) {
         if (!s?.id) continue;
@@ -169,11 +158,7 @@ export class PlayerStatsService {
   save(): void {
     const dir = path.dirname(this.file);
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(
-      this.file,
-      JSON.stringify([...this.stats.values()], null, 2),
-      "utf8",
-    );
+    fs.writeFileSync(this.file, JSON.stringify([...this.stats.values()], null, 2), 'utf8');
   }
 
   get(id: string, name?: string): PlayerStats {
@@ -268,11 +253,11 @@ export class PlayerStatsService {
     winner.duels += 1;
     const gainedXp = 50 + Math.max(0, loser.level - winner.level) * 10;
     winner.xp += gainedXp;
-    this.addSkillXp(winner, "combat", gainedXp);
+    this.addSkillXp(winner, 'combat', gainedXp);
     loser.losses += 1;
     loser.duels += 1;
     loser.xp += 10;
-    this.addSkillXp(loser, "combat", 10);
+    this.addSkillXp(loser, 'combat', 10);
     const winnerLeveledUp = this.applyLevelUp(winner);
     this.applyLevelUp(loser);
     this.save();
@@ -297,7 +282,7 @@ export class PlayerStatsService {
       w.duels += 1;
       const gainedXp = 50 + Math.max(0, Math.round(avgLoserLvl - w.level)) * 10;
       w.xp += gainedXp;
-      this.addSkillXp(w, "combat", gainedXp);
+      this.addSkillXp(w, 'combat', gainedXp);
       const leveledUp = this.applyLevelUp(w);
       return { stats: w, leveledUp, gainedXp };
     });
@@ -306,7 +291,7 @@ export class PlayerStatsService {
       l.duels += 1;
       const gainedXp = 10;
       l.xp += gainedXp;
-      this.addSkillXp(l, "combat", gainedXp);
+      this.addSkillXp(l, 'combat', gainedXp);
       this.applyLevelUp(l);
       return { stats: l, gainedXp };
     });
@@ -332,16 +317,14 @@ export class PlayerStatsService {
   // ── Inventory ──────────────────────────────────────
   addResource(p: PlayerStats, itemId: string, qty: number): void {
     p.inventory.resources[itemId] = (p.inventory.resources[itemId] ?? 0) + qty;
-    if (p.inventory.resources[itemId] <= 0)
-      delete p.inventory.resources[itemId];
+    if (p.inventory.resources[itemId] <= 0) delete p.inventory.resources[itemId];
   }
 
   removeResource(p: PlayerStats, itemId: string, qty: number): boolean {
     const have = p.inventory.resources[itemId] ?? 0;
     if (have < qty) return false;
     p.inventory.resources[itemId] = have - qty;
-    if (p.inventory.resources[itemId] <= 0)
-      delete p.inventory.resources[itemId];
+    if (p.inventory.resources[itemId] <= 0) delete p.inventory.resources[itemId];
     return true;
   }
 
@@ -364,15 +347,12 @@ export class PlayerStatsService {
   }
 
   // ── Equipment ──────────────────────────────────────
-  equip(
-    p: PlayerStats,
-    uid: string,
-  ): { ok: boolean; reason?: string; item?: ItemInstance } {
+  equip(p: PlayerStats, uid: string): { ok: boolean; reason?: string; item?: ItemInstance } {
     const item = this.findItem(p, uid);
     if (!item || !item.slot)
       return {
         ok: false,
-        reason: "Nie posiadasz takiego itemu lub nie da się go założyć.",
+        reason: 'Nie posiadasz takiego itemu lub nie da się go założyć.',
       };
     p.equipped[item.slot] = uid;
     return { ok: true, item };
@@ -410,8 +390,7 @@ export class PlayerStatsService {
     attr: PrimaryAttribute,
     points: number,
   ): { ok: boolean; reason?: string } {
-    if (points <= 0)
-      return { ok: false, reason: "Liczba punktów musi być dodatnia." };
+    if (points <= 0) return { ok: false, reason: 'Liczba punktów musi być dodatnia.' };
     if (p.unspentPoints < points)
       return { ok: false, reason: `Masz tylko ${p.unspentPoints} punktów.` };
     p.unspentPoints -= points;
@@ -425,8 +404,7 @@ export class PlayerStatsService {
     attr: AttributeName,
     points: number,
   ): { ok: boolean; reason?: string } {
-    if (points <= 0)
-      return { ok: false, reason: "Liczba punktów musi być dodatnia." };
+    if (points <= 0) return { ok: false, reason: 'Liczba punktów musi być dodatnia.' };
     if (p.unspentPoints < points)
       return { ok: false, reason: `Masz tylko ${p.unspentPoints} punktów.` };
     p.unspentPoints -= points;
@@ -476,15 +454,14 @@ export class PlayerStatsService {
     if (!p.classId)
       return {
         ok: false,
-        reason: "Najpierw wybierz klasę przez `.class pick <id>`.",
+        reason: 'Najpierw wybierz klasę przez `.class pick <id>`.',
       };
     if (p.classId !== parentClassId)
       return {
         ok: false,
         reason: `Ta subklasa nie pasuje do twojej klasy (${p.classId}).`,
       };
-    if (p.subclassId)
-      return { ok: false, reason: `Masz już subklasę: ${p.subclassId}.` };
+    if (p.subclassId) return { ok: false, reason: `Masz już subklasę: ${p.subclassId}.` };
     if (p.skills.combat.level < requiredCombatLevel)
       return {
         ok: false,
@@ -505,15 +482,14 @@ export class PlayerStatsService {
     if (!p.classId || !p.subclassId)
       return {
         ok: false,
-        reason: "Najpierw wybierz klasę i subklasę (`.class pick`/`.class subclass`).",
+        reason: 'Najpierw wybierz klasę i subklasę (`.class pick`/`.class subclass`).',
       };
     if (p.subclassId !== parentSubId)
       return {
         ok: false,
         reason: `Ta tier-2 subklasa nie pasuje do twojej subklasy (${p.subclassId}).`,
       };
-    if (p.subclass2Id)
-      return { ok: false, reason: `Masz już tier-2 subklasę: ${p.subclass2Id}.` };
+    if (p.subclass2Id) return { ok: false, reason: `Masz już tier-2 subklasę: ${p.subclass2Id}.` };
     if (p.skills.combat.level < requiredCombatLevel)
       return {
         ok: false,

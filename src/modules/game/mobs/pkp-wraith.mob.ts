@@ -1,6 +1,6 @@
 import { Mob, type MobTier } from './mob.js';
 
-export class UpiorZPkp extends Mob {
+export class PkpWraith extends Mob {
   readonly id = 'upior_z_pkp';
   readonly name = 'Upiór z PKP';
   readonly tier: MobTier = 4;

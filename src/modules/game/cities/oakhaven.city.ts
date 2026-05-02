@@ -3,7 +3,8 @@ import { City, type Merchant } from './city.js';
 export class Oakhaven extends City {
   readonly id = 'oakhaven';
   readonly name = 'Oakhaven';
-  readonly description = 'Główne miasto ludzkie, osadzone wokół potężnego dębu. Centrum handlu Serca Quelthasee.';
+  readonly description =
+    'Główne miasto ludzkie, osadzone wokół potężnego dębu. Centrum handlu Serca Quelthasee.';
   readonly region = 2;
   readonly merchants: Merchant[] = [
     {

@@ -32,9 +32,7 @@ export class MovieOfTheDayCommand implements ICommand {
       await msg.react('✅').catch(() => {});
     } catch (err) {
       console.error(err);
-      await msg
-        .reply(`Błąd: ${(err as Error).message}`)
-        .catch(() => {});
+      await msg.reply(`Błąd: ${(err as Error).message}`).catch(() => {});
       await msg.react('❌').catch(() => {});
     }
   }

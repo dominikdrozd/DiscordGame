@@ -1,7 +1,7 @@
 import type { ICommand, ICommandContext } from '../../../types/command.types.js';
 import { PlayerStatsService, type SkillName } from '../services/player-stats.js';
 import { rollLoot, type LootEntry } from '../services/loot.js';
-import { ITEMS, fmtResource, type ToolKind } from '../services/items.js';
+import { fmtResource, type ToolKind } from '../services/items.js';
 import { displayName } from '../../../utils.js';
 
 export interface GatheringConfig {
@@ -80,7 +80,6 @@ export abstract class GatheringCommand implements ICommand {
     const leveled = this.stats.addSkillXp(player, this.cfg.skill, this.cfg.xpPerSuccess);
     this.stats.save();
 
-    const tpl = ITEMS[loot.itemId];
     const lvlMsg = leveled
       ? ` 🎉 **${this.cfg.skill}** awansuje na poziom **${player.skills[this.cfg.skill].level}**!`
       : '';

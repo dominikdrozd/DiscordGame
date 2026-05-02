@@ -22,10 +22,7 @@ import {
 import { BOSS_MOBS } from '../mobs/index.js';
 import { buildPlayerCombatant } from '../engine/player-combatant.js';
 import { awardReward } from './reward.service.js';
-import {
-  buildActionRow,
-  buildTargetRow,
-} from '../ui/battle-buttons.js';
+import { buildActionRow, buildTargetRow } from '../ui/battle-buttons.js';
 import { displayName } from '../../../utils.js';
 
 interface BossBattleState extends BattleState {
@@ -48,7 +45,9 @@ export class BossService {
       const sorted = Object.values(BOSS_MOBS).sort((a, b) => a.tier - b.tier);
       for (const b of sorted) {
         const c = b.toCombatant();
-        lines.push(`• \`${b.id}\` (T${b.tier}) — **${b.name}** (${c.hp} HP, +${c.damageBonus} dmg) — ${b.description}`);
+        lines.push(
+          `• \`${b.id}\` (T${b.tier}) — **${b.name}** (${c.hp} HP, +${c.damageBonus} dmg) — ${b.description}`,
+        );
       }
       lines.push('', 'Użycie: `.boss <id>`.');
       await msg.reply(lines.join('\n').slice(0, 1900));
@@ -162,13 +161,17 @@ export class BossService {
       return;
     }
     if (state.pending.has(combatantId)) {
-      await interaction.reply({ content: 'Już wybrałeś akcję — czekamy na rozliczenie.', ephemeral: true }).catch(() => {});
+      await interaction
+        .reply({ content: 'Już wybrałeś akcję — czekamy na rozliczenie.', ephemeral: true })
+        .catch(() => {});
       return;
     }
 
     if (kind === 'def') {
       state.pending.set(combatantId, { kind: 'defend' });
-      await interaction.reply({ content: 'Wybrałeś: **Obrona**.', ephemeral: true }).catch(() => {});
+      await interaction
+        .reply({ content: 'Wybrałeś: **Obrona**.', ephemeral: true })
+        .catch(() => {});
     } else if (kind === 'itm') {
       await openItemPicker(interaction, battleId, combatantId, me);
       return;
@@ -178,15 +181,21 @@ export class BossService {
     } else if (kind === 'atk') {
       const enemies = aliveEnemies(state, me);
       if (enemies.length === 0) {
-        await interaction.reply({ content: 'Brak żywych przeciwników.', ephemeral: true }).catch(() => {});
+        await interaction
+          .reply({ content: 'Brak żywych przeciwników.', ephemeral: true })
+          .catch(() => {});
         return;
       }
       if (enemies.length === 1) {
         state.pending.set(combatantId, { kind: 'attack', targetId: enemies[0].id });
-        await interaction.reply({ content: `Atak na **${enemies[0].name}**.`, ephemeral: true }).catch(() => {});
+        await interaction
+          .reply({ content: `Atak na **${enemies[0].name}**.`, ephemeral: true })
+          .catch(() => {});
       } else {
         const row = buildTargetRow(battleId, combatantId, 'atk', enemies);
-        await interaction.reply({ content: 'Wybierz cel ataku:', ephemeral: true, components: [row] }).catch(() => {});
+        await interaction
+          .reply({ content: 'Wybierz cel ataku:', ephemeral: true, components: [row] })
+          .catch(() => {});
         return; // czekamy na klik celu
       }
     } else {
@@ -209,11 +218,15 @@ export class BossService {
     if (kind === 'atk') {
       const target = findCombatant(state, targetId);
       if (!target || target.hp <= 0) {
-        await interaction.update({ content: 'Cel już padł — wybierz innego.', components: [] }).catch(() => {});
+        await interaction
+          .update({ content: 'Cel już padł — wybierz innego.', components: [] })
+          .catch(() => {});
         return;
       }
       state.pending.set(combatantId, { kind: 'attack', targetId });
-      await interaction.update({ content: `Wybrany cel: **${target.name}**.`, components: [] }).catch(() => {});
+      await interaction
+        .update({ content: `Wybrany cel: **${target.name}**.`, components: [] })
+        .catch(() => {});
     }
 
     await this.maybeResolve(state);
@@ -231,7 +244,8 @@ export class BossService {
     for (const [allyId, msgId] of state.promptMessageIds) {
       try {
         const m = await state.thread.messages.fetch(msgId).catch(() => null);
-        if (m) await m.edit({ components: [buildActionRow(state.id, allyId, true)] }).catch(() => {});
+        if (m)
+          await m.edit({ components: [buildActionRow(state.id, allyId, true)] }).catch(() => {});
       } catch {}
     }
     state.promptMessageIds.clear();
@@ -244,12 +258,7 @@ export class BossService {
     }
 
     await state.thread.send(
-      [
-        ...result.lines,
-        '',
-        this.fmtBoard(state),
-        `⏭ Runda ${state.roundNumber}`,
-      ].join('\n'),
+      [...result.lines, '', this.fmtBoard(state), `⏭ Runda ${state.roundNumber}`].join('\n'),
     );
     await this.promptHumans(state);
   }
@@ -266,7 +275,10 @@ export class BossService {
     }
   }
 
-  private async finish(state: BossBattleState, result: { draw?: boolean; winnerTeam?: number }): Promise<void> {
+  private async finish(
+    state: BossBattleState,
+    result: { draw?: boolean; winnerTeam?: number },
+  ): Promise<void> {
     const playerCombatant = state.combatants.find((c) => c.team === 0)!;
     const player = this.stats.get(playerCombatant.id, playerCombatant.name);
     this.stats.setCooldown(player, 'boss', COOLDOWN_MS);
@@ -296,7 +308,10 @@ export class BossService {
 
   private fmtBoard(state: BossBattleState): string {
     return state.combatants
-      .map((c) => `${c.name}: ${c.hp}/${c.maxHp} HP${c.controller === 'human' ? ` (mikstury: ${c.potionsLeft})` : ''}`)
+      .map(
+        (c) =>
+          `${c.name}: ${c.hp}/${c.maxHp} HP${c.controller === 'human' ? ` (mikstury: ${c.potionsLeft})` : ''}`,
+      )
       .join(' | ');
   }
 }

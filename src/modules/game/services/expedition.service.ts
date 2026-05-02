@@ -40,7 +40,9 @@ export class ExpeditionService {
     if (sub === 'status') return this.status(msg);
     if (sub === 'claim') return this.claim(msg);
     if (sub === 'start') return this.start(msg, args[1]);
-    await msg.reply('Użycie: `.expedition` / `.expedition start <id>` / `.expedition status` / `.expedition claim`.');
+    await msg.reply(
+      'Użycie: `.expedition` / `.expedition start <id>` / `.expedition status` / `.expedition claim`.',
+    );
   }
 
   private async list(msg: any): Promise<void> {
@@ -55,14 +57,20 @@ export class ExpeditionService {
       if (e.region !== currentRegion) {
         currentRegion = e.region;
         const regionMin = REGION_LVL_REQ[e.region];
-        lines.push('', `**Region ${e.region} — ${e.regionName}** _(wymaga combat lvl ${regionMin}+)_`);
+        lines.push(
+          '',
+          `**Region ${e.region} — ${e.regionName}** _(wymaga combat lvl ${regionMin}+)_`,
+        );
       }
       const lvlReq = expeditionLvlBracket(e.tier);
       lines.push(
         `• \`${e.id}\` (T${e.tier}, lvl ${lvlReq}) — **${e.name}** (${Math.round(e.durationMs / 60_000)} min) — ${e.description}`,
       );
     }
-    lines.push('', 'Użycie: `.expedition start <id>` / `.expedition status` / `.expedition claim`.');
+    lines.push(
+      '',
+      'Użycie: `.expedition start <id>` / `.expedition status` / `.expedition claim`.',
+    );
     await msg.reply(lines.join('\n').slice(0, 1900));
   }
 
@@ -75,7 +83,9 @@ export class ExpeditionService {
     const def = EXPEDITIONS[player.activeExpedition.destination];
     const left = player.activeExpedition.endsAt - Date.now();
     if (left <= 0) {
-      await msg.reply(`✅ **${def?.name ?? player.activeExpedition.destination}** zakończona — odbierz \`.expedition claim\`.`);
+      await msg.reply(
+        `✅ **${def?.name ?? player.activeExpedition.destination}** zakończona — odbierz \`.expedition claim\`.`,
+      );
       return;
     }
     await msg.reply(
@@ -108,7 +118,9 @@ export class ExpeditionService {
       labels.push(`${ITEMS[d.itemId]?.name ?? d.itemId} ×${d.qty}`);
     }
     const xpLeveled = this.stats.addXp(player, def.xp);
-    const combatLeveled = def.combatXp ? this.stats.addSkillXp(player, 'combat', def.combatXp) : false;
+    const combatLeveled = def.combatXp
+      ? this.stats.addSkillXp(player, 'combat', def.combatXp)
+      : false;
     let dropLine = '';
     if (def.dropPool && def.dropPool.length && Math.random() < (def.guaranteedDropChance ?? 0)) {
       const baseId = def.dropPool[Math.floor(Math.random() * def.dropPool.length)];
@@ -124,7 +136,9 @@ export class ExpeditionService {
         `🏁 **${def.name}** zakończona!`,
         `Loot: ${labels.length ? labels.join(', ') : '(nic)'}`,
         `+${def.xp} XP PvP${xpLeveled ? ' 🎉 LEVEL UP!' : ''}` +
-          (def.combatXp ? `, +${def.combatXp} XP combat${combatLeveled ? ' 🎉 LEVEL UP!' : ''}` : ''),
+          (def.combatXp
+            ? `, +${def.combatXp} XP combat${combatLeveled ? ' 🎉 LEVEL UP!' : ''}`
+            : ''),
         dropLine,
       ]
         .filter(Boolean)
@@ -170,10 +184,14 @@ export class ExpeditionService {
       if (member.activeExpedition) {
         const left = member.activeExpedition.endsAt - Date.now();
         if (left > 0) {
-          await msg.reply(`<@${id}> ma wyprawę w toku (zostało ${Math.ceil(left / 60_000)} min) — nie mogę startować.`);
+          await msg.reply(
+            `<@${id}> ma wyprawę w toku (zostało ${Math.ceil(left / 60_000)} min) — nie mogę startować.`,
+          );
           return;
         }
-        await msg.reply(`<@${id}> ma niezebrane nagrody z poprzedniej wyprawy — niech użyje \`.expedition claim\`.`);
+        await msg.reply(
+          `<@${id}> ma niezebrane nagrody z poprzedniej wyprawy — niech użyje \`.expedition claim\`.`,
+        );
         return;
       }
     }

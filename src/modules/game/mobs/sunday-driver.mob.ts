@@ -1,6 +1,6 @@
 import { Mob } from './mob.js';
 
-export class NiedzielnyKierowca extends Mob {
+export class SundayDriver extends Mob {
   readonly id = 'niedzielny_kierowca';
   readonly name = 'Niedzielny Kierowca SUV-em';
   readonly hp = 110;

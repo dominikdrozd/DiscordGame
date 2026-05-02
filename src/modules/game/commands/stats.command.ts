@@ -27,17 +27,16 @@ export class StatsCommand implements ICommand {
     const { msg } = ctx;
     const target = msg.mentions?.users?.first() ?? msg.author;
     const name =
-      target.id === msg.author.id
-        ? displayName(msg)
-        : target.globalName || target.username;
+      target.id === msg.author.id ? displayName(msg) : target.globalName || target.username;
     const p = this.stats.get(target.id, name);
 
     const lines: string[] = [];
     const raceName = p.raceId ? (RACES[p.raceId]?.name ?? p.raceId) : '— (ustaw `.race pick <id>`)';
     const classObj = p.classId ? CLASSES[p.classId] : undefined;
-    const sub2Name = p.subclass2Id && p.classId && p.subclassId
-      ? (findSubclass2(p.classId, p.subclassId, p.subclass2Id)?.name ?? p.subclass2Id)
-      : undefined;
+    const sub2Name =
+      p.subclass2Id && p.classId && p.subclassId
+        ? (findSubclass2(p.classId, p.subclassId, p.subclass2Id)?.name ?? p.subclass2Id)
+        : undefined;
     const classDisplay = classObj
       ? `${classObj.name}${p.subclassId ? ` / ${findSubclass(p.classId!, p.subclassId)?.name ?? p.subclassId}` : ''}${sub2Name ? ` / ${sub2Name}` : ''} (${classObj.role})`
       : '— (ustaw `.class pick <id>`)';

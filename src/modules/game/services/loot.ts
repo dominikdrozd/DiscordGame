@@ -31,11 +31,7 @@ export function rollLoot(table: LootEntry[], skillLevel: number): RolledLoot | n
   return null;
 }
 
-export function rollLootMany(
-  table: LootEntry[],
-  skillLevel: number,
-  rolls: number,
-): RolledLoot[] {
+export function rollLootMany(table: LootEntry[], skillLevel: number, rolls: number): RolledLoot[] {
   const out: RolledLoot[] = [];
   for (let i = 0; i < rolls; i++) {
     const r = rollLoot(table, skillLevel);

@@ -5,10 +5,7 @@ const DEFAULT_TTL_MIN = parseInt(process.env.THREAD_TTL_MIN || '60', 10);
 
 export class CommandManager {
   private readonly commands: ICommand[] = [];
-  private readonly threadInfo = new Map<
-    string,
-    { command: ICommand; thread: any }
-  >();
+  private readonly threadInfo = new Map<string, { command: ICommand; thread: any }>();
   private readonly threadDeleteTimers = new Map<string, NodeJS.Timeout>();
   private readonly threadTtlMs: number = Math.max(1, DEFAULT_TTL_MIN) * 60_000;
   private queueTail: Promise<unknown> = Promise.resolve();
@@ -24,8 +21,7 @@ export class CommandManager {
   async dispatch(client: Client, msg: any): Promise<void> {
     if (msg.author?.bot) return;
 
-    const inOurThread =
-      msg.channel?.isThread?.() && msg.channel.ownerId === client.user?.id;
+    const inOurThread = msg.channel?.isThread?.() && msg.channel.ownerId === client.user?.id;
 
     if (inOurThread && this.threadInfo.has(msg.channel.id)) {
       this.scheduleThreadDelete(msg.channel.id);
@@ -108,10 +104,7 @@ export class CommandManager {
       await info.thread.delete('TTL: brak aktywności');
       console.log(`[manager] auto-deleted thread ${threadId}`);
     } catch (e) {
-      console.error(
-        `[manager] auto-delete fail ${threadId}:`,
-        (e as Error).message,
-      );
+      console.error(`[manager] auto-delete fail ${threadId}:`, (e as Error).message);
     }
   }
 

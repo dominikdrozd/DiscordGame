@@ -18,8 +18,7 @@ export class ClearCommand implements ICommand {
 
   async execute(ctx: ICommandContext): Promise<void> {
     const { client, msg, forgetThread } = ctx;
-    const inOurThread =
-      msg.channel?.isThread?.() && msg.channel.ownerId === client.user?.id;
+    const inOurThread = msg.channel?.isThread?.() && msg.channel.ownerId === client.user?.id;
 
     if (!inOurThread) {
       await msg.reply('`.clear` działa wyłącznie wewnątrz wątku stworzonego przez bota.');
@@ -31,9 +30,7 @@ export class ClearCommand implements ICommand {
       forgetThread(threadId);
       await msg.channel.delete('manual .clear');
     } catch (e) {
-      await msg
-        .reply(`Błąd usuwania wątku: ${(e as Error).message}`)
-        .catch(() => {});
+      await msg.reply(`Błąd usuwania wątku: ${(e as Error).message}`).catch(() => {});
     }
   }
 }

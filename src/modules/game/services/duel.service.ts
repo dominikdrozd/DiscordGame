@@ -20,11 +20,7 @@ import {
   handleSkillPick,
   handleSkillTarget,
 } from '../engine/battle-helpers.js';
-import {
-  buildActionRow,
-  buildPanelOpenerRow,
-  buildTargetRow,
-} from '../ui/battle-buttons.js';
+import { buildActionRow, buildPanelOpenerRow, buildTargetRow } from '../ui/battle-buttons.js';
 import { displayName } from '../../../utils.js';
 
 interface DuelBattleState extends BattleState {
@@ -104,11 +100,7 @@ export class DuelService {
     await this.promptHumans(state);
   }
 
-  private async startPartyDuel(
-    ctx: ICommandContext,
-    partyA: Party,
-    partyB: Party,
-  ): Promise<void> {
+  private async startPartyDuel(ctx: ICommandContext, partyA: Party, partyB: Party): Promise<void> {
     const { msg, registerThread } = ctx;
 
     let thread: any;
@@ -177,28 +169,38 @@ export class DuelService {
     const [, battleId] = interaction.customId.split(':');
     const state = this.states.get(battleId);
     if (!state || state.finished) {
-      await interaction.reply({ content: 'Walka już się skończyła.', ephemeral: true }).catch(() => {});
+      await interaction
+        .reply({ content: 'Walka już się skończyła.', ephemeral: true })
+        .catch(() => {});
       return;
     }
     const me = findCombatant(state, interaction.user.id);
     if (!me || me.controller !== 'human') {
-      await interaction.reply({ content: 'Nie bierzesz udziału w tej walce.', ephemeral: true }).catch(() => {});
+      await interaction
+        .reply({ content: 'Nie bierzesz udziału w tej walce.', ephemeral: true })
+        .catch(() => {});
       return;
     }
     if (me.hp <= 0) {
-      await interaction.reply({ content: 'Już nie żyjesz w tej walce.', ephemeral: true }).catch(() => {});
+      await interaction
+        .reply({ content: 'Już nie żyjesz w tej walce.', ephemeral: true })
+        .catch(() => {});
       return;
     }
     if (state.pending.has(me.id)) {
-      await interaction.reply({ content: 'Już wybrałeś akcję — czekamy na pozostałych.', ephemeral: true }).catch(() => {});
+      await interaction
+        .reply({ content: 'Już wybrałeś akcję — czekamy na pozostałych.', ephemeral: true })
+        .catch(() => {});
       return;
     }
     const hasSkills = (me.skills ?? []).length > 0;
-    await interaction.reply({
-      content: `🎮 Runda ${state.roundNumber} — wybierz akcję (${me.hp}/${me.maxHp} HP):`,
-      ephemeral: true,
-      components: [buildActionRow(state.id, me.id, false, hasSkills)],
-    }).catch(() => {});
+    await interaction
+      .reply({
+        content: `🎮 Runda ${state.roundNumber} — wybierz akcję (${me.hp}/${me.maxHp} HP):`,
+        ephemeral: true,
+        components: [buildActionRow(state.id, me.id, false, hasSkills)],
+      })
+      .catch(() => {});
   }
 
   private async handleItemPick(interaction: ButtonInteraction): Promise<void> {
@@ -230,19 +232,25 @@ export class DuelService {
     const state = this.states.get(battleId);
     if (!state || state.finished) return;
     if (interaction.user.id !== combatantId) {
-      await interaction.reply({ content: 'Nie bierzesz udziału w tym pojedynku.', ephemeral: true }).catch(() => {});
+      await interaction
+        .reply({ content: 'Nie bierzesz udziału w tym pojedynku.', ephemeral: true })
+        .catch(() => {});
       return;
     }
     const me = findCombatant(state, combatantId);
     if (!me || me.hp <= 0) return;
     if (state.pending.has(combatantId)) {
-      await interaction.reply({ content: 'Już wybrałeś akcję — czekamy na drugiego.', ephemeral: true }).catch(() => {});
+      await interaction
+        .reply({ content: 'Już wybrałeś akcję — czekamy na drugiego.', ephemeral: true })
+        .catch(() => {});
       return;
     }
 
     if (kind === 'def') {
       state.pending.set(combatantId, { kind: 'defend' });
-      await interaction.reply({ content: 'Wybrałeś: **Obrona**.', ephemeral: true }).catch(() => {});
+      await interaction
+        .reply({ content: 'Wybrałeś: **Obrona**.', ephemeral: true })
+        .catch(() => {});
     } else if (kind === 'itm') {
       await openItemPicker(interaction, battleId, combatantId, me);
       return;
@@ -254,10 +262,14 @@ export class DuelService {
       if (enemies.length === 0) return;
       if (enemies.length === 1) {
         state.pending.set(combatantId, { kind: 'attack', targetId: enemies[0].id });
-        await interaction.reply({ content: `Atak na **${enemies[0].name}**.`, ephemeral: true }).catch(() => {});
+        await interaction
+          .reply({ content: `Atak na **${enemies[0].name}**.`, ephemeral: true })
+          .catch(() => {});
       } else {
         const row = buildTargetRow(battleId, combatantId, 'atk', enemies);
-        await interaction.reply({ content: 'Wybierz cel:', ephemeral: true, components: [row] }).catch(() => {});
+        await interaction
+          .reply({ content: 'Wybierz cel:', ephemeral: true, components: [row] })
+          .catch(() => {});
         return;
       }
     } else {
@@ -280,7 +292,9 @@ export class DuelService {
         return;
       }
       state.pending.set(combatantId, { kind: 'attack', targetId });
-      await interaction.update({ content: `Wybrany cel: **${target.name}**.`, components: [] }).catch(() => {});
+      await interaction
+        .update({ content: `Wybrany cel: **${target.name}**.`, components: [] })
+        .catch(() => {});
     }
     await this.maybeResolve(state);
   }
@@ -294,9 +308,10 @@ export class DuelService {
       try {
         const m = await state.thread.messages.fetch(msgId).catch(() => null);
         if (!m) continue;
-        const row = allyId === '__panel__'
-          ? buildPanelOpenerRow(state.id, true)
-          : buildActionRow(state.id, allyId, true);
+        const row =
+          allyId === '__panel__'
+            ? buildPanelOpenerRow(state.id, true)
+            : buildActionRow(state.id, allyId, true);
         await m.edit({ components: [row] }).catch(() => {});
       } catch {}
     }
@@ -310,17 +325,15 @@ export class DuelService {
     }
 
     await state.thread.send(
-      [
-        ...result.lines,
-        '',
-        this.fmtBoard(state),
-        `⏭ Runda ${state.roundNumber}`,
-      ].join('\n'),
+      [...result.lines, '', this.fmtBoard(state), `⏭ Runda ${state.roundNumber}`].join('\n'),
     );
     await this.promptHumans(state);
   }
 
-  private async finish(state: DuelBattleState, result: { draw?: boolean; winnerTeam?: number }): Promise<void> {
+  private async finish(
+    state: DuelBattleState,
+    result: { draw?: boolean; winnerTeam?: number },
+  ): Promise<void> {
     syncConsumablesAfterBattle(this.stats, state);
     if (result.draw) {
       await state.thread.send(`💀 **REMIS!** Wszyscy padli w tej samej rundzie — brak XP.`);
@@ -377,9 +390,7 @@ export class DuelService {
 
   private async promptHumans(state: DuelBattleState): Promise<void> {
     if (state.isPartyDuel) {
-      const aliveHumans = state.combatants.filter(
-        (c) => c.controller === 'human' && c.hp > 0,
-      );
+      const aliveHumans = state.combatants.filter((c) => c.controller === 'human' && c.hp > 0);
       if (aliveHumans.length === 0) return;
       const mentions = aliveHumans.map((c) => `<@${c.id}>`).join(' ');
       const sent = await state.thread.send({

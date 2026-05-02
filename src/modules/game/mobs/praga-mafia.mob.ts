@@ -1,6 +1,6 @@
 import { Mob, type MobTier } from './mob.js';
 
-export class MafiaZPragi extends Mob {
+export class PragaMafia extends Mob {
   readonly id = 'mafia_z_pragi';
   readonly name = 'Mafia z Pragi';
   readonly tier: MobTier = 2;

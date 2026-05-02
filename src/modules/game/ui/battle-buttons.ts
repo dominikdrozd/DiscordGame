@@ -1,11 +1,7 @@
-import {
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-} from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import type { BattleCombatant } from '../engine/battle-state.js';
 import { ITEMS } from '../services/items.js';
-import { listAvailableSkills, isOnCooldown, type Skill } from '../skills/index.js';
+import { listAvailableSkills } from '../skills/index.js';
 
 export function buildActionRow(
   battleId: string,
@@ -69,12 +65,14 @@ export function buildSkillTargetRow(
   targets: BattleCombatant[],
 ): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    ...targets.slice(0, 5).map((t) =>
-      new ButtonBuilder()
-        .setCustomId(`skltgt:${battleId}:${combatantId}:${skillId}:${t.id}`)
-        .setLabel(`${t.name} (${t.hp}/${t.maxHp})`.slice(0, 80))
-        .setStyle(ButtonStyle.Secondary),
-    ),
+    ...targets
+      .slice(0, 5)
+      .map((t) =>
+        new ButtonBuilder()
+          .setCustomId(`skltgt:${battleId}:${combatantId}:${skillId}:${t.id}`)
+          .setLabel(`${t.name} (${t.hp}/${t.maxHp})`.slice(0, 80))
+          .setStyle(ButtonStyle.Secondary),
+      ),
   );
 }
 
@@ -128,11 +126,13 @@ export function buildTargetRow(
   targets: BattleCombatant[],
 ): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    ...targets.slice(0, 5).map((t) =>
-      new ButtonBuilder()
-        .setCustomId(`tgt:${battleId}:${combatantId}:${kind}:${t.id}`)
-        .setLabel(`${t.name} (${t.hp}/${t.maxHp})`.slice(0, 80))
-        .setStyle(ButtonStyle.Secondary),
-    ),
+    ...targets
+      .slice(0, 5)
+      .map((t) =>
+        new ButtonBuilder()
+          .setCustomId(`tgt:${battleId}:${combatantId}:${kind}:${t.id}`)
+          .setLabel(`${t.name} (${t.hp}/${t.maxHp})`.slice(0, 80))
+          .setStyle(ButtonStyle.Secondary),
+      ),
   );
 }

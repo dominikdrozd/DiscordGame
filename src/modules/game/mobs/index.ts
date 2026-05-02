@@ -1,38 +1,38 @@
 import { Mob, type MobTier } from './mob.js';
-// Bossy
-import { SzczurKuchenny } from './szczur-kuchenny.mob.js';
-import { GoblinKucharz } from './goblin-kucharz.mob.js';
-import { GoblinLider } from './goblin-lider.mob.js';
-import { JadowyPajak } from './jadowy-pajak.mob.js';
-import { BabaJaga } from './baba-jaga.mob.js';
-import { KsiaznaMroku } from './ksiazna-mroku.mob.js';
-import { SmokPolonezowy } from './smok-polonezowy.mob.js';
-import { TytanZelaza } from './tytan-zelaza.mob.js';
-// Ambush moby
-import { GoblinZlomiarz } from './goblin-zlomiarz.mob.js';
-import { KupiecZlodziej } from './kupiec-zlodziej.mob.js';
-import { WilkSmazony } from './wilk-smazony.mob.js';
-import { BandyciZPetlicy } from './bandyci-z-petlicy.mob.js';
-import { MafiaZPragi } from './mafia-z-pragi.mob.js';
-import { TrolleZBloku } from './trolle-z-bloku.mob.js';
-import { OgnistyChochlik } from './ognisty-chochlik.mob.js';
-import { MalaStazystkaDemonow } from './mala-stazystka-demonow.mob.js';
-import { NiedzielnyKierowca } from './niedzielny-kierowca.mob.js';
-import { UpiorZPkp } from './upior-z-pkp.mob.js';
+// Bosses
+import { KitchenRat } from './kitchen-rat.mob.js';
+import { GoblinCook } from './goblin-cook.mob.js';
+import { GoblinLeader } from './goblin-leader.mob.js';
+import { VenomousSpider } from './venomous-spider.mob.js';
+import { BabaYaga } from './baba-yaga.mob.js';
+import { DarkDuchess } from './dark-duchess.mob.js';
+import { PolonezDragon } from './polonez-dragon.mob.js';
+import { IronTitan } from './iron-titan.mob.js';
+// Ambush mobs
+import { ScrapGoblin } from './scrap-goblin.mob.js';
+import { ThiefMerchant } from './thief-merchant.mob.js';
+import { FriedWolf } from './fried-wolf.mob.js';
+import { PetlicaBandits } from './petlica-bandits.mob.js';
+import { PragaMafia } from './praga-mafia.mob.js';
+import { BlockTrolls } from './block-trolls.mob.js';
+import { FireImp } from './fire-imp.mob.js';
+import { DemonIntern } from './demon-intern.mob.js';
+import { SundayDriver } from './sunday-driver.mob.js';
+import { PkpWraith } from './pkp-wraith.mob.js';
 
 export { Mob };
 export type { MobReward, MobTier } from './mob.js';
 export { TIER_MULTIPLIERS } from './mob.js';
 
 export const BOSS_MOBS: Record<string, Mob> = {
-  szczur_kuchenny: new SzczurKuchenny(),
-  goblin_kucharz: new GoblinKucharz(),
-  goblin_lider: new GoblinLider(),
-  jadowy_pajak: new JadowyPajak(),
-  baba_jaga: new BabaJaga(),
-  ksiazna_mroku: new KsiaznaMroku(),
-  smok_polonezowy: new SmokPolonezowy(),
-  tytan_zelaza: new TytanZelaza(),
+  szczur_kuchenny: new KitchenRat(),
+  goblin_kucharz: new GoblinCook(),
+  goblin_lider: new GoblinLeader(),
+  jadowy_pajak: new VenomousSpider(),
+  baba_jaga: new BabaYaga(),
+  ksiazna_mroku: new DarkDuchess(),
+  smok_polonezowy: new PolonezDragon(),
+  tytan_zelaza: new IronTitan(),
 };
 
 type MobConstructor = new () => Mob;
@@ -42,16 +42,16 @@ type MobConstructor = new () => Mob;
  * przy każdym losowaniu, więc setTier(t) nie wycieka między walkami.
  */
 export const AMBUSH_MOB_CLASSES: MobConstructor[] = [
-  GoblinZlomiarz,
-  KupiecZlodziej,
-  WilkSmazony,
-  BandyciZPetlicy,
-  MafiaZPragi,
-  TrolleZBloku,
-  OgnistyChochlik,
-  MalaStazystkaDemonow,
-  NiedzielnyKierowca,
-  UpiorZPkp,
+  ScrapGoblin,
+  ThiefMerchant,
+  FriedWolf,
+  PetlicaBandits,
+  PragaMafia,
+  BlockTrolls,
+  FireImp,
+  DemonIntern,
+  SundayDriver,
+  PkpWraith,
 ];
 
 /** Lookup id → constructor — używane gdy ekspedycja whitelistuje moby. */
@@ -78,9 +78,10 @@ export interface RandomAmbushOpts {
 }
 
 export function randomAmbushMob(opts: RandomAmbushOpts = {}): Mob {
-  const pool = opts.allowedIds && opts.allowedIds.length > 0
-    ? opts.allowedIds.map((id) => AMBUSH_MOB_CLASSES_BY_ID[id]).filter(Boolean)
-    : AMBUSH_MOB_CLASSES;
+  const pool =
+    opts.allowedIds && opts.allowedIds.length > 0
+      ? opts.allowedIds.map((id) => AMBUSH_MOB_CLASSES_BY_ID[id]).filter(Boolean)
+      : AMBUSH_MOB_CLASSES;
   const Ctor = pool[Math.floor(Math.random() * pool.length)] ?? AMBUSH_MOB_CLASSES[0];
   const mob = new Ctor();
   let tier = opts.tier;
