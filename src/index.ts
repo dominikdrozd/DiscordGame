@@ -14,6 +14,7 @@ import {
   registerGameCommands,
   startAmbushLoop,
   startWorldBossLoop,
+  startArenaLoop,
 } from './modules/game/index.js';
 
 const client = new Client({
@@ -28,6 +29,7 @@ const client = new Client({
 const manager = new CommandManager();
 let ambushService: import('./modules/game/engine/ambush.js').AmbushService | null = null;
 let worldBossService: import('./modules/game/engine/world-boss.js').WorldBossService | null = null;
+let arenaService: import('./modules/game/engine/arena.js').ArenaService | null = null;
 
 // chat / utility (non-game)
 manager.register(new AskCommand());
@@ -79,6 +81,7 @@ client.once(Events.ClientReady, (c) => {
   );
   ambushService = startAmbushLoop(client, gameServices);
   worldBossService = startWorldBossLoop(client, gameServices);
+  arenaService = startArenaLoop(client, gameServices);
   void registerSlashCommands(c.user.id);
 });
 
@@ -101,6 +104,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
   if (worldBossService && interaction.isButton()) {
     await worldBossService.handleInteraction(interaction);
+  }
+  if (arenaService && interaction.isButton()) {
+    await arenaService.handleInteraction(interaction);
   }
   // Fallback ack — gdy żaden service nie obsłużył (np. bot się zrestartował
   // i state in-memory zniknął), Discord pokaże "This interaction failed"

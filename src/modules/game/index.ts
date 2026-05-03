@@ -11,6 +11,7 @@ import { InventoryService } from './services/inventory.service.js';
 import { CityService } from './services/city.service.js';
 import { AmbushService } from './engine/ambush.js';
 import { WorldBossService } from './engine/world-boss.js';
+import { ArenaService } from './engine/arena.js';
 import { DuelCommand } from './commands/duel.command.js';
 import { BossCommand } from './commands/boss.command.js';
 import { DungeonCommand } from './commands/dungeon.command.js';
@@ -211,4 +212,10 @@ export function startWorldBossLoop(client: Client, services: GameServices): Worl
   const wb = new WorldBossService(client, services.stats);
   wb.start();
   return wb;
+}
+
+export function startArenaLoop(client: Client, services: GameServices): ArenaService {
+  const arena = new ArenaService(client, services.stats, services.party, services.expeditions);
+  arena.start();
+  return arena;
 }
