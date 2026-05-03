@@ -1,4 +1,11 @@
-import { MessageFlags, type ButtonInteraction, type ChatInputCommandInteraction } from 'discord.js';
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  MessageFlags,
+  type ButtonInteraction,
+  type ChatInputCommandInteraction,
+} from 'discord.js';
 import type { ICommandContext } from '../../../types/command.types.js';
 import { PlayerStatsService, type PlayerStats } from './player-stats.js';
 import { PartyService } from './party.js';
@@ -40,6 +47,27 @@ export interface MenuInventoryOpener {
 }
 
 const DUNGEONS_LIST = ['spizarnia_babci', 'smocza_dziupla'];
+
+interface ButtonBuilderLike {
+  customId: string;
+  label: string;
+  style: 'Primary' | 'Secondary' | 'Success' | 'Danger';
+}
+
+function styleEnum(s: ButtonBuilderLike['style']): ButtonStyle {
+  if (s === 'Primary') return ButtonStyle.Primary;
+  if (s === 'Success') return ButtonStyle.Success;
+  if (s === 'Danger') return ButtonStyle.Danger;
+  return ButtonStyle.Secondary;
+}
+
+function buildSimpleButtonRow(buttons: ButtonBuilderLike[]): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    ...buttons.map((b) =>
+      new ButtonBuilder().setCustomId(b.customId).setLabel(b.label).setStyle(styleEnum(b.style)),
+    ),
+  );
+}
 
 export class MenuService {
   constructor(
@@ -169,6 +197,10 @@ export class MenuService {
         );
       }
       return this.update(interaction, this.renderDungeonList(player), true);
+    }
+    if (action === 'players') {
+      const page = parseInt(parts[2], 10) || 0;
+      return this.renderPlayersList(interaction, page);
     }
     if (action === 'mine') return this.runGather(interaction, player, this.gatherers.mine);
     if (action === 'fish') return this.runGather(interaction, player, this.gatherers.fish);
@@ -320,6 +352,68 @@ export class MenuService {
       );
     }
     return lines.join('\n').slice(0, 1900);
+  }
+
+  /**
+   * Lista wszystkich graczy z paginacją po 10 — sortowana po combat lvl
+   * (desc) jako default leaderboard. Buttony ◀ ▶ + ← Menu w stopce.
+   */
+  private async renderPlayersList(
+    interaction: ButtonInteraction,
+    page: number,
+  ): Promise<void> {
+    const PAGE_SIZE = 10;
+    const all = this.stats.list().sort((a, b) => {
+      const lvlDiff = b.skills.combat.level - a.skills.combat.level;
+      if (lvlDiff !== 0) return lvlDiff;
+      return b.gold - a.gold;
+    });
+    const totalPages = Math.max(1, Math.ceil(all.length / PAGE_SIZE));
+    const safePage = Math.max(0, Math.min(page, totalPages - 1));
+    const slice = all.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
+
+    const lines: string[] = [
+      `👥 **Wszyscy gracze** — strona ${safePage + 1}/${totalPages} (${all.length} łącznie)`,
+      '',
+    ];
+    for (let i = 0; i < slice.length; i++) {
+      const idx = safePage * PAGE_SIZE + i + 1;
+      const pl = slice[i];
+      const cls = pl.classId ? CLASSES[pl.classId]?.name ?? pl.classId : '—';
+      lines.push(
+        `**${idx}.** ${pl.name} — combat L${pl.skills.combat.level} · ${cls} · 💰 ${pl.gold} · 🏆 ${pl.wins}W/${pl.losses}L`,
+      );
+    }
+    if (slice.length === 0) lines.push('_Brak graczy._');
+
+    const userId = interaction.user.id;
+    const buttons: ButtonBuilderLike[] = [];
+    if (safePage > 0) {
+      buttons.push({
+        customId: `menu:players:${safePage - 1}:${userId}`,
+        label: '◀ Poprzednia',
+        style: 'Secondary',
+      });
+    }
+    if (safePage < totalPages - 1) {
+      buttons.push({
+        customId: `menu:players:${safePage + 1}:${userId}`,
+        label: 'Następna ▶',
+        style: 'Secondary',
+      });
+    }
+    buttons.push({
+      customId: `menu:back:${userId}`,
+      label: '← Menu',
+      style: 'Primary',
+    });
+
+    await interaction
+      .update({
+        content: lines.join('\n').slice(0, 1900),
+        components: [buildSimpleButtonRow(buttons)],
+      })
+      .catch(() => {});
   }
 
   private renderParty(p: PlayerStats): string {

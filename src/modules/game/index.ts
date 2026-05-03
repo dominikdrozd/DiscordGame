@@ -10,6 +10,7 @@ import { CraftService } from './services/craft.service.js';
 import { InventoryService } from './services/inventory.service.js';
 import { CityService } from './services/city.service.js';
 import { AmbushService } from './engine/ambush.js';
+import { WorldBossService } from './engine/world-boss.js';
 import { DuelCommand } from './commands/duel.command.js';
 import { BossCommand } from './commands/boss.command.js';
 import { DungeonCommand } from './commands/dungeon.command.js';
@@ -204,4 +205,10 @@ export function startAmbushLoop(client: Client, services: GameServices): AmbushS
   services.expeditions.bindAmbushService(ambush);
   ambush.start();
   return ambush;
+}
+
+export function startWorldBossLoop(client: Client, services: GameServices): WorldBossService {
+  const wb = new WorldBossService(client, services.stats);
+  wb.start();
+  return wb;
 }

@@ -9,7 +9,12 @@ import { MovieOfTheDayCommand } from './commands/movie-of-the-day.command.js';
 import { ClearCommand } from './commands/clear.command.js';
 import { PurgeCommand } from './commands/purge.command.js';
 import { HelpCommand } from './commands/help.command.js';
-import { createGameServices, registerGameCommands, startAmbushLoop } from './modules/game/index.js';
+import {
+  createGameServices,
+  registerGameCommands,
+  startAmbushLoop,
+  startWorldBossLoop,
+} from './modules/game/index.js';
 
 const client = new Client({
   intents: [
@@ -22,6 +27,7 @@ const client = new Client({
 
 const manager = new CommandManager();
 let ambushService: import('./modules/game/engine/ambush.js').AmbushService | null = null;
+let worldBossService: import('./modules/game/engine/world-boss.js').WorldBossService | null = null;
 
 // chat / utility (non-game)
 manager.register(new AskCommand());
@@ -72,6 +78,7 @@ client.once(Events.ClientReady, (c) => {
       .join(', '),
   );
   ambushService = startAmbushLoop(client, gameServices);
+  worldBossService = startWorldBossLoop(client, gameServices);
   void registerSlashCommands(c.user.id);
 });
 
@@ -91,6 +98,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
   await manager.handleInteraction(interaction);
   if (ambushService && interaction.isButton()) {
     await ambushService.handleInteraction(interaction);
+  }
+  if (worldBossService && interaction.isButton()) {
+    await worldBossService.handleInteraction(interaction);
   }
   // Fallback ack — gdy żaden service nie obsłużył (np. bot się zrestartował
   // i state in-memory zniknął), Discord pokaże "This interaction failed"

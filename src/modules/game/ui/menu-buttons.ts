@@ -69,6 +69,10 @@ export function buildMenuRows(userId: string): ActionRowBuilder<ButtonBuilder>[]
   );
   const row4 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
+      .setCustomId(`menu:players:0:${userId}`)
+      .setLabel('👥 Gracze')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
       .setCustomId(id('refresh', userId))
       .setLabel('🔄 Odśwież')
       .setStyle(ButtonStyle.Secondary),
