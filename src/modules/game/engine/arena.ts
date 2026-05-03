@@ -5,11 +5,33 @@ import {
   ButtonBuilder,
   ButtonStyle,
 } from 'discord.js';
-import { PlayerStatsService, type PlayerStats } from '../services/player-stats.js';
+import { PlayerStatsService } from '../services/player-stats.js';
 import { PartyService } from '../services/party.js';
 import { ExpeditionService } from '../services/expedition.service.js';
-import { applyAttack } from './combat.js';
+import {
+  type BattleCombatant,
+  type BattleState,
+  aliveEnemies,
+  findCombatant,
+  humansAlive,
+} from './battle-state.js';
+import { resolveBattleRound } from './combat-battle.js';
 import { buildPlayerCombatant } from './player-combatant.js';
+import {
+  openItemPicker,
+  recordItemPick,
+  syncConsumablesAfterBattle,
+  openSkillPicker,
+  handleSkillPick,
+  handleSkillTarget,
+  ackStaleInteraction,
+  closeBattleThread,
+  promptHumansWithPanel,
+  handlePanelOpen,
+  notifyChoiceMade,
+  postBattleSummary,
+} from './battle-helpers.js';
+import { buildPanelOpenerRow, buildTargetRow } from '../ui/battle-buttons.js';
 import { errMsg } from '../../../utils.js';
 
 const TICK_MS = 60_000;
@@ -18,9 +40,9 @@ const ARENA_HOUR = 18;
 /** Minuta w godzinie. */
 const ARENA_MINUTE = 10;
 /** Okno rejestracji od ogłoszenia do startu turnieju. */
-const REGISTRATION_WINDOW_MS = 15 * 60_000;
+const REGISTRATION_WINDOW_MS = 5 * 60_000;
 const MIN_PARTICIPANTS = 2;
-const MAX_PARTICIPANTS = 16;
+const MAX_PARTICIPANTS = 8;
 
 const WINNER_GOLD = 1500;
 const WINNER_XP = 800;
@@ -35,10 +57,38 @@ interface ArenaEvent {
   registrationEndsAt: number;
 }
 
+/** Aktywny round-robin turniej — pojedynczy globalnie (jeden dziennie). */
+interface ArenaTournament {
+  thread: SendableThread;
+  channelId: string;
+  participantIds: string[];
+  /** Pary wygenerowane round-robin (każdy z każdym). Iterujemy `currentMatchIdx`. */
+  pairs: Array<[string, string]>;
+  currentMatchIdx: number;
+  /** Wins per player — finalny ranking sortuje desc. */
+  scores: Map<string, number>;
+  /** Aktualnie aktywna walka 1v1 (gdy match w toku). */
+  currentBattle?: BattleState;
+}
+
+interface SendableThread {
+  id: string;
+  send: (payload: unknown) => Promise<{ id: string } | unknown>;
+  setArchived?: (state: boolean) => Promise<unknown>;
+  messages: { fetch: (id: string) => Promise<{ edit: (payload: unknown) => Promise<unknown> } | null> };
+}
+
 function hasSendable(c: unknown): c is { send: (payload: unknown) => Promise<unknown> } {
   if (!c || typeof c !== 'object') return false;
   if (!('send' in c)) return false;
   return typeof (c as { send: unknown }).send === 'function';
+}
+
+function isSendableThread(t: unknown): t is SendableThread {
+  if (!t || typeof t !== 'object') return false;
+  if (!('id' in t) || typeof (t as { id: unknown }).id !== 'string') return false;
+  if (!('send' in t) || typeof (t as { send: unknown }).send !== 'function') return false;
+  return true;
 }
 
 /** Najbliższy timestamp ARENA_HOUR:ARENA_MINUTE lokalnie po `now`. */
@@ -66,91 +116,38 @@ function buildAnnounceRow(): ActionRowBuilder<ButtonBuilder> {
   );
 }
 
-interface SimCombatant {
-  name: string;
-  hp: number;
-  maxHp: number;
-  damageBonus: number;
-  defenseBonus?: number;
-  critBonus?: number;
-  speed?: number;
-  defending: boolean;
-  potionsLeft: number;
-  consumables?: Record<string, number>;
-}
-
 /**
- * Symulacja 1v1 duela bez human input — obaj atakują się aż jeden padnie.
- * Zwraca id zwycięzcy + log linii. Używane w arenie zamiast interaktywnych
- * duels (gracze nie muszą być online między rundami).
- *
- * Mechanika: każdą rundę obaj atakują równolegle przez `applyAttack`.
- * Speed nie wpływa (round = jednoczesne ataki). Limit 50 rund — zbyt
- * długie walki kończy random tiebreak (wyższe HP wygrywa).
+ * Round-robin pair scheduling: każdy z każdym dokładnie raz.
+ * Dla N graczy: N*(N-1)/2 par. Public + pure → łatwe testy.
  */
-function simulateDuel(
-  a: PlayerStats,
-  b: PlayerStats,
-  stats: PlayerStatsService,
-): { winnerId: string; lines: string[] } {
-  const ca = buildPlayerCombatant(stats, a);
-  const cb = buildPlayerCombatant(stats, b);
-  const lines: string[] = [`⚔️ **${a.name}** vs **${b.name}**`];
-  for (let round = 1; round <= 50; round++) {
-    if (ca.hp <= 0 || cb.hp <= 0) break;
-    lines.push(`_R${round}:_`);
-    lines.push('  ' + applyAttack(ca, cb));
-    if (cb.hp <= 0) break;
-    lines.push('  ' + applyAttack(cb, ca));
+export function buildRoundRobinPairs(participantIds: string[]): Array<[string, string]> {
+  const pairs: Array<[string, string]> = [];
+  for (let i = 0; i < participantIds.length; i++) {
+    for (let j = i + 1; j < participantIds.length; j++) {
+      pairs.push([participantIds[i], participantIds[j]]);
+    }
   }
-  let winnerId: string;
-  if (ca.hp <= 0 && cb.hp <= 0) {
-    // Remis sędziowski — wygrywa ten z wyższym damageBonus.
-    winnerId = ca.damageBonus >= cb.damageBonus ? a.id : b.id;
-    lines.push(`⚖️ Remis HP — wygrywa szybszy: **${winnerId === a.id ? a.name : b.name}**.`);
-  } else if (ca.hp <= 0) {
-    winnerId = b.id;
-    lines.push(`🏆 Zwycięzca: **${b.name}**`);
-  } else if (cb.hp <= 0) {
-    winnerId = a.id;
-    lines.push(`🏆 Zwycięzca: **${a.name}**`);
-  } else {
-    // Hit rund-cap: wygrywa wyższe HP %.
-    const ratioA = ca.hp / ca.maxHp;
-    const ratioB = cb.hp / cb.maxHp;
-    winnerId = ratioA >= ratioB ? a.id : b.id;
-    lines.push(`⏱️ Time-out — wygrywa wyższe HP%: **${winnerId === a.id ? a.name : b.name}**.`);
-  }
-  return { winnerId, lines };
-}
-
-function shuffle<T>(arr: T[]): T[] {
-  const out = [...arr];
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [out[i], out[j]] = [out[j], out[i]];
-  }
-  return out;
+  return pairs;
 }
 
 /**
- * Arena Service — codzienny turniej PvP o 18:00.
+ * Arena Service — codzienny round-robin turniej PvP o 18:10.
  *
  * Flow:
- *  1. Tick co 60s: gdy czas >= 18:00 i nie było jeszcze ogłoszenia
- *     dzisiaj → spawn announcement.
+ *  1. Tick co 60s → o 18:10 announcement z pingiem wszystkich graczy.
  *  2. 15 min okno rejestracji (button "Dołącz" + "Anuluj wyprawę").
- *  3. Po oknie: jeśli ≥2 zapisanych — single-elim bracket, każdy duel
- *     SYMULOWANY (no human input). Buty per match w wątku.
- *  4. Champion: gold + XP + combat XP. 2nd place: częściowy reward.
- *
- * Wymóg: gracze na ekspedycji **nie mogą się zapisać** — przycisk
- * "Anuluj wyprawę" pozwala lider party / solo gracz przerwać aktualną
- * wyprawę żeby dołączyć.
+ *  3. Po oknie: jeśli ≥2 zapisanych — round-robin schedule, każdy gra
+ *     z każdym po jednej walce w arenie-wątku.
+ *  4. Każda walka **interaktywna** (jak w duelu) — gracze klikają panel,
+ *     wybierają atak/skill/item/obronę, runda resolve gdy obaj podadzą.
+ *  5. Po wszystkich walkach: ranking po liczbie wygranych. Mistrz dostaje
+ *     gold + XP od miasta, runner-up częściowy reward.
  */
 export class ArenaService {
   private timer: NodeJS.Timeout | null = null;
   private pendingEvent: ArenaEvent | null = null;
+  /** Pojedynczy globalny turniej — `null` gdy nieaktywny. */
+  private tournament: ArenaTournament | null = null;
   private nextSpawnAt: number = 0;
   /** Zapobiega podwójnemu spawnowaniu w tej samej dobie. */
   private lastSpawnDay: string = '';
@@ -177,7 +174,6 @@ export class ArenaService {
     this.timer = null;
   }
 
-  /** Public — dla ręcznego trigger via admin command. */
   async forceSpawn(): Promise<void> {
     await this.spawnAnnouncement();
   }
@@ -187,7 +183,11 @@ export class ArenaService {
     if (this.pendingEvent && now >= this.pendingEvent.registrationEndsAt) {
       const evt = this.pendingEvent;
       this.pendingEvent = null;
-      await this.tryStartTournament(evt);
+      try {
+        await this.tryStartTournament(evt);
+      } catch (e) {
+        console.error('[arena] tryStartTournament threw:', errMsg(e));
+      }
     }
     if (now >= this.nextSpawnAt) {
       this.nextSpawnAt = nextArenaSlot(now);
@@ -203,11 +203,11 @@ export class ArenaService {
     const channelId = process.env.ARENA_CHANNEL_ID ?? process.env.WORLD_BOSS_CHANNEL_ID;
     if (!channelId) {
       console.warn(
-        '[arena] ARENA_CHANNEL_ID (ani WORLD_BOSS_CHANNEL_ID) nie ustawione — pomijam announcement. Ustaw w .env żeby ogłaszać arenę.',
+        '[arena] ARENA_CHANNEL_ID (ani WORLD_BOSS_CHANNEL_ID) nie ustawione — pomijam announcement.',
       );
       return;
     }
-    if (this.pendingEvent) return;
+    if (this.pendingEvent || this.tournament) return;
 
     const channel = await this.client.channels.fetch(channelId).catch(() => null);
     if (!channel || !hasSendable(channel)) {
@@ -215,11 +215,8 @@ export class ArenaService {
       return;
     }
 
-    // Pingujemy wszystkich graczy z profilem żeby dostali notyfikację —
-    // inaczej ogłoszenie utonie w kanale i nikt go nie zobaczy.
     const allPlayers = this.stats.list();
     const mentions = allPlayers.map((p) => `<@${p.id}>`);
-    // Discord 2000 char limit — przy >50 graczach dzielimy na batche.
     const MENTION_BATCH = 50;
 
     const registrationEndsAt = Date.now() + REGISTRATION_WINDOW_MS;
@@ -229,8 +226,8 @@ export class ArenaService {
           '🏟️ **ARENA OTWARTA!**',
           mentions.slice(0, MENTION_BATCH).join(' '),
           `Codzienny turniej PvP. Rejestracja **${Math.round(REGISTRATION_WINDOW_MS / 60_000)} min**.`,
-          `Min ${MIN_PARTICIPANTS}, max ${MAX_PARTICIPANTS} graczy. Single-elimination — wygrywa jeden.`,
-          `🏆 **Nagroda dla mistrza:** ${WINNER_GOLD} zł + ${WINNER_XP} PvP XP + ${WINNER_COMBAT_XP} combat XP.`,
+          `Min ${MIN_PARTICIPANTS}, max ${MAX_PARTICIPANTS} graczy. **Round-robin** — każdy walczy z każdym (interaktywne walki).`,
+          `🏆 **Mistrz:** ${WINNER_GOLD} zł + ${WINNER_XP} PvP XP + ${WINNER_COMBAT_XP} combat XP.`,
           `🥈 **Runner-up:** ${RUNNER_UP_GOLD} zł + ${RUNNER_UP_XP} PvP XP.`,
           '',
           '_Gracze na ekspedycji nie mogą startować — kliknij **Anuluj wyprawę** żeby się zapisać._',
@@ -241,17 +238,17 @@ export class ArenaService {
         components: [buildAnnounceRow()],
       })
       .catch(() => null);
-    // Dodatkowe batches mentions jeśli > 50 graczy.
+
+    const announceMsgId =
+      sent && typeof sent === 'object' && 'id' in sent && typeof (sent as { id: unknown }).id === 'string'
+        ? (sent as { id: string }).id
+        : undefined;
+
     for (let i = MENTION_BATCH; i < mentions.length; i += MENTION_BATCH) {
       await channel
         .send({ content: mentions.slice(i, i + MENTION_BATCH).join(' ').slice(0, 1900) })
         .catch(() => {});
     }
-
-    const announceMsgId =
-      sent && typeof sent === 'object' && 'id' in sent && typeof sent.id === 'string'
-        ? sent.id
-        : undefined;
 
     this.pendingEvent = {
       channelId,
@@ -265,6 +262,20 @@ export class ArenaService {
     if (!interaction.isButton?.()) return;
     if (interaction.customId === 'arenajoin') return this.handleJoin(interaction);
     if (interaction.customId === 'arenacancelexp') return this.handleCancelExpedition(interaction);
+
+    // Combat interactions — tylko gdy turniej aktywny i battleId pasuje.
+    const t = this.tournament;
+    if (!t || !t.currentBattle) return;
+    const id = interaction.customId;
+    const battleId = id.split(':')[1];
+    if (battleId !== t.currentBattle.id) return;
+
+    if (id.startsWith('pnl:')) return this.handlePanel(interaction, t);
+    if (id.startsWith('bat:')) return this.handleAction(interaction, t);
+    if (id.startsWith('tgt:')) return this.handleTarget(interaction, t);
+    if (id.startsWith('itmpick:')) return this.handleItemPick(interaction, t);
+    if (id.startsWith('sklpick:')) return this.handleSklPick(interaction, t);
+    if (id.startsWith('skltgt:')) return this.handleSklTarget(interaction, t);
   }
 
   private async handleJoin(interaction: ButtonInteraction): Promise<void> {
@@ -295,7 +306,7 @@ export class ArenaService {
     }
     if (evt.participants.has(userId)) {
       await interaction
-        .reply({ content: '✅ Już zapisany.', ephemeral: true })
+        .reply({ content: '✅ Już zapisany — czekaj na start.', ephemeral: true })
         .catch(() => {});
       return;
     }
@@ -335,7 +346,6 @@ export class ArenaService {
           .catch(() => {});
         return;
       }
-      // Lider anuluje dla całego party.
       const members = partyEntity ? partyEntity.members : [userId];
       for (const memberId of members) {
         const m = this.stats.get(memberId);
@@ -344,67 +354,30 @@ export class ArenaService {
       this.stats.save();
       await interaction
         .reply({
-          content: `✅ Wyprawa party anulowana (${members.length} graczy zwolnionych). Możecie dołączyć do areny.`,
+          content: `✅ Wyprawa party anulowana (${members.length} graczy zwolnionych).`,
           ephemeral: true,
         })
         .catch(() => {});
       return;
     }
-    // Solo expedition — gracz sam anuluje.
     player.activeExpedition = null;
     this.stats.save();
     await interaction
-      .reply({
-        content: '✅ Twoja solo-wyprawa anulowana. Możesz dołączyć do areny.',
-        ephemeral: true,
-      })
+      .reply({ content: '✅ Twoja solo-wyprawa anulowana.', ephemeral: true })
       .catch(() => {});
-  }
-
-  /** Public — testowalna logika turnieju (sim, bez Discord). */
-  runTournament(participantIds: string[]): {
-    winnerId: string;
-    runnerUpId?: string;
-    rounds: { matchups: Array<{ a: string; b: string; winner: string; lines: string[] }> }[];
-  } {
-    let alive = shuffle([...participantIds]);
-    const rounds: { matchups: Array<{ a: string; b: string; winner: string; lines: string[] }> }[] = [];
-    let runnerUpId: string | undefined;
-    while (alive.length > 1) {
-      const matchups: Array<{ a: string; b: string; winner: string; lines: string[] }> = [];
-      const next: string[] = [];
-      for (let i = 0; i < alive.length; i += 2) {
-        if (i + 1 >= alive.length) {
-          // bye — nieparzysta liczba, ostatni player przechodzi za darmo
-          next.push(alive[i]);
-          continue;
-        }
-        const aId = alive[i];
-        const bId = alive[i + 1];
-        const a = this.stats.get(aId);
-        const b = this.stats.get(bId);
-        const result = simulateDuel(a, b, this.stats);
-        matchups.push({ a: aId, b: bId, winner: result.winnerId, lines: result.lines });
-        next.push(result.winnerId);
-        if (alive.length === 2) {
-          // To finał — przegrany jest runner-up.
-          runnerUpId = result.winnerId === aId ? bId : aId;
-        }
-      }
-      rounds.push({ matchups });
-      alive = next;
-    }
-    return { winnerId: alive[0], runnerUpId, rounds };
   }
 
   async tryStartTournament(evt: ArenaEvent): Promise<void> {
     const channel = await this.client.channels.fetch(evt.channelId).catch(() => null);
-    if (!channel || !hasSendable(channel)) return;
+    if (!channel || !hasSendable(channel)) {
+      console.error('[arena] channel unreachable on tournament start');
+      return;
+    }
 
     if (evt.participants.size < MIN_PARTICIPANTS) {
       await channel
         .send(
-          `🏟️ Arena anulowana — za mało chętnych (${evt.participants.size}/${MIN_PARTICIPANTS}). Spotkamy się jutro.`,
+          `🏟️ Arena anulowana — za mało chętnych (${evt.participants.size}/${MIN_PARTICIPANTS}).`,
         )
         .catch(() => {});
       await this.disableAnnounceButton(evt);
@@ -412,65 +385,379 @@ export class ArenaService {
     }
 
     if (!('threads' in channel) || typeof (channel as { threads?: unknown }).threads !== 'object') {
-      await channel.send('Nie mogę otworzyć wątku areny — kanał nie wspiera wątków.').catch(() => {});
+      await channel
+        .send('Nie mogę otworzyć wątku areny — kanał nie wspiera wątków.')
+        .catch(() => {});
       return;
     }
-    const threadsApi = (channel as { threads: { create?: (opts: unknown) => Promise<unknown> } })
-      .threads;
-    if (!threadsApi.create) return;
+    const threadsApi = (channel as {
+      threads: { create?: (opts: unknown) => Promise<unknown> };
+    }).threads;
+    if (!threadsApi.create) {
+      await channel.send('Nie mogę otworzyć wątku areny — brak API.').catch(() => {});
+      return;
+    }
     const thread = await threadsApi
       .create({
         name: `🏟️ Arena ${new Date().toISOString().slice(0, 10)}`.slice(0, 100),
         autoArchiveDuration: 60,
       })
-      .catch(() => null);
-    if (!thread || typeof thread !== 'object' || !('send' in thread)) return;
-    const tt = thread as { send: (payload: unknown) => Promise<unknown> };
+      .catch((e) => {
+        console.error('[arena] thread create fail:', errMsg(e));
+        return null;
+      });
+    if (!isSendableThread(thread)) {
+      await channel
+        .send('Nie udało się otworzyć wątku areny (brak permissions albo limit).')
+        .catch(() => {});
+      return;
+    }
 
     await this.disableAnnounceButton(evt);
 
-    const result = this.runTournament([...evt.participants]);
+    const participantIds = [...evt.participants];
+    const pairs = buildRoundRobinPairs(participantIds);
+    const scores = new Map<string, number>();
+    for (const id of participantIds) scores.set(id, 0);
 
-    const opening = [
-      `🏟️ **Arena — turniej rozpoczęty!**`,
-      `Uczestników: **${evt.participants.size}**.`,
-      `Single-elimination, każda walka symulowana stat-based.`,
+    this.tournament = {
+      thread,
+      channelId: evt.channelId,
+      participantIds,
+      pairs,
+      currentMatchIdx: 0,
+      scores,
+    };
+
+    const intro = [
+      '🏟️ **ARENA — TURNIEJ ROZPOCZĘTY!**',
+      `Uczestników: **${participantIds.length}** · Walk: **${pairs.length}** (round-robin, każdy z każdym).`,
+      'Każda walka jest **interaktywna** — klikajcie panel akcji jak w duelu.',
+      'Po wszystkich walkach ranking po liczbie wygranych.',
+      '',
+      participantIds.map((id) => `<@${id}>`).join(' '),
     ].join('\n');
-    await tt.send({ content: opening }).catch(() => {});
+    await thread.send({ content: intro }).catch(() => {});
 
-    for (let r = 0; r < result.rounds.length; r++) {
-      const round = result.rounds[r];
-      await tt
-        .send({ content: `**═══ Runda ${r + 1} ═══**` })
+    await this.startNextMatch(this.tournament);
+  }
+
+  /**
+   * Inicjuje match `t.currentMatchIdx`. Buduje BattleState 1v1 i wysyła
+   * panel-opener. Gdy `currentMatchIdx >= pairs.length` — koniec turnieju.
+   */
+  private async startNextMatch(t: ArenaTournament): Promise<void> {
+    if (t.currentMatchIdx >= t.pairs.length) {
+      await this.endTournament(t);
+      return;
+    }
+    const [aId, bId] = t.pairs[t.currentMatchIdx];
+    const a = this.stats.get(aId);
+    const b = this.stats.get(bId);
+    const ca: BattleCombatant = {
+      ...buildPlayerCombatant(this.stats, a),
+      team: 0,
+      controller: 'human',
+    };
+    const cb: BattleCombatant = {
+      ...buildPlayerCombatant(this.stats, b),
+      team: 1,
+      controller: 'human',
+    };
+    const battleId = `arena_${Date.now().toString(36)}_${t.currentMatchIdx}`;
+    const state: BattleState = {
+      id: battleId,
+      thread: t.thread,
+      combatants: [ca, cb],
+      pending: new Map(),
+      promptMessageIds: new Map(),
+      roundNumber: 1,
+      finished: false,
+    };
+    t.currentBattle = state;
+
+    await t.thread
+      .send({
+        content: [
+          `⚔️ **Match ${t.currentMatchIdx + 1}/${t.pairs.length}**`,
+          `<@${aId}> (${ca.hp} HP) vs <@${bId}> (${cb.hp} HP)`,
+          'Obaj klikajcie **Otwórz panel** żeby wybrać akcję — runda rozliczy się gdy oboje podadzą.',
+        ].join('\n'),
+      })
+      .catch(() => {});
+    await promptHumansWithPanel(state);
+  }
+
+  private async handlePanel(interaction: ButtonInteraction, t: ArenaTournament): Promise<void> {
+    if (!t.currentBattle || t.currentBattle.finished) {
+      await ackStaleInteraction(interaction);
+      return;
+    }
+    await handlePanelOpen(interaction, t.currentBattle);
+  }
+
+  private async handleItemPick(
+    interaction: ButtonInteraction,
+    t: ArenaTournament,
+  ): Promise<void> {
+    if (!t.currentBattle || t.currentBattle.finished) {
+      await ackStaleInteraction(interaction);
+      return;
+    }
+    const recorded = await recordItemPick(interaction, t.currentBattle);
+    if (recorded) {
+      await notifyChoiceMade(t.currentBattle, interaction.user.id);
+      await this.maybeResolve(t);
+    }
+  }
+
+  private async handleSklPick(
+    interaction: ButtonInteraction,
+    t: ArenaTournament,
+  ): Promise<void> {
+    if (!t.currentBattle || t.currentBattle.finished) {
+      await ackStaleInteraction(interaction);
+      return;
+    }
+    const recorded = await handleSkillPick(interaction, t.currentBattle);
+    if (recorded) {
+      await notifyChoiceMade(t.currentBattle, interaction.user.id);
+      await this.maybeResolve(t);
+    }
+  }
+
+  private async handleSklTarget(
+    interaction: ButtonInteraction,
+    t: ArenaTournament,
+  ): Promise<void> {
+    if (!t.currentBattle || t.currentBattle.finished) {
+      await ackStaleInteraction(interaction);
+      return;
+    }
+    const recorded = await handleSkillTarget(interaction, t.currentBattle);
+    if (recorded) {
+      await notifyChoiceMade(t.currentBattle, interaction.user.id);
+      await this.maybeResolve(t);
+    }
+  }
+
+  private async handleAction(
+    interaction: ButtonInteraction,
+    t: ArenaTournament,
+  ): Promise<void> {
+    if (!t.currentBattle || t.currentBattle.finished) {
+      await ackStaleInteraction(interaction);
+      return;
+    }
+    const state = t.currentBattle;
+    const [, , combatantId, kind] = interaction.customId.split(':');
+    if (interaction.user.id !== combatantId) {
+      await interaction.reply({ content: 'To nie twój match.', ephemeral: true }).catch(() => {});
+      return;
+    }
+    const me = findCombatant(state, combatantId);
+    if (!me || me.hp <= 0) {
+      await interaction
+        .reply({ content: 'Już padłeś w tym matchu.', ephemeral: true })
         .catch(() => {});
-      for (const m of round.matchups) {
-        await tt.send({ content: m.lines.join('\n').slice(0, 1900) }).catch(() => {});
-      }
+      return;
+    }
+    if (state.pending.has(combatantId)) {
+      await interaction
+        .reply({ content: 'Już wybrałeś akcję.', ephemeral: true })
+        .catch(() => {});
+      return;
     }
 
-    const winner = this.stats.get(result.winnerId);
-    this.stats.addGold(winner, WINNER_GOLD);
-    this.stats.addXp(winner, WINNER_XP);
-    this.stats.addSkillXp(winner, 'combat', WINNER_COMBAT_XP);
-    if (result.runnerUpId) {
-      const runner = this.stats.get(result.runnerUpId);
-      this.stats.addGold(runner, RUNNER_UP_GOLD);
-      this.stats.addXp(runner, RUNNER_UP_XP);
+    const battleId = state.id;
+    let recorded = false;
+    if (kind === 'def') {
+      state.pending.set(combatantId, { kind: 'defend' });
+      await interaction
+        .reply({ content: 'Wybrałeś: **Obrona**.', ephemeral: true })
+        .catch(() => {});
+      recorded = true;
+    } else if (kind === 'itm') {
+      await openItemPicker(interaction, battleId, combatantId, me);
+      return;
+    } else if (kind === 'skl') {
+      await openSkillPicker(interaction, battleId, combatantId, me);
+      return;
+    } else if (kind === 'atk') {
+      const enemies = aliveEnemies(state, me);
+      if (enemies.length === 0) {
+        await interaction
+          .reply({ content: 'Brak żywych przeciwników.', ephemeral: true })
+          .catch(() => {});
+        return;
+      }
+      // 1v1 → tylko 1 enemy.
+      state.pending.set(combatantId, { kind: 'attack', targetId: enemies[0].id });
+      await interaction
+        .reply({ content: `Atak na **${enemies[0].name}**.`, ephemeral: true })
+        .catch(() => {});
+      recorded = true;
+    } else {
+      await interaction
+        .reply({ content: `Nieznana akcja \`${kind}\`.`, ephemeral: true })
+        .catch(() => {});
+      return;
+    }
+    if (recorded) await notifyChoiceMade(state, combatantId);
+    await this.maybeResolve(t);
+  }
+
+  private async handleTarget(
+    interaction: ButtonInteraction,
+    t: ArenaTournament,
+  ): Promise<void> {
+    if (!t.currentBattle || t.currentBattle.finished) {
+      await ackStaleInteraction(interaction);
+      return;
+    }
+    const state = t.currentBattle;
+    const parts = interaction.customId.split(':');
+    const [, , combatantId, kind] = parts;
+    const targetId = parts.slice(4).join(':');
+    if (interaction.user.id !== combatantId) {
+      await interaction
+        .reply({ content: 'To nie twój wybór celu.', ephemeral: true })
+        .catch(() => {});
+      return;
+    }
+    if (state.pending.has(combatantId)) {
+      await interaction
+        .update({ content: 'Już wybrałeś akcję wcześniej.', components: [] })
+        .catch(() => {});
+      return;
+    }
+    if (kind === 'atk') {
+      const target = findCombatant(state, targetId);
+      if (!target || target.hp <= 0) {
+        await interaction.update({ content: 'Cel padł.', components: [] }).catch(() => {});
+        return;
+      }
+      state.pending.set(combatantId, { kind: 'attack', targetId });
+      await interaction
+        .update({ content: `Wybrany: **${target.name}**.`, components: [] })
+        .catch(() => {});
+      await notifyChoiceMade(state, combatantId);
+    } else {
+      await interaction
+        .update({ content: `Nieznany kind \`${kind}\`.`, components: [] })
+        .catch(() => {});
+      return;
+    }
+    await this.maybeResolve(t);
+  }
+
+  private async maybeResolve(t: ArenaTournament): Promise<void> {
+    const state = t.currentBattle;
+    if (!state) return;
+    const humans = humansAlive(state);
+    if (state.pending.size < humans.length) return;
+
+    for (const [, msgId] of state.promptMessageIds) {
+      try {
+        const m = await t.thread.messages.fetch(msgId).catch(() => null);
+        if (m)
+          await m.edit({ components: [buildPanelOpenerRow(state.id, true)] }).catch(() => {});
+      } catch {}
+    }
+    state.promptMessageIds.clear();
+
+    const result = resolveBattleRound(state);
+    const lines = [...result.lines];
+
+    if (result.finished) {
+      // Match end — kto został przy życiu wygrywa.
+      const aliveOnes = state.combatants.filter((c) => c.hp > 0);
+      lines.push('', this.fmtBoard(state));
+      if (aliveOnes.length === 1) {
+        const winnerId = aliveOnes[0].id;
+        t.scores.set(winnerId, (t.scores.get(winnerId) ?? 0) + 1);
+        lines.push('', `🏆 **Match ${t.currentMatchIdx + 1}** — wygrywa <@${winnerId}>!`);
+      } else {
+        lines.push('', `⚖️ **Match ${t.currentMatchIdx + 1}** — remis (oboje padli), brak punktu.`);
+      }
+      lines.push('', this.fmtStandings(t));
+      await t.thread.send({ content: lines.join('\n').slice(0, 1900) }).catch(() => {});
+
+      // Sync consumables (potki użyte) do PlayerStats per gracz.
+      syncConsumablesAfterBattle(this.stats, state);
+      this.stats.save();
+
+      t.currentBattle = undefined;
+      t.currentMatchIdx += 1;
+      // Pauza wizualna 2s — Discord nie spamuje rapid-fire.
+      await new Promise((r) => setTimeout(r, 2000));
+      await this.startNextMatch(t);
+      return;
+    }
+
+    await t.thread
+      .send({
+        content: [...lines, '', this.fmtBoard(state), `⏭ Runda ${state.roundNumber}`]
+          .join('\n')
+          .slice(0, 1900),
+      })
+      .catch(() => {});
+    await promptHumansWithPanel(state);
+  }
+
+  private async endTournament(t: ArenaTournament): Promise<void> {
+    const ranking = [...t.scores.entries()].sort((a, b) => b[1] - a[1]);
+    const winnerEntry = ranking[0];
+    const runnerUpEntry = ranking[1];
+
+    if (winnerEntry) {
+      const w = this.stats.get(winnerEntry[0]);
+      this.stats.addGold(w, WINNER_GOLD);
+      this.stats.addXp(w, WINNER_XP);
+      this.stats.addSkillXp(w, 'combat', WINNER_COMBAT_XP);
+    }
+    if (runnerUpEntry) {
+      const r = this.stats.get(runnerUpEntry[0]);
+      this.stats.addGold(r, RUNNER_UP_GOLD);
+      this.stats.addXp(r, RUNNER_UP_XP);
     }
     this.stats.save();
 
-    const closing = [
-      `🏆 **Mistrz Areny:** ${winner.name}!`,
-      `Nagroda od miasta: **${WINNER_GOLD} zł + ${WINNER_XP} PvP XP + ${WINNER_COMBAT_XP} combat XP**.`,
-      result.runnerUpId
-        ? `🥈 Runner-up: **${this.stats.get(result.runnerUpId).name}** (+${RUNNER_UP_GOLD} zł, +${RUNNER_UP_XP} XP).`
-        : '',
-      '',
-      'Następna arena jutro o 18:10.',
-    ]
-      .filter(Boolean)
-      .join('\n');
-    await tt.send({ content: closing }).catch(() => {});
+    const lines: string[] = ['🏟️ **TURNIEJ ZAKOŃCZONY**', '', '**Ranking:**'];
+    for (let i = 0; i < ranking.length; i++) {
+      const [id, score] = ranking[i];
+      lines.push(`${i + 1}. <@${id}> — **${score}** W`);
+    }
+    if (winnerEntry) {
+      lines.push(
+        '',
+        `🏆 **Mistrz Areny:** <@${winnerEntry[0]}> (+${WINNER_GOLD} zł, +${WINNER_XP} PvP XP, +${WINNER_COMBAT_XP} combat XP).`,
+      );
+    }
+    if (runnerUpEntry) {
+      lines.push(
+        `🥈 **Runner-up:** <@${runnerUpEntry[0]}> (+${RUNNER_UP_GOLD} zł, +${RUNNER_UP_XP} PvP XP).`,
+      );
+    }
+    lines.push('', 'Następna arena jutro o 18:10.');
+
+    await postBattleSummary(t.thread, lines.join('\n').slice(0, 1900));
+    await closeBattleThread(t.thread, '🏁 Arena zakończona — wątek archiwizujemy.');
+    this.tournament = null;
+  }
+
+  private fmtBoard(state: BattleState): string {
+    return state.combatants
+      .map((c) => `${c.name}: ${c.hp}/${c.maxHp} HP`)
+      .join(' | ');
+  }
+
+  private fmtStandings(t: ArenaTournament): string {
+    const sorted = [...t.scores.entries()].sort((a, b) => b[1] - a[1]);
+    return (
+      '_Aktualny ranking:_ ' +
+      sorted.map(([id, w]) => `<@${id}>: ${w}W`).join(' · ')
+    );
   }
 
   private async disableAnnounceButton(evt: ArenaEvent): Promise<void> {

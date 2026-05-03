@@ -41,7 +41,7 @@ const TICK_MS = 60_000;
 /** Godziny w której world boss się pojawia (lokalna strefa). */
 const SPAWN_HOURS: readonly number[] = [10, 13, 16, 19, 22];
 /** Okno rejestracji do walki — od ogłoszenia do auto-startu. */
-const REGISTRATION_WINDOW_MS = 15 * 60_000;
+const REGISTRATION_WINDOW_MS = 5 * 60_000;
 /** Minimalna liczba uczestników żeby walka się zaczęła. */
 const MIN_PARTICIPANTS = 2;
 /** Cap — Discord button row mieści się max ~25 mentions sensownie. */
