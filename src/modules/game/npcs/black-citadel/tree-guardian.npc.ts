@@ -1,7 +1,7 @@
 import { Npc } from '../npc.js';
 import { ProfessionDialog } from '../profession-dialog.js';
 
-export class StraznikDrzewa extends Npc {
+export class TreeGuardian extends Npc {
   readonly id = 'straznik_drzewa';
   readonly name = 'Strażnik Drzewa Świata';
   readonly description = 'Tajemniczy strażnik z Cytadeli — stage 5 (endgame) chainu drwala.';

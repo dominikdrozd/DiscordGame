@@ -2,7 +2,7 @@ import { ButtonStyle } from 'discord.js';
 import { listCities } from '../../src/modules/game/cities/index.js';
 import { buildCityListRows, buildCityViewRows } from '../../src/modules/game/ui/city-buttons.js';
 import { buildDialogOptionRows } from '../../src/modules/game/ui/dialog-buttons.js';
-import { Marek } from '../../src/modules/game/npcs/port_cykada/marek.npc.js';
+import { Marek } from '../../src/modules/game/npcs/port-cicada/marek.npc.js';
 
 interface BtnJSON {
   custom_id: string;

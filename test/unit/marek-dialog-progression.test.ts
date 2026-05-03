@@ -1,4 +1,4 @@
-import { Marek } from '../../src/modules/game/npcs/port_cykada/marek.npc.js';
+import { Marek } from '../../src/modules/game/npcs/port-cicada/marek.npc.js';
 import { PlayerStatsService } from '../../src/modules/game/services/player-stats.js';
 import { QuestService } from '../../src/modules/game/services/quest.service.js';
 import { tmpPlayerFile } from '../helpers/factories.js';

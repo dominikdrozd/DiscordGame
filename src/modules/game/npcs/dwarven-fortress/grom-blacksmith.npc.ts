@@ -1,7 +1,7 @@
 import { Npc } from '../npc.js';
 import { ProfessionDialog } from '../profession-dialog.js';
 
-export class GromKowal extends Npc {
+export class GromBlacksmith extends Npc {
   readonly id = 'grom_kowal';
   readonly name = 'Mistrz Grom Mithrilowiec';
   readonly description = 'Krasnoludzki mistrz mithrilu — stage 4 chainu górniczego.';

@@ -3,7 +3,7 @@ import { DialogService } from '../../src/modules/game/services/dialog.service.js
 import { PlayerStatsService } from '../../src/modules/game/services/player-stats.js';
 import { QuestService } from '../../src/modules/game/services/quest.service.js';
 import { TalkCommand } from '../../src/modules/game/commands/talk.command.js';
-import { Marek } from '../../src/modules/game/npcs/port_cykada/marek.npc.js';
+import { Marek } from '../../src/modules/game/npcs/port-cicada/marek.npc.js';
 import { tmpPlayerFile } from '../helpers/factories.js';
 
 interface FakeUser {

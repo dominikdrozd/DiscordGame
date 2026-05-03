@@ -1,9 +1,9 @@
 import { City, type Merchant } from './city.js';
 import { Npc } from '../npcs/npc.js';
-import { Marek } from '../npcs/port_cykada/marek.npc.js';
-import { Bartek } from '../npcs/port_cykada/bartek.npc.js';
-import { Hela } from '../npcs/port_cykada/hela.npc.js';
-import { Olek } from '../npcs/port_cykada/olek.npc.js';
+import { Marek } from '../npcs/port-cicada/marek.npc.js';
+import { Bartek } from '../npcs/port-cicada/bartek.npc.js';
+import { Hela } from '../npcs/port-cicada/hela.npc.js';
+import { Olek } from '../npcs/port-cicada/olek.npc.js';
 
 export class PortCicada extends City {
   readonly id = 'port_cykada';

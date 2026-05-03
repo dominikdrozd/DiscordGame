@@ -1,8 +1,8 @@
 import { City, type Merchant } from './city.js';
 import { Npc } from '../npcs/npc.js';
-import { Wraul } from '../npcs/czarna_cytadela/wraul.npc.js';
-import { LowcaKrakena } from '../npcs/czarna_cytadela/lowca-krakena.npc.js';
-import { StraznikDrzewa } from '../npcs/czarna_cytadela/straznik-drzewa.npc.js';
+import { Wraul } from '../npcs/black-citadel/wraul.npc.js';
+import { KrakenHunter } from '../npcs/black-citadel/kraken-hunter.npc.js';
+import { TreeGuardian } from '../npcs/black-citadel/tree-guardian.npc.js';
 
 export class BlackCitadel extends City {
   readonly id = 'czarna_cytadela';
@@ -10,7 +10,7 @@ export class BlackCitadel extends City {
   readonly description =
     'Mroczna forteca stanowiąca ostatni bastion cywilizacji w Przeklętej Północy.';
   readonly region = 4;
-  readonly npcs: Npc[] = [new Wraul(), new LowcaKrakena(), new StraznikDrzewa()];
+  readonly npcs: Npc[] = [new Wraul(), new KrakenHunter(), new TreeGuardian()];
   readonly merchants: Merchant[] = [
     {
       id: 'arcymag_zelosz',

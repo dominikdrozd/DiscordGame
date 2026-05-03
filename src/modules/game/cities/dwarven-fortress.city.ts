@@ -1,8 +1,8 @@
 import { City, type Merchant } from './city.js';
 import { Npc } from '../npcs/npc.js';
-import { GromKowal } from '../npcs/krasnoludzka_twierdza/grom-kowal.npc.js';
-import { Druin } from '../npcs/krasnoludzka_twierdza/druin.npc.js';
-import { Thordin } from '../npcs/krasnoludzka_twierdza/thordin.npc.js';
+import { GromBlacksmith } from '../npcs/dwarven-fortress/grom-blacksmith.npc.js';
+import { Druin } from '../npcs/dwarven-fortress/druin.npc.js';
+import { Thordin } from '../npcs/dwarven-fortress/thordin.npc.js';
 
 export class DwarvenFortress extends City {
   readonly id = 'krasnoludzka_twierdza';
@@ -10,7 +10,7 @@ export class DwarvenFortress extends City {
   readonly description =
     'Potężne miasto wykute wewnątrz góry. Najlepsi rzemieślnicy, najtwardsze złoża.';
   readonly region = 3;
-  readonly npcs: Npc[] = [new GromKowal(), new Druin(), new Thordin()];
+  readonly npcs: Npc[] = [new GromBlacksmith(), new Druin(), new Thordin()];
   readonly merchants: Merchant[] = [
     {
       id: 'mistrz_ruda_grom',

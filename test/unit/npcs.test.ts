@@ -1,6 +1,6 @@
 import { listCities } from '../../src/modules/game/cities/index.js';
 import { findNpcCity, getNpc } from '../../src/modules/game/npcs/index.js';
-import { Marek } from '../../src/modules/game/npcs/port_cykada/marek.npc.js';
+import { Marek } from '../../src/modules/game/npcs/port-cicada/marek.npc.js';
 import type { Dialog } from '../../src/modules/game/npcs/npc.js';
 
 function collectReachableNodes(d: Dialog): Set<string> {
