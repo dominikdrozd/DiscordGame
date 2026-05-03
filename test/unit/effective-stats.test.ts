@@ -31,13 +31,13 @@ describe('PlayerStatsService — effective stats (z ekwipunkiem)', () => {
     expect(stats.effectiveDamageBonus(p)).toBe(baseDmg);
 
     // Manually equip items with known stats
-    const w = rollItemInstance('sword_iron');
+    const w = rollItemInstance('sword_iron', 'common');
     if (!w) throw new Error('roll failed');
     w.stats = { attack: 5 };
     stats.addItem(p, w);
     stats.equip(p, w.uid);
 
-    const t = rollItemInstance('pickaxe');
+    const t = rollItemInstance('pickaxe', 'common');
     if (!t) throw new Error('roll failed');
     t.stats = { attack: 2 };
     stats.addItem(p, t);
@@ -50,7 +50,7 @@ describe('PlayerStatsService — effective stats (z ekwipunkiem)', () => {
     const p = stats.get('p1', 'Tester');
     const baseHp = stats.hpFor(p);
 
-    const a = rollItemInstance('armor_iron');
+    const a = rollItemInstance('armor_iron', 'common');
     if (!a) throw new Error('roll failed');
     a.stats = { hp: 10, defense: 3 };
     stats.addItem(p, a);
@@ -64,7 +64,7 @@ describe('PlayerStatsService — effective stats (z ekwipunkiem)', () => {
     p.primary.wit = 4; // base def = 4
     expect(stats.effectiveDefenseBonus(p)).toBe(4);
 
-    const a = rollItemInstance('armor_iron');
+    const a = rollItemInstance('armor_iron', 'common');
     if (!a) throw new Error('roll failed');
     a.stats = { defense: 6 };
     stats.addItem(p, a);
@@ -76,9 +76,9 @@ describe('PlayerStatsService — effective stats (z ekwipunkiem)', () => {
     const p = stats.get('p1', 'Tester');
     expect(stats.critBonusFromEquipment(p)).toBe(0);
 
-    const w = rollItemInstance('sword_iron');
-    const a = rollItemInstance('armor_iron');
-    const t = rollItemInstance('pickaxe');
+    const w = rollItemInstance('sword_iron', 'common');
+    const a = rollItemInstance('armor_iron', 'common');
+    const t = rollItemInstance('pickaxe', 'common');
     if (!w || !a || !t) throw new Error('roll failed');
     w.stats = { crit: 2 };
     a.stats = { crit: 1 };

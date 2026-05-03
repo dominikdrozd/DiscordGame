@@ -97,8 +97,8 @@ describe('InventoryService — thread-based plecak', () => {
 
   test('openInventoryForUser tworzy wątek + summary + per-item messages', async () => {
     const player = stats.get('p1', 'Tester');
-    const sword = rollItemInstance('sword_iron');
-    const armor = rollItemInstance('armor_iron');
+    const sword = rollItemInstance('sword_iron', 'common');
+    const armor = rollItemInstance('armor_iron', 'common');
     if (!sword || !armor) throw new Error('roll failed');
     stats.addItem(player, sword);
     stats.addItem(player, armor);
@@ -144,7 +144,7 @@ describe('InventoryService — thread-based plecak', () => {
 
   test('toggle equip/unequip via button updateuje wiadomość', async () => {
     const player = stats.get('p1', 'Tester');
-    const sword = rollItemInstance('sword_iron');
+    const sword = rollItemInstance('sword_iron', 'common');
     if (!sword) throw new Error('roll failed');
     stats.addItem(player, sword);
     const thread = makeThread();
@@ -166,8 +166,8 @@ describe('InventoryService — thread-based plecak', () => {
 
   test('toggle drugiego itemu w tym samym slocie zdejmuje pierwszy', async () => {
     const player = stats.get('p1', 'Tester');
-    const sword1 = rollItemInstance('sword_iron');
-    const sword2 = rollItemInstance('sword_silver');
+    const sword1 = rollItemInstance('sword_iron', 'common');
+    const sword2 = rollItemInstance('sword_silver', 'common');
     if (!sword1 || !sword2) throw new Error('roll failed');
     stats.addItem(player, sword1);
     stats.addItem(player, sword2);
@@ -228,7 +228,7 @@ describe('InventoryService — thread-based plecak', () => {
   test('sell usuwa item z plecaka i dodaje złoto', async () => {
     const player = stats.get('p1', 'Tester');
     const initialGold = player.gold;
-    const sword = rollItemInstance('sword_iron');
+    const sword = rollItemInstance('sword_iron', 'common');
     if (!sword) throw new Error('roll failed');
     sword.stats = { attack: 5 };
     sword.rarity = 'common';
@@ -257,7 +257,7 @@ describe('InventoryService — thread-based plecak', () => {
   test('sell odmawia gdy item założony — wymaga unequip', async () => {
     const player = stats.get('p1', 'Tester');
     const initialGold = player.gold;
-    const sword = rollItemInstance('sword_iron');
+    const sword = rollItemInstance('sword_iron', 'common');
     if (!sword) throw new Error('roll failed');
     stats.addItem(player, sword);
     stats.equip(player, sword.uid);

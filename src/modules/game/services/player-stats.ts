@@ -264,30 +264,62 @@ export class PlayerStatsService {
   }
 
   // ── HP/dmg z atrybutów + skilla combat + primary ────
+
+  /**
+   * Łączny primary stat (str/agi/wit/int) — base z PlayerStats + sumy z
+   * założonego (i ZIDENTYFIKOWANEGO) ekwipunku. SoT dla wszystkich formuł
+   * effective. Nie-zidentyfikowane przedmioty nie powinny być equip-owane,
+   * ale defensywnie ignorujemy ich primary tutaj.
+   */
+  effectivePrimary(p: PlayerStats): PrimaryStats {
+    const out: PrimaryStats = {
+      str: p.primary.str,
+      agi: p.primary.agi,
+      wit: p.primary.wit,
+      int: p.primary.int,
+    };
+    for (const slot of ['weapon', 'armor', 'tool'] as const) {
+      const it = this.equippedItem(p, slot);
+      if (!it || it.identified === false) continue;
+      const ip = it.primary;
+      if (!ip) continue;
+      if (ip.str) out.str += ip.str;
+      if (ip.agi) out.agi += ip.agi;
+      if (ip.wit) out.wit += ip.wit;
+      if (ip.int) out.int += ip.int;
+    }
+    return out;
+  }
+
   hpFor(p: PlayerStats): number {
+    const pr = this.effectivePrimary(p);
     return (
       100 +
       (p.skills.combat.level - 1) * 10 +
       p.attribute.hp * 5 +
-      p.primary.str * 5 +
-      p.primary.wit * 3
+      pr.str * 5 +
+      pr.wit * 3
     );
   }
 
   damageBonus(p: PlayerStats): number {
-    return (p.skills.combat.level - 1) * 2 + p.attribute.attack + p.primary.str;
+    const pr = this.effectivePrimary(p);
+    return (p.skills.combat.level - 1) * 2 + p.attribute.attack + pr.str;
   }
 
   defenseBonus(p: PlayerStats): number {
-    return p.attribute.defense + p.primary.wit;
+    const pr = this.effectivePrimary(p);
+    return p.attribute.defense + pr.wit;
   }
 
   critBonus(p: PlayerStats): number {
-    return p.attribute.crit + p.primary.agi * 0.5;
+    const pr = this.effectivePrimary(p);
+    return p.attribute.crit + pr.agi * 0.5;
   }
 
   spellPower(p: PlayerStats): number {
-    return p.primary.int * 2;
+    const pr = this.effectivePrimary(p);
+    return pr.int * 2;
   }
 
   // ── Effective stats (z ekwipunkiem) ─────────────────
@@ -479,6 +511,12 @@ export class PlayerStatsService {
         ok: false,
         reason: 'Nie posiadasz takiego itemu lub nie da się go założyć.',
       };
+    if (item.identified === false) {
+      return {
+        ok: false,
+        reason: '🔍 Item nie jest zidentyfikowany — odwiedź **Skrybę** w mieście żeby poznać statystyki.',
+      };
+    }
     const reqLvl = itemRequiredLevel(item);
     if (reqLvl > 0 && p.skills.combat.level < reqLvl) {
       return {

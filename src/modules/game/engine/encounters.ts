@@ -296,6 +296,16 @@ export function expeditionMinLvl(tier: 1 | 2 | 3 | 4 | 5): number {
   return Math.max(1, (tier - 1) * 8);
 }
 
+/**
+ * Czas trwania ekspedycji per tier — szybkie tempo dla niskich tierów,
+ * dłuższe wyprawy = większy reward dla wyższych. T1=5min → T5=25min.
+ * Uzasadnienie: gracz nowy zbiera szybko cykle i learning loop, gracz
+ * doświadczony dostaje "set & forget" dłuższe sesje.
+ */
+export function expeditionDurationMs(tier: 1 | 2 | 3 | 4 | 5): number {
+  return tier * 5 * 60_000;
+}
+
 export const EXPEDITIONS: Record<string, ExpeditionDef> = {
   // ── REGION I — Wybrzeże Szeptów (T1) ──────────────
   slonechna_plaza: {
@@ -305,7 +315,7 @@ export const EXPEDITIONS: Record<string, ExpeditionDef> = {
     region: 1,
     regionName: REGION_NAMES[1],
     tier: 1,
-    durationMs: 30 * 60_000,
+    durationMs: expeditionDurationMs(1),
     lootTable: [
       { itemId: 'fish_sardynka', weight: 35, qtyMin: 2, qtyMax: 4 },
       { itemId: 'fish_karp', weight: 30, qtyMin: 1, qtyMax: 3 },
@@ -322,7 +332,7 @@ export const EXPEDITIONS: Record<string, ExpeditionDef> = {
     region: 1,
     regionName: REGION_NAMES[1],
     tier: 1,
-    durationMs: 30 * 60_000,
+    durationMs: expeditionDurationMs(1),
     lootTable: [
       { itemId: 'wood_sosna', weight: 50, qtyMin: 3, qtyMax: 6 },
       { itemId: 'wood_dab', weight: 35, qtyMin: 2, qtyMax: 4 },
@@ -338,7 +348,7 @@ export const EXPEDITIONS: Record<string, ExpeditionDef> = {
     region: 1,
     regionName: REGION_NAMES[1],
     tier: 1,
-    durationMs: 45 * 60_000,
+    durationMs: expeditionDurationMs(1),
     lootTable: [
       { itemId: 'ore_copper', weight: 45, qtyMin: 3, qtyMax: 5 },
       { itemId: 'ore_iron', weight: 35, qtyMin: 2, qtyMax: 4 },
@@ -354,7 +364,7 @@ export const EXPEDITIONS: Record<string, ExpeditionDef> = {
     region: 1,
     regionName: REGION_NAMES[1],
     tier: 2,
-    durationMs: 60 * 60_000,
+    durationMs: expeditionDurationMs(2),
     lootTable: [
       { itemId: 'ore_iron', weight: 35, qtyMin: 2, qtyMax: 4 },
       { itemId: 'ore_silver', weight: 30, qtyMin: 1, qtyMax: 3 },
@@ -376,7 +386,7 @@ export const EXPEDITIONS: Record<string, ExpeditionDef> = {
     region: 2,
     regionName: REGION_NAMES[2],
     tier: 2,
-    durationMs: 60 * 60_000,
+    durationMs: expeditionDurationMs(2),
     lootTable: [
       { itemId: 'ore_iron', weight: 30, qtyMin: 2, qtyMax: 4 },
       { itemId: 'ore_silver', weight: 25, qtyMin: 1, qtyMax: 2 },
@@ -395,7 +405,7 @@ export const EXPEDITIONS: Record<string, ExpeditionDef> = {
     region: 2,
     regionName: REGION_NAMES[2],
     tier: 2,
-    durationMs: 60 * 60_000,
+    durationMs: expeditionDurationMs(2),
     lootTable: [
       { itemId: 'wood_buk', weight: 35, qtyMin: 2, qtyMax: 3 },
       { itemId: 'wood_heban', weight: 25, qtyMin: 1, qtyMax: 2 },
@@ -413,7 +423,7 @@ export const EXPEDITIONS: Record<string, ExpeditionDef> = {
     region: 2,
     regionName: REGION_NAMES[2],
     tier: 2,
-    durationMs: 45 * 60_000,
+    durationMs: expeditionDurationMs(2),
     lootTable: [
       { itemId: 'fish_szczupak', weight: 35, qtyMin: 2, qtyMax: 4 },
       { itemId: 'fish_sum', weight: 25, qtyMin: 1, qtyMax: 2 },
@@ -430,7 +440,7 @@ export const EXPEDITIONS: Record<string, ExpeditionDef> = {
     region: 2,
     regionName: REGION_NAMES[2],
     tier: 3,
-    durationMs: 90 * 60_000,
+    durationMs: expeditionDurationMs(3),
     lootTable: [
       { itemId: 'ore_silver', weight: 35, qtyMin: 2, qtyMax: 3 },
       { itemId: 'ore_iron', weight: 30, qtyMin: 2, qtyMax: 4 },
@@ -450,7 +460,7 @@ export const EXPEDITIONS: Record<string, ExpeditionDef> = {
     region: 2,
     regionName: REGION_NAMES[2],
     tier: 3,
-    durationMs: 75 * 60_000,
+    durationMs: expeditionDurationMs(3),
     lootTable: [
       { itemId: 'wood_heban', weight: 30, qtyMin: 1, qtyMax: 3 },
       { itemId: 'fish_sum', weight: 30, qtyMin: 1, qtyMax: 2 },
@@ -470,7 +480,7 @@ export const EXPEDITIONS: Record<string, ExpeditionDef> = {
     region: 3,
     regionName: REGION_NAMES[3],
     tier: 3,
-    durationMs: 90 * 60_000,
+    durationMs: expeditionDurationMs(3),
     lootTable: [
       { itemId: 'ore_silver', weight: 30, qtyMin: 2, qtyMax: 3 },
       { itemId: 'ore_gold', weight: 25, qtyMin: 1, qtyMax: 2 },
@@ -490,7 +500,7 @@ export const EXPEDITIONS: Record<string, ExpeditionDef> = {
     region: 3,
     regionName: REGION_NAMES[3],
     tier: 3,
-    durationMs: 100 * 60_000,
+    durationMs: expeditionDurationMs(3),
     lootTable: [
       { itemId: 'ore_gold', weight: 35, qtyMin: 1, qtyMax: 3 },
       { itemId: 'ore_mithril', weight: 25, qtyMin: 1, qtyMax: 2 },
@@ -516,7 +526,7 @@ export const EXPEDITIONS: Record<string, ExpeditionDef> = {
     region: 3,
     regionName: REGION_NAMES[3],
     tier: 4,
-    durationMs: 100 * 60_000,
+    durationMs: expeditionDurationMs(4),
     lootTable: [
       { itemId: 'wood_smoczy', weight: 30, qtyMin: 1, qtyMax: 2 },
       { itemId: 'ore_mithril', weight: 25, qtyMin: 1, qtyMax: 2 },
@@ -536,7 +546,7 @@ export const EXPEDITIONS: Record<string, ExpeditionDef> = {
     region: 3,
     regionName: REGION_NAMES[3],
     tier: 3,
-    durationMs: 90 * 60_000,
+    durationMs: expeditionDurationMs(3),
     lootTable: [
       { itemId: 'gem_diamond', weight: 50, qtyMin: 2, qtyMax: 3 },
       { itemId: 'ore_mithril', weight: 25, qtyMin: 1, qtyMax: 2 },
@@ -557,7 +567,7 @@ export const EXPEDITIONS: Record<string, ExpeditionDef> = {
     region: 4,
     regionName: REGION_NAMES[4],
     tier: 4,
-    durationMs: 120 * 60_000,
+    durationMs: expeditionDurationMs(4),
     lootTable: [
       { itemId: 'ore_mithril', weight: 30, qtyMin: 1, qtyMax: 2 },
       { itemId: 'gem_diamond', weight: 35, qtyMin: 1, qtyMax: 3 },
@@ -577,7 +587,7 @@ export const EXPEDITIONS: Record<string, ExpeditionDef> = {
     region: 4,
     regionName: REGION_NAMES[4],
     tier: 4,
-    durationMs: 100 * 60_000,
+    durationMs: expeditionDurationMs(4),
     lootTable: [
       { itemId: 'wood_swiatowe', weight: 25 },
       { itemId: 'wood_smoczy', weight: 30, qtyMin: 1, qtyMax: 2 },
@@ -595,7 +605,7 @@ export const EXPEDITIONS: Record<string, ExpeditionDef> = {
     region: 4,
     regionName: REGION_NAMES[4],
     tier: 5,
-    durationMs: 180 * 60_000,
+    durationMs: expeditionDurationMs(5),
     lootTable: [
       { itemId: 'ore_mithril', weight: 35, qtyMin: 2, qtyMax: 3 },
       { itemId: 'wood_smoczy', weight: 25, qtyMin: 1, qtyMax: 3 },

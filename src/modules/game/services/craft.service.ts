@@ -6,7 +6,7 @@ import {
 import type { ICommandContext } from '../../../types/command.types.js';
 import { PlayerStatsService, type PlayerStats } from './player-stats.js';
 import { listRecipes, getRecipe, type Recipe } from './recipes.js';
-import { rollItemInstance, fmtInstance, ITEMS } from './items.js';
+import { rollCraftedInstance, fmtInstance, ITEMS } from './items.js';
 import { displayName } from '../../../utils.js';
 import { buildCraftBrowseRows, buildCraftAfterRows } from '../ui/craft-buttons.js';
 
@@ -277,7 +277,7 @@ export class CraftService {
       this.stats.addResource(player, itemId, qty);
       outputLine = `🧪 **${ITEMS[itemId]?.name ?? itemId} ×${qty}** trafia do plecaka.`;
     } else if (recipe.outputBaseId) {
-      const item = rollItemInstance(recipe.outputBaseId);
+      const item = rollCraftedInstance(recipe.outputBaseId);
       if (!item) {
         return {
           ok: false,

@@ -108,6 +108,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (arenaService && interaction.isButton()) {
     await arenaService.handleInteraction(interaction);
   }
+  if (interaction.isButton() && interaction.customId.startsWith('idfy:')) {
+    await gameServices.identification.handleInteraction(interaction);
+  }
   // Fallback ack — gdy żaden service nie obsłużył (np. bot się zrestartował
   // i state in-memory zniknął), Discord pokaże "This interaction failed"
   // jeśli nie potwierdzimy.

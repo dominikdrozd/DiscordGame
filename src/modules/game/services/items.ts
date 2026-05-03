@@ -2,6 +2,7 @@ export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
 export type ItemType = 'resource' | 'consumable' | 'weapon' | 'armor' | 'tool';
 export type ItemSlot = 'weapon' | 'armor' | 'tool';
 export type ToolKind = 'pickaxe' | 'rod' | 'axe';
+export type PrimaryKey = 'str' | 'agi' | 'wit' | 'int';
 
 export interface ItemStats {
   attack?: number;
@@ -11,6 +12,9 @@ export interface ItemStats {
   /** Inicjatywa w walce — wyższy speed atakuje pierwszy. Items mogą dodać. */
   speed?: number;
 }
+
+/** Primary stat bonusy z itemu — rolowane per rarity, dodawane do gracza w effective stats. */
+export type ItemPrimary = Partial<Record<PrimaryKey, number>>;
 
 const STAT_KEYS = [
   'attack',
@@ -59,6 +63,15 @@ export interface ItemInstance {
   toolTier?: number;
   /** Lista upgradów (reversible, każdy +1 = 1 record). Brak = item bez ulepszeń. */
   upgrades?: UpgradeRecord[];
+  /** Primary stat bonusy (str/agi/wit/int) — rolowane per rarity. */
+  primary?: ItemPrimary;
+  /**
+   * Diablo-style identification flag. Drop-y > common przychodzą `false` —
+   * gracz widzi tylko name/rarity/required level, nie statystyki. Identyfikacja
+   * w mieście (kosztem złota) ustawia `true` i odblokowuje stats + equip.
+   * Crafted items i T1 (common) zawsze `true`.
+   */
+  identified?: boolean;
 }
 
 export const RARITY_EMOJI: Record<Rarity, string> = {
@@ -117,6 +130,33 @@ const STATS_BY_TYPE: Record<ItemType, Array<keyof ItemStats>> = {
   tool: ['attack', 'speed'],
   resource: [],
   consumable: [],
+};
+
+/**
+ * Primary stat rolls per rarity — niezależny roll od `RARITY_STAT_RANGES`.
+ * Common items nie dostają primary (zachowanie sprzed feature). Rarity nie
+ * tylko zwiększa range ale i `count` slotów — legendary ma 3 różne primary.
+ */
+const PRIMARY_RARITY_RANGES: Record<Rarity, { count: number; range: [number, number] }> = {
+  common: { count: 0, range: [0, 0] },
+  uncommon: { count: 1, range: [1, 1] },
+  rare: { count: 2, range: [1, 2] },
+  epic: { count: 2, range: [2, 4] },
+  legendary: { count: 3, range: [3, 6] },
+};
+
+const PRIMARY_KEYS: readonly PrimaryKey[] = ['str', 'agi', 'wit', 'int'];
+
+/**
+ * Cena identyfikacji per rarity. Rośnie wykładniczo, żeby legendary
+ * to była realna decyzja "kupuję czy sprzedaję" zamiast no-brainer.
+ */
+export const IDENTIFY_COSTS: Record<Rarity, number> = {
+  common: 0,
+  uncommon: 50,
+  rare: 200,
+  epic: 800,
+  legendary: 3000,
 };
 
 export const ITEMS: Record<string, ItemTemplate> = {
@@ -500,6 +540,19 @@ function rollStats(template: ItemTemplate, rarity: Rarity): ItemStats {
   return out;
 }
 
+/** Roluje primary stat bonusy — tylko dla weapon/armor (tool/resource skip). */
+function rollPrimaryStats(template: ItemTemplate, rarity: Rarity): ItemPrimary | undefined {
+  if (template.type !== 'weapon' && template.type !== 'armor') return undefined;
+  const cfg = PRIMARY_RARITY_RANGES[rarity];
+  if (cfg.count === 0) return undefined;
+  const shuffled = [...PRIMARY_KEYS].sort(() => Math.random() - 0.5).slice(0, cfg.count);
+  const out: ItemPrimary = {};
+  for (const key of shuffled) {
+    out[key] = randIntInclusive(cfg.range[0], cfg.range[1]);
+  }
+  return out;
+}
+
 let uidCounter = 0;
 function newUid(): string {
   uidCounter += 1;
@@ -512,8 +565,12 @@ export function rollItemInstance(baseId: string, forcedRarity?: Rarity): ItemIns
   if (tpl.type === 'resource' || tpl.type === 'consumable') return null;
   const rarity = forcedRarity ?? rollRarity();
   const stats = rollStats(tpl, rarity);
+  const primary = rollPrimaryStats(tpl, rarity);
   const prefix = RARITY_PREFIX[rarity];
   const name = prefix ? `${prefix} ${tpl.name}` : tpl.name;
+  // Diablo-style: drop-y > common przychodzą NIE-zidentyfikowane.
+  // Tools (kilof/wędka/siekiera) zawsze zidentyfikowane (nie ma rarity).
+  const identified = rarity === 'common' || tpl.type === 'tool';
   return {
     uid: newUid(),
     baseId,
@@ -523,7 +580,19 @@ export function rollItemInstance(baseId: string, forcedRarity?: Rarity): ItemIns
     slot: tpl.slot,
     toolKind: tpl.toolKind,
     toolTier: tpl.toolTier,
+    primary,
+    identified,
   };
+}
+
+/**
+ * Crafted items (z `/craft` lub kowala) zawsze zidentyfikowane —
+ * gracz włożył pracę w surowce więc nie ma sensu blokować equip.
+ */
+export function rollCraftedInstance(baseId: string, forcedRarity?: Rarity): ItemInstance | null {
+  const it = rollItemInstance(baseId, forcedRarity);
+  if (it) it.identified = true;
+  return it;
 }
 
 export function fmtStats(s: ItemStats): string {
@@ -534,6 +603,17 @@ export function fmtStats(s: ItemStats): string {
   if (s.crit) parts.push(`+${s.crit}% crit`);
   if (s.speed) parts.push(`+${s.speed} spd`);
   return parts.join(', ') || '—';
+}
+
+/** Format primary stats — np. "+2 STR, +1 INT". Pusty string gdy brak. */
+export function fmtPrimary(p: ItemPrimary | undefined): string {
+  if (!p) return '';
+  const parts: string[] = [];
+  if (p.str) parts.push(`+${p.str} STR`);
+  if (p.agi) parts.push(`+${p.agi} AGI`);
+  if (p.wit) parts.push(`+${p.wit} WIT`);
+  if (p.int) parts.push(`+${p.int} INT`);
+  return parts.join(', ');
 }
 
 /** Liczba zaaplikowanych upgradów (długość listy `upgrades`). 0 = brak. */
@@ -598,7 +678,16 @@ function upgradeStatRange(rarity: Rarity): [number, number] {
 export function fmtInstance(it: ItemInstance): string {
   const lvl = itemUpgradeLevel(it);
   const upgradeTag = lvl > 0 ? ` **[+${lvl}]**` : '';
-  return `${RARITY_EMOJI[it.rarity]} **${it.name}**${upgradeTag} (${fmtStats(appliedItemStats(it))})`;
+  // Diablo-style: nie-zidentyfikowane pokazują tylko name + rarity + req lvl.
+  if (it.identified === false) {
+    const reqLvl = itemRequiredLevel(it);
+    const reqTag = reqLvl > 0 ? ` (req lvl ${reqLvl})` : '';
+    return `${RARITY_EMOJI[it.rarity]} **${it.name}**${upgradeTag} _❓ Niezidentyfikowany_${reqTag}`;
+  }
+  const primaryStr = fmtPrimary(it.primary);
+  const statsStr = fmtStats(appliedItemStats(it));
+  const combined = primaryStr ? `${statsStr}, ${primaryStr}` : statsStr;
+  return `${RARITY_EMOJI[it.rarity]} **${it.name}**${upgradeTag} (${combined})`;
 }
 
 export function fmtResource(id: string, qty: number): string {

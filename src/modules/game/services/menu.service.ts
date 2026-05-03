@@ -24,6 +24,7 @@ import { CraftService } from './craft.service.js';
 import { BossService } from './boss.service.js';
 import { SpellsService } from './spells.service.js';
 import { SmithService } from './smith.service.js';
+import { IdentificationService } from './identification.service.js';
 import { QuestCommand } from '../commands/quest.command.js';
 
 export interface MenuGatherers {
@@ -80,6 +81,7 @@ export class MenuService {
     private readonly inventory: MenuInventoryOpener,
     private readonly spells: SpellsService,
     private readonly smith: SmithService,
+    private readonly identification: IdentificationService,
     private readonly questCommand: QuestCommand,
   ) {}
 
@@ -160,6 +162,10 @@ export class MenuService {
     if (action === 'cityblacksmith') {
       const cityId = parts[2];
       return this.smith.openFromInteraction(interaction, cityId);
+    }
+    if (action === 'cityscribe') {
+      const cityId = parts[2];
+      return this.identification.openFromInteraction(interaction, cityId);
     }
     if (action === 'quests') {
       await interaction

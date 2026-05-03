@@ -42,6 +42,7 @@ import { SpellsService } from './services/spells.service.js';
 import { SpellsCommand } from './commands/spells.command.js';
 import { SmithService } from './services/smith.service.js';
 import { SmithCommand } from './commands/smith.command.js';
+import { IdentificationService } from './services/identification.service.js';
 import { QuestService } from './services/quest.service.js';
 import { QuestCommand } from './commands/quest.command.js';
 
@@ -49,6 +50,7 @@ export interface GameServices {
   stats: PlayerStatsService;
   party: PartyService;
   expeditions: ExpeditionService;
+  identification: IdentificationService;
 }
 
 import { hasThreadCreate } from './engine/discord-helpers.js';
@@ -58,7 +60,8 @@ export function createGameServices(): GameServices {
   const party = new PartyService();
   const quests = new QuestService(stats);
   const expeditions = new ExpeditionService(stats, party, quests);
-  return { stats, party, expeditions };
+  const identification = new IdentificationService(stats);
+  return { stats, party, expeditions, identification };
 }
 
 export function registerGameCommands(manager: CommandManager, services: GameServices): void {
@@ -81,6 +84,7 @@ export function registerGameCommands(manager: CommandManager, services: GameServ
   const chopCmd = new ChopCommand(stats);
   const spells = new SpellsService(stats);
   const smith = new SmithService(stats, quests);
+  const identification = services.identification;
   // Wire quest service do gathering commands (mining/fishing/woodcutting drops).
   mineCmd.bindQuests(quests);
   fishCmd.bindQuests(quests);
@@ -162,6 +166,7 @@ export function registerGameCommands(manager: CommandManager, services: GameServ
     inventoryOpener,
     spells,
     smith,
+    identification,
     questCommand,
   );
 
