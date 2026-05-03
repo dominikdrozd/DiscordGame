@@ -4,11 +4,7 @@ import {
   type ChatInputCommandInteraction,
   type RESTPostAPIChatInputApplicationCommandsJSONBody,
 } from 'discord.js';
-import type {
-  ICommand,
-  ICommandContext,
-  ISlashCommand,
-} from '../../../types/command.types.js';
+import type { ICommand, ICommandContext, ISlashCommand } from '../../../types/command.types.js';
 import { PlayerStatsService, type PlayerStats, type SkillName } from '../services/player-stats.js';
 import { rollLoot, type LootEntry } from '../services/loot.js';
 import { fmtResource, type ToolKind } from '../services/items.js';

@@ -5,10 +5,7 @@ import {
   type ButtonInteraction,
   type ChatInputCommandInteraction,
 } from 'discord.js';
-import type {
-  ICommandContext,
-  ISlashCommand,
-} from '../../../types/command.types.js';
+import type { ICommandContext, ISlashCommand } from '../../../types/command.types.js';
 import { DialogService } from '../services/dialog.service.js';
 import { getCity, listCities } from '../cities/index.js';
 import { findNpcCity, getNpc } from '../npcs/index.js';
@@ -137,7 +134,12 @@ export class TalkCommand extends BaseCommand implements ISlashCommand {
   private renderList(): string {
     const lines: string[] = ['💬 **NPC w Quelthasee** — kliknij w `.menu` → Miasta lub:', ''];
     let total = 0;
-    for (const c of [getCity('port_cykada'), getCity('oakhaven'), getCity('krasnoludzka_twierdza'), getCity('czarna_cytadela')]) {
+    for (const c of [
+      getCity('port_cykada'),
+      getCity('oakhaven'),
+      getCity('krasnoludzka_twierdza'),
+      getCity('czarna_cytadela'),
+    ]) {
       if (!c) continue;
       if (c.npcs.length === 0) continue;
       lines.push(`**${c.name}** (\`${c.id}\`):`);

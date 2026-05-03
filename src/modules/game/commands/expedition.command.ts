@@ -3,10 +3,7 @@ import {
   type ButtonInteraction,
   type ChatInputCommandInteraction,
 } from 'discord.js';
-import type {
-  ICommandContext,
-  ISlashCommand,
-} from '../../../types/command.types.js';
+import type { ICommandContext, ISlashCommand } from '../../../types/command.types.js';
 import { ExpeditionService } from '../services/expedition.service.js';
 import { BaseCommand } from './base.command.js';
 

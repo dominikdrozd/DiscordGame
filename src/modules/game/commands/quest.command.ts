@@ -9,10 +9,7 @@ import {
   type ChatInputCommandInteraction,
   type Interaction,
 } from 'discord.js';
-import type {
-  ICommandContext,
-  ISlashCommand,
-} from '../../../types/command.types.js';
+import type { ICommandContext, ISlashCommand } from '../../../types/command.types.js';
 import { QuestService } from '../services/quest.service.js';
 import { PlayerStatsService, type PlayerStats } from '../services/player-stats.js';
 import { type QuestDef } from '../quests/index.js';
@@ -123,13 +120,12 @@ export class QuestCommand extends BaseCommand implements ISlashCommand {
     const action = parts[1];
     const userId = parts[2];
     if (button.user.id !== userId) {
-      await button.reply({ content: 'To nie twój widok questów.', ephemeral: true }).catch(() => {});
+      await button
+        .reply({ content: 'To nie twój widok questów.', ephemeral: true })
+        .catch(() => {});
       return;
     }
-    const player = this.stats.get(
-      userId,
-      button.user.globalName || button.user.username,
-    );
+    const player = this.stats.get(userId, button.user.globalName || button.user.username);
     if (action === 'close') {
       await button.update({ content: 'Widok questów zamknięty.', components: [] }).catch(() => {});
       return;

@@ -7,10 +7,7 @@ import {
   type ButtonInteraction,
   type ChatInputCommandInteraction,
 } from 'discord.js';
-import type {
-  ICommandContext,
-  ISlashCommand,
-} from '../../../types/command.types.js';
+import type { ICommandContext, ISlashCommand } from '../../../types/command.types.js';
 import { PartyService, MAX_PARTY } from '../services/party.js';
 import { displayName } from '../../../utils.js';
 import { BaseCommand } from './base.command.js';
@@ -306,9 +303,7 @@ export class PartyCommand extends BaseCommand implements ISlashCommand {
     interaction: ChatInputCommandInteraction,
     content: string,
   ): Promise<void> {
-    await interaction
-      .reply({ content, flags: MessageFlags.Ephemeral })
-      .catch(() => {});
+    await interaction.reply({ content, flags: MessageFlags.Ephemeral }).catch(() => {});
   }
 
   private renderStatus(userId: string): string {

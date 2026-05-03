@@ -1,7 +1,4 @@
-import type {
-  ICommand,
-  ICommandContext,
-} from '../../../types/command.types.js';
+import type { ICommand, ICommandContext } from '../../../types/command.types.js';
 
 /**
  * Bazowa klasa dla wszystkich komend gry. Dostarcza domyślne

@@ -1,12 +1,5 @@
-import {
-  MessageFlags,
-  SlashCommandBuilder,
-  type ChatInputCommandInteraction,
-} from 'discord.js';
-import type {
-  ICommandContext,
-  ISlashCommand,
-} from '../../../types/command.types.js';
+import { MessageFlags, SlashCommandBuilder, type ChatInputCommandInteraction } from 'discord.js';
+import type { ICommandContext, ISlashCommand } from '../../../types/command.types.js';
 import { PlayerStatsService, type PlayerStats } from '../services/player-stats.js';
 import { fmtInstance } from '../services/items.js';
 import { RACES } from '../races/index.js';

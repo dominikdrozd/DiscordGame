@@ -6,10 +6,7 @@ import {
   type ButtonInteraction,
   type ChatInputCommandInteraction,
 } from 'discord.js';
-import type {
-  ICommandContext,
-  ISlashCommand,
-} from '../../../types/command.types.js';
+import type { ICommandContext, ISlashCommand } from '../../../types/command.types.js';
 import { CityService } from '../services/city.service.js';
 import { CITIES, listCities } from '../cities/index.js';
 import { ITEMS } from '../services/items.js';
@@ -19,8 +16,7 @@ import { BaseCommand } from './base.command.js';
 export class CityCommand extends BaseCommand implements ISlashCommand {
   readonly name = 'city';
   readonly prefix = '.city';
-  readonly description =
-    'Miasta i handel. `/city list|info|shop|buy|sell` lub `.city ...`.';
+  readonly description = 'Miasta i handel. `/city list|info|shop|buy|sell` lub `.city ...`.';
 
   readonly slashDefinition = new SlashCommandBuilder()
     .setName('city')
@@ -53,7 +49,11 @@ export class CityCommand extends BaseCommand implements ISlashCommand {
           o.setName('item_id').setDescription('id itemu').setRequired(true).setAutocomplete(true),
         )
         .addIntegerOption((o) =>
-          o.setName('qty').setDescription('Ile sztuk (domyślnie 1)').setRequired(false).setMinValue(1),
+          o
+            .setName('qty')
+            .setDescription('Ile sztuk (domyślnie 1)')
+            .setRequired(false)
+            .setMinValue(1),
         ),
     )
     .addSubcommand((sc) =>
@@ -61,10 +61,18 @@ export class CityCommand extends BaseCommand implements ISlashCommand {
         .setName('sell')
         .setDescription('Sprzedaj surowiec (auto-wybór handlarza z najwyższym skupem)')
         .addStringOption((o) =>
-          o.setName('item_id').setDescription('id itemu z plecaka').setRequired(true).setAutocomplete(true),
+          o
+            .setName('item_id')
+            .setDescription('id itemu z plecaka')
+            .setRequired(true)
+            .setAutocomplete(true),
         )
         .addIntegerOption((o) =>
-          o.setName('qty').setDescription('Ile sztuk (domyślnie wszystkie)').setRequired(false).setMinValue(1),
+          o
+            .setName('qty')
+            .setDescription('Ile sztuk (domyślnie wszystkie)')
+            .setRequired(false)
+            .setMinValue(1),
         ),
     )
     .toJSON();

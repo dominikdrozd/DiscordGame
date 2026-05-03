@@ -1,12 +1,5 @@
-import {
-  MessageFlags,
-  SlashCommandBuilder,
-  type ChatInputCommandInteraction,
-} from 'discord.js';
-import type {
-  ICommandContext,
-  ISlashCommand,
-} from '../../../types/command.types.js';
+import { MessageFlags, SlashCommandBuilder, type ChatInputCommandInteraction } from 'discord.js';
+import type { ICommandContext, ISlashCommand } from '../../../types/command.types.js';
 import {
   PlayerStatsService,
   type PlayerStats,
@@ -48,7 +41,11 @@ export class SkillsCommand extends BaseCommand implements ISlashCommand {
             ),
         )
         .addIntegerOption((o) =>
-          o.setName('points').setDescription('Ile punktów wyłożyć').setRequired(true).setMinValue(1),
+          o
+            .setName('points')
+            .setDescription('Ile punktów wyłożyć')
+            .setRequired(true)
+            .setMinValue(1),
         ),
     )
     .toJSON();
@@ -93,9 +90,7 @@ export class SkillsCommand extends BaseCommand implements ISlashCommand {
       const attr = interaction.options.getString('attr', true);
       const pts = interaction.options.getInteger('points', true);
       const result = this.tryAdd(player, attr, pts);
-      await interaction
-        .reply({ content: result, flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await interaction.reply({ content: result, flags: MessageFlags.Ephemeral }).catch(() => {});
     }
   }
 

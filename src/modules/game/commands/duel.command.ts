@@ -3,10 +3,7 @@ import {
   type ButtonInteraction,
   type ChatInputCommandInteraction,
 } from 'discord.js';
-import type {
-  ICommandContext,
-  ISlashCommand,
-} from '../../../types/command.types.js';
+import type { ICommandContext, ISlashCommand } from '../../../types/command.types.js';
 import { DuelService } from '../services/duel.service.js';
 import { BaseCommand } from './base.command.js';
 
@@ -19,9 +16,7 @@ export class DuelCommand extends BaseCommand implements ISlashCommand {
   readonly slashDefinition = new SlashCommandBuilder()
     .setName('duel')
     .setDescription('Pojedynek PvP — walka rundowa w wątku')
-    .addUserOption((o) =>
-      o.setName('user').setDescription('Przeciwnik').setRequired(true),
-    )
+    .addUserOption((o) => o.setName('user').setDescription('Przeciwnik').setRequired(true))
     .toJSON();
 
   constructor(private readonly duels: DuelService) {

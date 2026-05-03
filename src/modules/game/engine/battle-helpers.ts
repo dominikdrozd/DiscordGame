@@ -10,6 +10,7 @@ import {
   buildPanelOpenerRow,
   buildSkillPickerRow,
   buildSkillTargetRow,
+  buildTargetRow,
 } from '../ui/battle-buttons.js';
 import { getSkill, isOnCooldown } from '../skills/index.js';
 
@@ -62,9 +63,7 @@ function scheduleThreadDelete(thread: unknown, delayMs: number): void {
 export async function closeBattleThread(thread: unknown, postscript: string): Promise<void> {
   if (!isClosableThread(thread)) return;
   const seconds = Math.round(THREAD_DELETE_DELAY_MS / 1000);
-  await thread
-    .send(`${postscript}\n_Wątek zostanie usunięty za ${seconds}s._`)
-    .catch(() => {});
+  await thread.send(`${postscript}\n_Wątek zostanie usunięty za ${seconds}s._`).catch(() => {});
   await thread.setArchived(true).catch(() => {});
   scheduleThreadDelete(thread, THREAD_DELETE_DELAY_MS);
 }
@@ -166,9 +165,7 @@ export async function recordItemPick(
     return false;
   }
   if (interaction.user.id !== combatantId) {
-    await interaction
-      .update({ content: 'To nie twój przycisk.', components: [] })
-      .catch(() => {});
+    await interaction.update({ content: 'To nie twój przycisk.', components: [] }).catch(() => {});
     return false;
   }
   if (state.pending.has(combatantId)) {
@@ -245,9 +242,7 @@ export async function handleSkillPick(
     return false;
   }
   if (interaction.user.id !== combatantId) {
-    await interaction
-      .update({ content: 'To nie twój przycisk.', components: [] })
-      .catch(() => {});
+    await interaction.update({ content: 'To nie twój przycisk.', components: [] }).catch(() => {});
     return false;
   }
   if (state.pending.has(combatantId)) {
@@ -323,9 +318,7 @@ export async function handleSkillTarget(
     return false;
   }
   if (interaction.user.id !== combatantId) {
-    await interaction
-      .update({ content: 'To nie twój przycisk.', components: [] })
-      .catch(() => {});
+    await interaction.update({ content: 'To nie twój przycisk.', components: [] }).catch(() => {});
     return false;
   }
   if (state.pending.has(combatantId)) {
@@ -343,9 +336,7 @@ export async function handleSkillTarget(
   }
   const skill = getSkill(skillId);
   if (!skill) {
-    await interaction
-      .update({ content: 'Nieznany skill.', components: [] })
-      .catch(() => {});
+    await interaction.update({ content: 'Nieznany skill.', components: [] }).catch(() => {});
     return false;
   }
   const target = findCombatant(state, targetId);
@@ -361,9 +352,7 @@ export async function handleSkillTarget(
 }
 
 interface SendableThread {
-  send: (
-    payload: { content: string; components?: unknown[] } | string,
-  ) => Promise<{ id: string }>;
+  send: (payload: { content: string; components?: unknown[] } | string) => Promise<{ id: string }>;
   messages?: { fetch: (id: string) => Promise<{ edit: (payload: unknown) => Promise<unknown> }> };
 }
 
@@ -456,4 +445,241 @@ export function syncConsumablesAfterBattle(stats: PlayerStatsService, state: Bat
     changed = true;
   }
   if (changed) stats.save();
+}
+
+/**
+ * Routing customId combat-buttonów do shared handlerów. Zastępuje 6 niemal
+ * identycznych implementacji `handleInteraction` w services (ambush, dungeon,
+ * arena, world-boss, duel, boss).
+ *
+ * Generic `S extends BattleState` pozwala servisowi przekazać własny rozszerzony
+ * typ (DungeonBattleState, AmbushBattleState…) — handlery operują tylko na
+ * polach z BattleState, ale callbacki dostają pełny typ.
+ *
+ * `getState(battleId)` zwraca state lub `undefined`. Brak state → silent return
+ * (inne services dostaną szansę). State.finished → ackStaleInteraction.
+ *
+ * `onChoiceRecorded` wołane PO `notifyChoiceMade` — service-specific resolution
+ * (`maybeResolve`, advance room, etc).
+ */
+export interface BattleRouterConfig<S extends BattleState> {
+  getState: (battleId: string) => S | undefined;
+  onChoiceRecorded?: (state: S, combatantId: string) => Promise<void>;
+  /** Override "To nie twój X" dla bat:/tgt: — domyślnie "To nie twój przycisk." */
+  notMineMessage?: string;
+  /** Override "Już nie żyjesz w tym X" — domyślnie "Już nie żyjesz w tej walce." */
+  alreadyDeadMessage?: string;
+}
+
+export async function routeBattleInteraction<S extends BattleState>(
+  interaction: ButtonInteraction,
+  config: BattleRouterConfig<S>,
+): Promise<void> {
+  if (!interaction.isButton?.()) return;
+  const id = interaction.customId;
+  const battleId = id.split(':')[1];
+  if (!battleId) return;
+  const state = config.getState(battleId);
+  if (!state) return;
+  if (state.finished) {
+    await ackStaleInteraction(interaction);
+    return;
+  }
+
+  const onRecorded = async (combatantId: string): Promise<void> => {
+    await notifyChoiceMade(state, combatantId);
+    if (config.onChoiceRecorded) await config.onChoiceRecorded(state, combatantId);
+  };
+
+  if (id.startsWith('pnl:')) {
+    await handlePanelOpen(interaction, state);
+    return;
+  }
+  if (id.startsWith('bat:')) {
+    await handleBattleAction(interaction, state, {
+      notMineMessage: config.notMineMessage,
+      alreadyDeadMessage: config.alreadyDeadMessage,
+      onChoiceRecorded: onRecorded,
+    });
+    return;
+  }
+  if (id.startsWith('tgt:')) {
+    await handleBattleTarget(interaction, state, {
+      notMineMessage: config.notMineMessage,
+      onChoiceRecorded: onRecorded,
+    });
+    return;
+  }
+  if (id.startsWith('itmpick:')) {
+    const recorded = await recordItemPick(interaction, state);
+    if (recorded) await onRecorded(interaction.user.id);
+    return;
+  }
+  if (id.startsWith('sklpick:')) {
+    const recorded = await handleSkillPick(interaction, state);
+    if (recorded) await onRecorded(interaction.user.id);
+    return;
+  }
+  if (id.startsWith('skltgt:')) {
+    const recorded = await handleSkillTarget(interaction, state);
+    if (recorded) await onRecorded(interaction.user.id);
+    return;
+  }
+}
+
+interface ActionTargetOptions {
+  notMineMessage?: string;
+  alreadyDeadMessage?: string;
+  onChoiceRecorded?: (combatantId: string) => Promise<void>;
+}
+
+/**
+ * Wspólny handler dla customId `bat:battleId:combatantId:kind`. Kind:
+ * `def` (set defend), `itm` (open item picker), `skl` (open skill picker),
+ * `atk` (record attack — auto-pick gdy 1 enemy, target picker gdy >1).
+ */
+export async function handleBattleAction(
+  interaction: ButtonInteraction,
+  state: BattleState,
+  options: ActionTargetOptions = {},
+): Promise<void> {
+  const [, battleId, combatantId, kind] = interaction.customId.split(':');
+  if (interaction.user.id !== combatantId) {
+    await interaction
+      .reply({
+        content: options.notMineMessage ?? 'To nie twój przycisk.',
+        ephemeral: true,
+      })
+      .catch(() => {});
+    return;
+  }
+  const me = findCombatant(state, combatantId);
+  if (!me || me.hp <= 0) {
+    await interaction
+      .reply({
+        content: options.alreadyDeadMessage ?? 'Już nie żyjesz w tej walce.',
+        ephemeral: true,
+      })
+      .catch(() => {});
+    return;
+  }
+  if (state.pending.has(combatantId)) {
+    await interaction.reply({ content: 'Już wybrałeś akcję.', ephemeral: true }).catch(() => {});
+    return;
+  }
+
+  if (kind === 'def') {
+    state.pending.set(combatantId, { kind: 'defend' });
+    await interaction.reply({ content: 'Wybrałeś: **Obrona**.', ephemeral: true }).catch(() => {});
+    if (options.onChoiceRecorded) await options.onChoiceRecorded(combatantId);
+    return;
+  }
+  if (kind === 'itm') {
+    await openItemPicker(interaction, battleId, combatantId, me);
+    return;
+  }
+  if (kind === 'skl') {
+    await openSkillPicker(interaction, battleId, combatantId, me);
+    return;
+  }
+  if (kind === 'atk') {
+    const enemies = aliveEnemies(state, me);
+    if (enemies.length === 0) {
+      await interaction
+        .reply({ content: 'Brak żywych przeciwników.', ephemeral: true })
+        .catch(() => {});
+      return;
+    }
+    if (enemies.length === 1) {
+      state.pending.set(combatantId, { kind: 'attack', targetId: enemies[0].id });
+      await interaction
+        .reply({ content: `Atak na **${enemies[0].name}**.`, ephemeral: true })
+        .catch(() => {});
+      if (options.onChoiceRecorded) await options.onChoiceRecorded(combatantId);
+      return;
+    }
+    const row = buildTargetRow(battleId, combatantId, 'atk', enemies);
+    await interaction
+      .reply({ content: 'Wybierz cel:', ephemeral: true, components: [row] })
+      .catch(() => {});
+    return;
+  }
+  await interaction
+    .reply({ content: `Nieznana akcja \`${kind}\`.`, ephemeral: true })
+    .catch(() => {});
+}
+
+/**
+ * Wspólny handler dla customId `tgt:battleId:combatantId:kind:targetId`.
+ * Tylko `kind === 'atk'` aktualnie. TargetId może mieć dwukropki (mob ids
+ * format `enemy:type:suffix`) — `parts.slice(4).join(':')`.
+ */
+export async function handleBattleTarget(
+  interaction: ButtonInteraction,
+  state: BattleState,
+  options: ActionTargetOptions = {},
+): Promise<void> {
+  const parts = interaction.customId.split(':');
+  const [, battleId, combatantId, kind] = parts;
+  const targetId = parts.slice(4).join(':');
+  if (interaction.user.id !== combatantId) {
+    await interaction
+      .reply({
+        content: options.notMineMessage ?? 'To nie twój wybór celu.',
+        ephemeral: true,
+      })
+      .catch(() => {});
+    return;
+  }
+  if (state.pending.has(combatantId)) {
+    await interaction
+      .update({ content: 'Już wybrałeś akcję wcześniej.', components: [] })
+      .catch(() => {});
+    return;
+  }
+  if (kind !== 'atk') {
+    await interaction
+      .update({ content: `Nieznany kind \`${kind}\`.`, components: [] })
+      .catch(() => {});
+    return;
+  }
+  const me = findCombatant(state, combatantId);
+  const target = findCombatant(state, targetId);
+  if (target && target.hp > 0) {
+    state.pending.set(combatantId, { kind: 'attack', targetId });
+    await interaction
+      .update({ content: `Wybrany: **${target.name}**.`, components: [] })
+      .catch(() => {});
+    if (options.onChoiceRecorded) await options.onChoiceRecorded(combatantId);
+    return;
+  }
+  // Cel padł — fallback na live enemy.
+  if (!me) {
+    await interaction.update({ content: 'Cel padł.', components: [] }).catch(() => {});
+    return;
+  }
+  const enemies = aliveEnemies(state, me);
+  if (enemies.length === 0) {
+    state.pending.set(combatantId, { kind: 'defend' });
+    await interaction
+      .update({ content: 'Cel padł — brak innych wrogów, idziesz w obronę.', components: [] })
+      .catch(() => {});
+    if (options.onChoiceRecorded) await options.onChoiceRecorded(combatantId);
+    return;
+  }
+  if (enemies.length === 1) {
+    state.pending.set(combatantId, { kind: 'attack', targetId: enemies[0].id });
+    await interaction
+      .update({
+        content: `Cel padł — atakujesz **${enemies[0].name}**.`,
+        components: [],
+      })
+      .catch(() => {});
+    if (options.onChoiceRecorded) await options.onChoiceRecorded(combatantId);
+    return;
+  }
+  const row = buildTargetRow(battleId, combatantId, 'atk', enemies);
+  await interaction
+    .update({ content: 'Cel padł — wybierz innego:', components: [row] })
+    .catch(() => {});
 }

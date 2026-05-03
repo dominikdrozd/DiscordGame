@@ -10,27 +10,18 @@ import { PartyService, type Party } from './party.js';
 import {
   type BattleCombatant,
   type BattleState,
-  aliveEnemies,
-  findCombatant,
   humansAlive,
 } from '../engine/battle-state.js';
 import { resolveBattleRound } from '../engine/combat-battle.js';
 import { buildPlayerCombatant } from '../engine/player-combatant.js';
 import {
-  openItemPicker,
-  recordItemPick,
   syncConsumablesAfterBattle,
-  openSkillPicker,
-  handleSkillPick,
-  handleSkillTarget,
-  ackStaleInteraction,
   closeBattleThread,
   promptHumansWithPanel,
-  handlePanelOpen,
-  notifyChoiceMade,
   postBattleSummary,
+  routeBattleInteraction,
 } from '../engine/battle-helpers.js';
-import { buildPanelOpenerRow, buildTargetRow } from '../ui/battle-buttons.js';
+import { buildPanelOpenerRow } from '../ui/battle-buttons.js';
 import { displayName, errMsg } from '../../../utils.js';
 import type { QuestService } from './quest.service.js';
 
@@ -271,185 +262,11 @@ export class DuelService {
   }
 
   async handleInteraction(interaction: ButtonInteraction): Promise<void> {
-    if (!interaction.isButton?.()) return;
-    const id = interaction.customId;
-    if (id.startsWith('pnl:')) return this.handlePanel(interaction);
-    if (id.startsWith('bat:')) return this.handleAction(interaction);
-    if (id.startsWith('tgt:')) return this.handleTarget(interaction);
-    if (id.startsWith('itmpick:')) return this.handleItemPick(interaction);
-    if (id.startsWith('sklpick:')) return this.handleSklPick(interaction);
-    if (id.startsWith('skltgt:')) return this.handleSklTarget(interaction);
-  }
-
-  private async handlePanel(interaction: ButtonInteraction): Promise<void> {
-    const [, battleId] = interaction.customId.split(':');
-    const state = this.states.get(battleId);
-    if (!state) return;
-    if (state.finished) {
-      await ackStaleInteraction(interaction);
-      return;
-    }
-    await handlePanelOpen(interaction, state);
-  }
-
-  private async handleItemPick(interaction: ButtonInteraction): Promise<void> {
-    const [, battleId] = interaction.customId.split(':');
-    const state = this.states.get(battleId);
-    if (!state) return; // nie moja walka — niech inny service obsłuży
-    if (state.finished) {
-      await ackStaleInteraction(interaction);
-      return;
-    }
-    const recorded = await recordItemPick(interaction, state);
-    if (recorded) {
-      await notifyChoiceMade(state, interaction.user.id);
-      await this.maybeResolve(state);
-    }
-  }
-
-  private async handleSklPick(interaction: ButtonInteraction): Promise<void> {
-    const [, battleId] = interaction.customId.split(':');
-    const state = this.states.get(battleId);
-    if (!state) return; // nie moja walka — niech inny service obsłuży
-    if (state.finished) {
-      await ackStaleInteraction(interaction);
-      return;
-    }
-    const recorded = await handleSkillPick(interaction, state);
-    if (recorded) {
-      await notifyChoiceMade(state, interaction.user.id);
-      await this.maybeResolve(state);
-    }
-  }
-
-  private async handleSklTarget(interaction: ButtonInteraction): Promise<void> {
-    const [, battleId] = interaction.customId.split(':');
-    const state = this.states.get(battleId);
-    if (!state) return; // nie moja walka — niech inny service obsłuży
-    if (state.finished) {
-      await ackStaleInteraction(interaction);
-      return;
-    }
-    const recorded = await handleSkillTarget(interaction, state);
-    if (recorded) {
-      await notifyChoiceMade(state, interaction.user.id);
-      await this.maybeResolve(state);
-    }
-  }
-
-  private async handleAction(interaction: ButtonInteraction): Promise<void> {
-    const [, battleId, combatantId, kind] = interaction.customId.split(':');
-    const state = this.states.get(battleId);
-    if (!state) return; // nie moja walka — niech inny service obsłuży
-    if (state.finished) {
-      await ackStaleInteraction(interaction);
-      return;
-    }
-    if (interaction.user.id !== combatantId) {
-      await interaction
-        .reply({ content: 'Nie bierzesz udziału w tym pojedynku.', ephemeral: true })
-        .catch(() => {});
-      return;
-    }
-    const me = findCombatant(state, combatantId);
-    if (!me || me.hp <= 0) {
-      await interaction
-        .reply({ content: 'Już nie żyjesz w tej walce.', ephemeral: true })
-        .catch(() => {});
-      return;
-    }
-    if (state.pending.has(combatantId)) {
-      await interaction
-        .reply({ content: 'Już wybrałeś akcję — czekamy na pozostałych.', ephemeral: true })
-        .catch(() => {});
-      return;
-    }
-
-    let recorded = false;
-    if (kind === 'def') {
-      state.pending.set(combatantId, { kind: 'defend' });
-      await interaction
-        .reply({ content: 'Wybrałeś: **Obrona**.', ephemeral: true })
-        .catch(() => {});
-      recorded = true;
-    } else if (kind === 'itm') {
-      await openItemPicker(interaction, battleId, combatantId, me);
-      return;
-    } else if (kind === 'skl') {
-      await openSkillPicker(interaction, battleId, combatantId, me);
-      return;
-    } else if (kind === 'atk') {
-      const enemies = aliveEnemies(state, me);
-      if (enemies.length === 0) {
-        await interaction
-          .reply({ content: 'Brak żywych przeciwników.', ephemeral: true })
-          .catch(() => {});
-        return;
-      }
-      if (enemies.length === 1) {
-        state.pending.set(combatantId, { kind: 'attack', targetId: enemies[0].id });
-        await interaction
-          .reply({ content: `Atak na **${enemies[0].name}**.`, ephemeral: true })
-          .catch(() => {});
-        recorded = true;
-      } else {
-        const row = buildTargetRow(battleId, combatantId, 'atk', enemies);
-        await interaction
-          .reply({ content: 'Wybierz cel:', ephemeral: true, components: [row] })
-          .catch(() => {});
-        return;
-      }
-    } else {
-      await interaction
-        .reply({ content: `Nieznana akcja \`${kind}\`.`, ephemeral: true })
-        .catch(() => {});
-      return;
-    }
-
-    if (recorded) await notifyChoiceMade(state, combatantId);
-    await this.maybeResolve(state);
-  }
-
-  private async handleTarget(interaction: ButtonInteraction): Promise<void> {
-    const parts = interaction.customId.split(':');
-    const [, battleId, combatantId, kind] = parts;
-    const targetId = parts.slice(4).join(':');
-    const state = this.states.get(battleId);
-    if (!state) return; // nie moja walka — niech inny service obsłuży
-    if (state.finished) {
-      await ackStaleInteraction(interaction);
-      return;
-    }
-    if (interaction.user.id !== combatantId) {
-      await interaction
-        .reply({ content: 'To nie twój wybór celu.', ephemeral: true })
-        .catch(() => {});
-      return;
-    }
-    if (state.pending.has(combatantId)) {
-      await interaction
-        .update({ content: 'Już wybrałeś akcję wcześniej.', components: [] })
-        .catch(() => {});
-      return;
-    }
-    if (kind === 'atk') {
-      const target = findCombatant(state, targetId);
-      if (!target || target.hp <= 0) {
-        await interaction.update({ content: 'Cel padł.', components: [] }).catch(() => {});
-        return;
-      }
-      state.pending.set(combatantId, { kind: 'attack', targetId });
-      await interaction
-        .update({ content: `Wybrany cel: **${target.name}**.`, components: [] })
-        .catch(() => {});
-      await notifyChoiceMade(state, combatantId);
-    } else {
-      await interaction
-        .update({ content: `Nieznany kind \`${kind}\`.`, components: [] })
-        .catch(() => {});
-      return;
-    }
-    await this.maybeResolve(state);
+    await routeBattleInteraction<DuelBattleState>(interaction, {
+      getState: (id) => this.states.get(id),
+      onChoiceRecorded: (state) => this.maybeResolve(state),
+      notMineMessage: 'Nie bierzesz udziału w tym pojedynku.',
+    });
   }
 
   private async maybeResolve(state: DuelBattleState): Promise<void> {

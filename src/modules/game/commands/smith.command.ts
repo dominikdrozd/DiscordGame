@@ -6,10 +6,7 @@ import {
   type ChatInputCommandInteraction,
   type Interaction,
 } from 'discord.js';
-import type {
-  ICommandContext,
-  ISlashCommand,
-} from '../../../types/command.types.js';
+import type { ICommandContext, ISlashCommand } from '../../../types/command.types.js';
 import { SmithService } from '../services/smith.service.js';
 import { listCities } from '../cities/index.js';
 import { REGION_LVL_REQ } from '../engine/encounters.js';
@@ -43,7 +40,9 @@ export class SmithCommand extends BaseCommand implements ISlashCommand {
 
   async execute(ctx: ICommandContext): Promise<void> {
     const { msg } = ctx;
-    await msg.reply('Kowal dostępny przez `/smith city:<id>` lub `/menu` → Miasta → wybierz miasto → 🔨 Kowal.');
+    await msg.reply(
+      'Kowal dostępny przez `/smith city:<id>` lub `/menu` → Miasta → wybierz miasto → 🔨 Kowal.',
+    );
   }
 
   async executeSlash(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -85,8 +84,7 @@ export class SmithCommand extends BaseCommand implements ISlashCommand {
       .slice(0, 25)
       .map((c) => {
         const cap = c.region * 3;
-        const lockTag =
-          player.skills.combat.level < REGION_LVL_REQ[c.region] ? ' 🔒' : '';
+        const lockTag = player.skills.combat.level < REGION_LVL_REQ[c.region] ? ' 🔒' : '';
         return {
           name: `${c.name} (max +${cap})${lockTag}`.slice(0, 100),
           value: c.id,

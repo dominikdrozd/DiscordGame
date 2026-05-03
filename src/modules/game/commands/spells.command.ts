@@ -6,10 +6,7 @@ import {
   type ChatInputCommandInteraction,
   type Interaction,
 } from 'discord.js';
-import type {
-  ICommandContext,
-  ISlashCommand,
-} from '../../../types/command.types.js';
+import type { ICommandContext, ISlashCommand } from '../../../types/command.types.js';
 import { SpellsService } from '../services/spells.service.js';
 import { SKILLS } from '../skills/index.js';
 import { PlayerStatsService } from '../services/player-stats.js';
@@ -92,9 +89,7 @@ export class SpellsCommand extends BaseCommand implements ISlashCommand {
       }
       const result = this.spells.learn(player, skill);
       this.stats.save();
-      await interaction
-        .reply({ content: result, flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await interaction.reply({ content: result, flags: MessageFlags.Ephemeral }).catch(() => {});
     }
   }
 
@@ -125,7 +120,9 @@ export class SpellsCommand extends BaseCommand implements ISlashCommand {
       );
     });
     const filtered = candidates
-      .filter((s) => !focus || s.id.toLowerCase().includes(focus) || s.name.toLowerCase().includes(focus))
+      .filter(
+        (s) => !focus || s.id.toLowerCase().includes(focus) || s.name.toLowerCase().includes(focus),
+      )
       .slice(0, 25)
       .map((s) => ({ name: `${s.name} (${s.id})`.slice(0, 100), value: s.id }));
     await interaction.respond(filtered).catch(() => {});

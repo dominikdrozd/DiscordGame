@@ -4,10 +4,7 @@ import {
   type ButtonInteraction,
   type ChatInputCommandInteraction,
 } from 'discord.js';
-import type {
-  ICommandContext,
-  ISlashCommand,
-} from '../../../types/command.types.js';
+import type { ICommandContext, ISlashCommand } from '../../../types/command.types.js';
 import { DungeonService } from '../services/dungeon.service.js';
 import { DUNGEONS } from '../engine/encounters.js';
 import { BaseCommand } from './base.command.js';

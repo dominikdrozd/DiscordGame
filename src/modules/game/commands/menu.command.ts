@@ -1,4 +1,8 @@
-import { SlashCommandBuilder, type ButtonInteraction, type ChatInputCommandInteraction } from 'discord.js';
+import {
+  SlashCommandBuilder,
+  type ButtonInteraction,
+  type ChatInputCommandInteraction,
+} from 'discord.js';
 import type { ICommandContext, ISlashCommand } from '../../../types/command.types.js';
 import { MenuService } from '../services/menu.service.js';
 import { BaseCommand } from './base.command.js';

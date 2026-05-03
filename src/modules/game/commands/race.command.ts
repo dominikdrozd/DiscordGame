@@ -4,10 +4,7 @@ import {
   type AutocompleteInteraction,
   type ChatInputCommandInteraction,
 } from 'discord.js';
-import type {
-  ICommandContext,
-  ISlashCommand,
-} from '../../../types/command.types.js';
+import type { ICommandContext, ISlashCommand } from '../../../types/command.types.js';
 import { PlayerStatsService, type PlayerStats } from '../services/player-stats.js';
 import { RACES, getRace, listRaces, fmtRaceStats } from '../races/index.js';
 import { displayName } from '../../../utils.js';
@@ -93,9 +90,7 @@ export class RaceCommand extends BaseCommand implements ISlashCommand {
     } else {
       content = this.tryReset(player);
     }
-    await interaction
-      .reply({ content, flags: MessageFlags.Ephemeral })
-      .catch(() => {});
+    await interaction.reply({ content, flags: MessageFlags.Ephemeral }).catch(() => {});
   }
 
   private renderList(player: PlayerStats): string {

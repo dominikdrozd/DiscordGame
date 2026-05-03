@@ -4,10 +4,7 @@ import {
   type AutocompleteInteraction,
   type ChatInputCommandInteraction,
 } from 'discord.js';
-import type {
-  ICommandContext,
-  ISlashCommand,
-} from '../../../types/command.types.js';
+import type { ICommandContext, ISlashCommand } from '../../../types/command.types.js';
 import { PlayerStatsService, type PlayerStats } from '../services/player-stats.js';
 import {
   CLASSES,
@@ -61,7 +58,11 @@ export class ClassCommand extends BaseCommand implements ISlashCommand {
         .setName('subclass2')
         .setDescription('Wybierz tier-2 subklasę (combat lvl 40+)')
         .addStringOption((o) =>
-          o.setName('id').setDescription('id tier-2 subklasy').setRequired(true).setAutocomplete(true),
+          o
+            .setName('id')
+            .setDescription('id tier-2 subklasy')
+            .setRequired(true)
+            .setAutocomplete(true),
         ),
     )
     .addSubcommand((sc) => sc.setName('reset').setDescription('Cofnij wybór klasy/subklas'))
@@ -125,15 +126,14 @@ export class ClassCommand extends BaseCommand implements ISlashCommand {
     let content: string;
     if (sub === 'list') content = this.renderList(player);
     else if (sub === 'info') content = this.renderInfo(interaction.options.getString('id', true));
-    else if (sub === 'pick') content = this.tryPick(player, interaction.options.getString('id', true));
+    else if (sub === 'pick')
+      content = this.tryPick(player, interaction.options.getString('id', true));
     else if (sub === 'subclass')
       content = this.trySubclass(player, interaction.options.getString('id', true));
     else if (sub === 'subclass2')
       content = this.trySubclass2(player, interaction.options.getString('id', true));
     else content = this.tryReset(player);
-    await interaction
-      .reply({ content, flags: MessageFlags.Ephemeral })
-      .catch(() => {});
+    await interaction.reply({ content, flags: MessageFlags.Ephemeral }).catch(() => {});
   }
 
   private renderList(player: PlayerStats): string {

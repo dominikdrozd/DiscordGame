@@ -4,10 +4,7 @@ import {
   type AutocompleteInteraction,
   type ChatInputCommandInteraction,
 } from 'discord.js';
-import type {
-  ICommandContext,
-  ISlashCommand,
-} from '../../../types/command.types.js';
+import type { ICommandContext, ISlashCommand } from '../../../types/command.types.js';
 import { PlayerStatsService, type PlayerStats } from '../services/player-stats.js';
 import { fmtInstance } from '../services/items.js';
 import { displayName } from '../../../utils.js';
@@ -51,10 +48,7 @@ export class EquipCommand extends BaseCommand implements ISlashCommand {
     const q = focused.value.toLowerCase();
     const choices = player.inventory.items
       .filter((it) => it.slot)
-      .filter(
-        (it) =>
-          it.uid.toLowerCase().includes(q) || it.name.toLowerCase().includes(q),
-      )
+      .filter((it) => it.uid.toLowerCase().includes(q) || it.name.toLowerCase().includes(q))
       .slice(0, 25)
       .map((it) => {
         const equipped = it.slot && player.equipped[it.slot] === it.uid ? ' [założone]' : '';

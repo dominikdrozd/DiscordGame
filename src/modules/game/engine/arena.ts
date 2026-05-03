@@ -8,12 +8,7 @@ import {
 import { PlayerStatsService } from '../services/player-stats.js';
 import { PartyService } from '../services/party.js';
 import { ExpeditionService } from '../services/expedition.service.js';
-import {
-  type BattleState,
-  aliveEnemies,
-  findCombatant,
-  humansAlive,
-} from './battle-state.js';
+import { type BattleState, humansAlive } from './battle-state.js';
 import { resolveBattleRound } from './combat-battle.js';
 import { buildHumanCombatant } from './player-combatant.js';
 import {
@@ -26,20 +21,13 @@ import {
 } from './discord-helpers.js';
 import { nextSlotAfter } from './scheduling.js';
 import {
-  openItemPicker,
-  recordItemPick,
   syncConsumablesAfterBattle,
-  openSkillPicker,
-  handleSkillPick,
-  handleSkillTarget,
-  ackStaleInteraction,
   closeBattleThread,
   promptHumansWithPanel,
-  handlePanelOpen,
-  notifyChoiceMade,
   postBattleSummary,
+  routeBattleInteraction,
 } from './battle-helpers.js';
-import { buildPanelOpenerRow, buildTargetRow } from '../ui/battle-buttons.js';
+import { buildPanelOpenerRow } from '../ui/battle-buttons.js';
 import { errMsg } from '../../../utils.js';
 
 const TICK_MS = 60_000;
@@ -231,19 +219,15 @@ export class ArenaService {
     if (interaction.customId === 'arenajoin') return this.handleJoin(interaction);
     if (interaction.customId === 'arenacancelexp') return this.handleCancelExpedition(interaction);
 
-    // Combat interactions — tylko gdy turniej aktywny i battleId pasuje.
     const t = this.tournament;
-    if (!t || !t.currentBattle) return;
-    const id = interaction.customId;
-    const battleId = id.split(':')[1];
-    if (battleId !== t.currentBattle.id) return;
-
-    if (id.startsWith('pnl:')) return this.handlePanel(interaction, t);
-    if (id.startsWith('bat:')) return this.handleAction(interaction, t);
-    if (id.startsWith('tgt:')) return this.handleTarget(interaction, t);
-    if (id.startsWith('itmpick:')) return this.handleItemPick(interaction, t);
-    if (id.startsWith('sklpick:')) return this.handleSklPick(interaction, t);
-    if (id.startsWith('skltgt:')) return this.handleSklTarget(interaction, t);
+    if (!t) return;
+    await routeBattleInteraction<BattleState>(interaction, {
+      getState: (id) =>
+        t.currentBattle && t.currentBattle.id === id ? t.currentBattle : undefined,
+      onChoiceRecorded: () => this.maybeResolve(t),
+      notMineMessage: 'To nie twój match.',
+      alreadyDeadMessage: 'Już padłeś w tym matchu.',
+    });
   }
 
   private async handleJoin(interaction: ButtonInteraction): Promise<void> {
@@ -446,169 +430,6 @@ export class ArenaService {
       })
       .catch(() => {});
     await promptHumansWithPanel(state);
-  }
-
-  private async handlePanel(interaction: ButtonInteraction, t: ArenaTournament): Promise<void> {
-    if (!t.currentBattle || t.currentBattle.finished) {
-      await ackStaleInteraction(interaction);
-      return;
-    }
-    await handlePanelOpen(interaction, t.currentBattle);
-  }
-
-  private async handleItemPick(
-    interaction: ButtonInteraction,
-    t: ArenaTournament,
-  ): Promise<void> {
-    if (!t.currentBattle || t.currentBattle.finished) {
-      await ackStaleInteraction(interaction);
-      return;
-    }
-    const recorded = await recordItemPick(interaction, t.currentBattle);
-    if (recorded) {
-      await notifyChoiceMade(t.currentBattle, interaction.user.id);
-      await this.maybeResolve(t);
-    }
-  }
-
-  private async handleSklPick(
-    interaction: ButtonInteraction,
-    t: ArenaTournament,
-  ): Promise<void> {
-    if (!t.currentBattle || t.currentBattle.finished) {
-      await ackStaleInteraction(interaction);
-      return;
-    }
-    const recorded = await handleSkillPick(interaction, t.currentBattle);
-    if (recorded) {
-      await notifyChoiceMade(t.currentBattle, interaction.user.id);
-      await this.maybeResolve(t);
-    }
-  }
-
-  private async handleSklTarget(
-    interaction: ButtonInteraction,
-    t: ArenaTournament,
-  ): Promise<void> {
-    if (!t.currentBattle || t.currentBattle.finished) {
-      await ackStaleInteraction(interaction);
-      return;
-    }
-    const recorded = await handleSkillTarget(interaction, t.currentBattle);
-    if (recorded) {
-      await notifyChoiceMade(t.currentBattle, interaction.user.id);
-      await this.maybeResolve(t);
-    }
-  }
-
-  private async handleAction(
-    interaction: ButtonInteraction,
-    t: ArenaTournament,
-  ): Promise<void> {
-    if (!t.currentBattle || t.currentBattle.finished) {
-      await ackStaleInteraction(interaction);
-      return;
-    }
-    const state = t.currentBattle;
-    const [, , combatantId, kind] = interaction.customId.split(':');
-    if (interaction.user.id !== combatantId) {
-      await interaction.reply({ content: 'To nie twój match.', ephemeral: true }).catch(() => {});
-      return;
-    }
-    const me = findCombatant(state, combatantId);
-    if (!me || me.hp <= 0) {
-      await interaction
-        .reply({ content: 'Już padłeś w tym matchu.', ephemeral: true })
-        .catch(() => {});
-      return;
-    }
-    if (state.pending.has(combatantId)) {
-      await interaction
-        .reply({ content: 'Już wybrałeś akcję.', ephemeral: true })
-        .catch(() => {});
-      return;
-    }
-
-    const battleId = state.id;
-    let recorded = false;
-    if (kind === 'def') {
-      state.pending.set(combatantId, { kind: 'defend' });
-      await interaction
-        .reply({ content: 'Wybrałeś: **Obrona**.', ephemeral: true })
-        .catch(() => {});
-      recorded = true;
-    } else if (kind === 'itm') {
-      await openItemPicker(interaction, battleId, combatantId, me);
-      return;
-    } else if (kind === 'skl') {
-      await openSkillPicker(interaction, battleId, combatantId, me);
-      return;
-    } else if (kind === 'atk') {
-      const enemies = aliveEnemies(state, me);
-      if (enemies.length === 0) {
-        await interaction
-          .reply({ content: 'Brak żywych przeciwników.', ephemeral: true })
-          .catch(() => {});
-        return;
-      }
-      // 1v1 → tylko 1 enemy.
-      state.pending.set(combatantId, { kind: 'attack', targetId: enemies[0].id });
-      await interaction
-        .reply({ content: `Atak na **${enemies[0].name}**.`, ephemeral: true })
-        .catch(() => {});
-      recorded = true;
-    } else {
-      await interaction
-        .reply({ content: `Nieznana akcja \`${kind}\`.`, ephemeral: true })
-        .catch(() => {});
-      return;
-    }
-    if (recorded) await notifyChoiceMade(state, combatantId);
-    await this.maybeResolve(t);
-  }
-
-  private async handleTarget(
-    interaction: ButtonInteraction,
-    t: ArenaTournament,
-  ): Promise<void> {
-    if (!t.currentBattle || t.currentBattle.finished) {
-      await ackStaleInteraction(interaction);
-      return;
-    }
-    const state = t.currentBattle;
-    const parts = interaction.customId.split(':');
-    const [, , combatantId, kind] = parts;
-    const targetId = parts.slice(4).join(':');
-    if (interaction.user.id !== combatantId) {
-      await interaction
-        .reply({ content: 'To nie twój wybór celu.', ephemeral: true })
-        .catch(() => {});
-      return;
-    }
-    if (state.pending.has(combatantId)) {
-      await interaction
-        .update({ content: 'Już wybrałeś akcję wcześniej.', components: [] })
-        .catch(() => {});
-      return;
-    }
-    if (kind === 'atk') {
-      const target = findCombatant(state, targetId);
-      if (!target || target.hp <= 0) {
-        await interaction.update({ content: 'Cel padł.', components: [] }).catch(() => {});
-        return;
-      }
-      state.pending.set(combatantId, { kind: 'attack', targetId });
-      await interaction
-        .update({ content: `Wybrany: **${target.name}**.`, components: [] })
-        .catch(() => {});
-      await notifyChoiceMade(state, combatantId);
-    } else {
-      await interaction
-        .update({ content: `Nieznany kind \`${kind}\`.`, components: [] })
-        .catch(() => {});
-      return;
-    }
-    await this.maybeResolve(t);
   }
 
   private async maybeResolve(t: ArenaTournament): Promise<void> {
