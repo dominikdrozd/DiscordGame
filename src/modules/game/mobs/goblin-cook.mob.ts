@@ -26,7 +26,7 @@ export class GoblinCook extends Mob {
       { itemId: 'wood_dab', weight: 40, qtyMin: 1, qtyMax: 2 },
     ],
     rolls: 3,
-    dropPool: ['sword_iron', 'armor_iron'],
+    dropPool: ['sword_iron', 'dagger_iron', 'bow_iron', 'staff_iron', 'armor_iron'],
     guaranteedDropChance: 0.5,
     bookDrops: [
       { skillId: 'curse_echo', chance: 0.02 },

@@ -29,7 +29,7 @@ export class DarkDuchess extends Mob {
       { itemId: 'wood_smoczy', weight: 35, qtyMin: 1, qtyMax: 2 },
     ],
     rolls: 4,
-    dropPool: ['sword_mithril', 'armor_mithril'],
+    dropPool: ['sword_mithril', 'dagger_mithril', 'staff_mithril', 'armor_mithril'],
     guaranteedDropChance: 0.85,
     bookDrops: [
       { skillId: 'curse_echo', chance: 0.02 },

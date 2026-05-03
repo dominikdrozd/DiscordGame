@@ -33,7 +33,7 @@ export class FlyingDutchman extends Mob {
       { itemId: 'potion_greater', weight: 20 },
     ],
     rolls: 3,
-    dropPool: ['sword_iron', 'armor_iron'],
+    dropPool: ['sword_iron', 'bow_iron', 'staff_iron', 'armor_iron'],
     guaranteedDropChance: 0.55,
   };
 }

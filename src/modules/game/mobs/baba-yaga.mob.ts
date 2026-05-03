@@ -29,7 +29,7 @@ export class BabaYaga extends Mob {
       { itemId: 'wood_buk', weight: 40, qtyMin: 1, qtyMax: 2 },
     ],
     rolls: 3,
-    dropPool: ['sword_silver', 'armor_silver'],
+    dropPool: ['sword_silver', 'dagger_silver', 'staff_silver', 'armor_silver'],
     guaranteedDropChance: 0.7,
     bookDrops: [
       { skillId: 'blood_vortex', chance: 0.02 },

@@ -30,7 +30,7 @@ export class PolonezDragon extends Mob {
       { itemId: 'wood_smoczy', weight: 20 },
     ],
     rolls: 4,
-    dropPool: ['sword_mithril', 'armor_mithril'],
+    dropPool: ['sword_mithril', 'bow_mithril', 'staff_mithril', 'armor_mithril'],
     guaranteedDropChance: 1,
     bookDrops: [
       { skillId: 'time_shield', chance: 0.02 },

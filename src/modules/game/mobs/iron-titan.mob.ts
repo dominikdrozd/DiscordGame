@@ -30,7 +30,7 @@ export class IronTitan extends Mob {
       { itemId: 'wood_swiatowe', weight: 20 },
     ],
     rolls: 5,
-    dropPool: ['sword_mithril', 'armor_mithril'],
+    dropPool: ['sword_mithril', 'dagger_mithril', 'bow_mithril', 'staff_mithril', 'armor_mithril'],
     guaranteedDropChance: 1,
     bookDrops: [
       { skillId: 'dark_power', chance: 0.02 },

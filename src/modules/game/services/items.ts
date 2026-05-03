@@ -246,13 +246,18 @@ export const ITEMS: Record<string, ItemTemplate> = {
     toolTier: 1,
   },
 
-  // ── WEAPON TEMPLATES (craftable) ───────────────────
+  // ── WEAPON TEMPLATES — 4 typy × 5 tierów ───────────
+  // Identity przez `baseStats` (zawsze aplikowane, niezależnie od rolli).
+  // Sword: balanced (+atk). Dagger: crit/speed. Bow: speed/crit. Staff: heavy atk.
+
+  // Sword — balanced damage dealer.
   sword_iron: {
     id: 'sword_iron',
     name: 'Żelazny Miecz',
     type: 'weapon',
     rarity: 'common',
     slot: 'weapon',
+    baseStats: { attack: 2 },
   },
   sword_silver: {
     id: 'sword_silver',
@@ -260,6 +265,7 @@ export const ITEMS: Record<string, ItemTemplate> = {
     type: 'weapon',
     rarity: 'uncommon',
     slot: 'weapon',
+    baseStats: { attack: 3 },
   },
   sword_mithril: {
     id: 'sword_mithril',
@@ -267,6 +273,7 @@ export const ITEMS: Record<string, ItemTemplate> = {
     type: 'weapon',
     rarity: 'rare',
     slot: 'weapon',
+    baseStats: { attack: 4 },
   },
   sword_diamond: {
     id: 'sword_diamond',
@@ -274,6 +281,7 @@ export const ITEMS: Record<string, ItemTemplate> = {
     type: 'weapon',
     rarity: 'epic',
     slot: 'weapon',
+    baseStats: { attack: 5 },
   },
   sword_runicum: {
     id: 'sword_runicum',
@@ -281,7 +289,137 @@ export const ITEMS: Record<string, ItemTemplate> = {
     type: 'weapon',
     rarity: 'legendary',
     slot: 'weapon',
+    baseStats: { attack: 7 },
     description: 'Wykuty z runicum — broń godna mistrza, drop tylko z najgłębszych dungeonów.',
+  },
+
+  // Dagger — fast strikes, crit-focused but still hits hard.
+  dagger_iron: {
+    id: 'dagger_iron',
+    name: 'Żelazny Sztylet',
+    type: 'weapon',
+    rarity: 'common',
+    slot: 'weapon',
+    baseStats: { attack: 1, crit: 1, speed: 1 },
+  },
+  dagger_silver: {
+    id: 'dagger_silver',
+    name: 'Srebrny Sztylet',
+    type: 'weapon',
+    rarity: 'uncommon',
+    slot: 'weapon',
+    baseStats: { attack: 2, crit: 2, speed: 1 },
+  },
+  dagger_mithril: {
+    id: 'dagger_mithril',
+    name: 'Mithrilowy Sztylet',
+    type: 'weapon',
+    rarity: 'rare',
+    slot: 'weapon',
+    baseStats: { attack: 3, crit: 3, speed: 2 },
+  },
+  dagger_diamond: {
+    id: 'dagger_diamond',
+    name: 'Diamentowy Sztylet',
+    type: 'weapon',
+    rarity: 'epic',
+    slot: 'weapon',
+    baseStats: { attack: 4, crit: 4, speed: 2 },
+  },
+  dagger_runicum: {
+    id: 'dagger_runicum',
+    name: 'Sztylet Runiczny',
+    type: 'weapon',
+    rarity: 'legendary',
+    slot: 'weapon',
+    baseStats: { attack: 5, crit: 6, speed: 3 },
+    description: 'Klinga tnie szybciej niż oko zauważy — najsmukliejsza broń mistrza.',
+  },
+
+  // Bow — distance damage, speed/crit specialist with solid attack.
+  bow_iron: {
+    id: 'bow_iron',
+    name: 'Żelazny Łuk',
+    type: 'weapon',
+    rarity: 'common',
+    slot: 'weapon',
+    baseStats: { attack: 1, speed: 2, crit: 1 },
+  },
+  bow_silver: {
+    id: 'bow_silver',
+    name: 'Srebrny Łuk',
+    type: 'weapon',
+    rarity: 'uncommon',
+    slot: 'weapon',
+    baseStats: { attack: 2, speed: 3, crit: 1 },
+  },
+  bow_mithril: {
+    id: 'bow_mithril',
+    name: 'Mithrilowy Łuk',
+    type: 'weapon',
+    rarity: 'rare',
+    slot: 'weapon',
+    baseStats: { attack: 3, speed: 4, crit: 2 },
+  },
+  bow_diamond: {
+    id: 'bow_diamond',
+    name: 'Diamentowy Łuk',
+    type: 'weapon',
+    rarity: 'epic',
+    slot: 'weapon',
+    baseStats: { attack: 4, speed: 5, crit: 3 },
+  },
+  bow_runicum: {
+    id: 'bow_runicum',
+    name: 'Łuk Runiczny',
+    type: 'weapon',
+    rarity: 'legendary',
+    slot: 'weapon',
+    baseStats: { attack: 5, speed: 7, crit: 4 },
+    description: 'Strzały lecą szybciej niż wiatr — łuk mistrzów puszczy.',
+  },
+
+  // Staff — heavy hitter (high attack), slower than dagger/bow.
+  staff_iron: {
+    id: 'staff_iron',
+    name: 'Żelazny Kostur',
+    type: 'weapon',
+    rarity: 'common',
+    slot: 'weapon',
+    baseStats: { attack: 3 },
+  },
+  staff_silver: {
+    id: 'staff_silver',
+    name: 'Srebrny Kostur',
+    type: 'weapon',
+    rarity: 'uncommon',
+    slot: 'weapon',
+    baseStats: { attack: 5 },
+  },
+  staff_mithril: {
+    id: 'staff_mithril',
+    name: 'Mithrilowy Kostur',
+    type: 'weapon',
+    rarity: 'rare',
+    slot: 'weapon',
+    baseStats: { attack: 7 },
+  },
+  staff_diamond: {
+    id: 'staff_diamond',
+    name: 'Diamentowy Kostur',
+    type: 'weapon',
+    rarity: 'epic',
+    slot: 'weapon',
+    baseStats: { attack: 9 },
+  },
+  staff_runicum: {
+    id: 'staff_runicum',
+    name: 'Kostur Runiczny',
+    type: 'weapon',
+    rarity: 'legendary',
+    slot: 'weapon',
+    baseStats: { attack: 12 },
+    description: 'Kostur runiczny zadaje miażdżące ciosy — broń o najwyższym czystym damage.',
   },
 
   // ── ARMOR TEMPLATES (craftable) ────────────────────

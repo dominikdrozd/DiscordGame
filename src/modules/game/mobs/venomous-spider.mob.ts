@@ -29,7 +29,7 @@ export class VenomousSpider extends Mob {
       { itemId: 'wood_heban', weight: 40, qtyMin: 1, qtyMax: 2 },
     ],
     rolls: 3,
-    dropPool: ['sword_silver', 'armor_silver'],
+    dropPool: ['sword_silver', 'dagger_silver', 'bow_silver', 'armor_silver'],
     guaranteedDropChance: 0.75,
     bookDrops: [
       { skillId: 'second_wind', chance: 0.02 },

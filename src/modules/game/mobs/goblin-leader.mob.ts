@@ -28,7 +28,7 @@ export class GoblinLeader extends Mob {
       { itemId: 'wood_dab', weight: 20, qtyMin: 1, qtyMax: 2 },
     ],
     rolls: 3,
-    dropPool: ['sword_iron', 'armor_iron'],
+    dropPool: ['sword_iron', 'dagger_iron', 'bow_iron', 'staff_iron', 'armor_iron'],
     guaranteedDropChance: 0.6,
     bookDrops: [
       { skillId: 'time_shield', chance: 0.02 },

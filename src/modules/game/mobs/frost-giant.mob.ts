@@ -34,7 +34,7 @@ export class FrostGiant extends Mob {
       { itemId: 'potion_greater', weight: 15, qtyMin: 1, qtyMax: 2 },
     ],
     rolls: 5,
-    dropPool: ['sword_mithril', 'armor_mithril'],
+    dropPool: ['sword_mithril', 'staff_mithril', 'bow_mithril', 'armor_mithril'],
     guaranteedDropChance: 0.8,
     bookDrops: [{ skillId: 'ice_sarcophagus', chance: 0.04 }],
   };

@@ -34,7 +34,7 @@ export class HornedLeszy extends Mob {
       { itemId: 'potion_greater', weight: 20 },
     ],
     rolls: 4,
-    dropPool: ['sword_silver', 'armor_silver'],
+    dropPool: ['sword_silver', 'bow_silver', 'staff_silver', 'armor_silver'],
     guaranteedDropChance: 0.7,
     bookDrops: [{ skillId: 'shadow_veil', chance: 0.03 }],
   };
