@@ -8,8 +8,9 @@ import {
 } from 'discord.js';
 import { PlayerStatsService, type PlayerStats } from './player-stats.js';
 import { findNpcCity, getNpc } from '../npcs/index.js';
-import { Npc, type DialogNode } from '../npcs/npc.js';
+import { Npc, type DialogContext, type DialogNode, type DialogOption } from '../npcs/npc.js';
 import { buildDialogOptionRows } from '../ui/dialog-buttons.js';
+import { QuestService } from './quest.service.js';
 
 interface RenderTarget {
   reply(payload: { content: string; components?: ActionRowBuilder<ButtonBuilder>[] }): Promise<unknown>;
@@ -18,20 +19,20 @@ interface RenderTarget {
 }
 
 /**
- * Stateless dialog handler — wszystkie informacje (npcId, aktualny nodeId) są
- * w `customId` buttona, więc restart bota nie traci kontekstu.
+ * Stateless dialog handler — wszystkie informacje (npcId, aktualny nodeId,
+ * optIdx) są w `customId` buttona, więc restart bota nie traci kontekstu.
  *
- * Format customId: `dialog:goto:<npcId>:<nodeId>:<userId>` gdzie `nodeId === 'end'`
- * oznacza zakończenie rozmowy i pokazanie ekranu pożegnalnego z buttonem powrotu
- * do widoku miasta.
+ * Format customId: `dialog:opt:<npcId>:<currentNodeId>:<optIdx>:<userId>`.
+ * Klik → DialogService bierze `currentNode.options.filter(visibleIf)[optIdx]`,
+ * uruchamia `effect`, nawiguje do `goto`. `effect` może zwrócić linię
+ * komunikatu (np. "Wziąłeś questa") — doklejamy ją do następnego rendera.
  */
 export class DialogService {
-  constructor(private readonly stats: PlayerStatsService) {}
+  constructor(
+    private readonly stats: PlayerStatsService,
+    private readonly quests: QuestService,
+  ) {}
 
-  /**
-   * Start dialogu z poziomu komendy (`.talk`) — używa `msg.reply`.
-   * Renderuje startNode danego NPC.
-   */
   async startFromMessage(target: RenderTarget, npcId: string): Promise<void> {
     const npc = getNpc(npcId);
     if (!npc) {
@@ -44,16 +45,14 @@ export class DialogService {
       await target.reply({ content: `Dialog \`${npc.id}\` nie ma startNode.` });
       return;
     }
+    const ctx = this.buildCtx(player, npc);
+    const options = this.visibleOptions(node, ctx);
     await target.reply({
-      content: this.renderNode(npc, node, player),
-      components: buildDialogOptionRows(npc.id, node.options, player.id),
+      content: this.renderNode(npc, node, ''),
+      components: buildDialogOptionRows(npc.id, npc.dialog.startNodeId, options, player.id),
     });
   }
 
-  /**
-   * Start dialogu z poziomu buttona menu — używa `interaction.update`
-   * (zamienia istniejącą wiadomość menu na widok dialogu, bez nowej wiadomości).
-   */
   async startFromInteraction(interaction: ButtonInteraction, npcId: string): Promise<void> {
     const npc = getNpc(npcId);
     if (!npc) {
@@ -71,17 +70,16 @@ export class DialogService {
         .catch(() => {});
       return;
     }
+    const ctx = this.buildCtx(player, npc);
+    const options = this.visibleOptions(node, ctx);
     await interaction
       .update({
-        content: this.renderNode(npc, node, player),
-        components: buildDialogOptionRows(npc.id, node.options, player.id),
+        content: this.renderNode(npc, node, ''),
+        components: buildDialogOptionRows(npc.id, npc.dialog.startNodeId, options, player.id),
       })
       .catch(() => {});
   }
 
-  /**
-   * Start dialogu ze slash `/talk` — ephemeral reply zamiast publicznego.
-   */
   async startFromSlash(
     interaction: ChatInputCommandInteraction,
     npcId: string,
@@ -107,10 +105,12 @@ export class DialogService {
         .catch(() => {});
       return;
     }
+    const ctx = this.buildCtx(player, npc);
+    const options = this.visibleOptions(node, ctx);
     await interaction
       .reply({
-        content: this.renderNode(npc, node, player),
-        components: buildDialogOptionRows(npc.id, node.options, player.id),
+        content: this.renderNode(npc, node, ''),
+        components: buildDialogOptionRows(npc.id, npc.dialog.startNodeId, options, player.id),
         flags: MessageFlags.Ephemeral,
       })
       .catch(() => {});
@@ -120,13 +120,14 @@ export class DialogService {
     if (!interaction.isButton?.()) return;
     if (!interaction.customId.startsWith('dialog:')) return;
     const parts = interaction.customId.split(':');
-    if (parts.length !== 5) return;
+    if (parts.length !== 6) return; // dialog:opt:<npc>:<node>:<idx>:<user>
     const action = parts[1];
     const npcId = parts[2];
-    const targetNodeId = parts[3];
-    const userId = parts[4];
+    const currentNodeId = parts[3];
+    const optIdx = parseInt(parts[4], 10);
+    const userId = parts[5];
 
-    if (action !== 'goto') return;
+    if (action !== 'opt') return;
     if (interaction.user.id !== userId) {
       await interaction
         .reply({ content: 'To nie twoja rozmowa.', ephemeral: true })
@@ -144,35 +145,81 @@ export class DialogService {
       userId,
       interaction.user.globalName || interaction.user.username,
     );
-
-    if (targetNodeId === 'end') {
-      await this.renderEnd(interaction, npc, player);
-      return;
-    }
-    const node = npc.dialog.getNode(targetNodeId);
-    if (!node) {
+    const ctx = this.buildCtx(player, npc);
+    const sourceNode = npc.dialog.getNode(currentNodeId);
+    if (!sourceNode) {
       await interaction
-        .reply({ content: `Nieznany węzeł rozmowy \`${targetNodeId}\`.`, ephemeral: true })
+        .reply({ content: `Nieznany węzeł rozmowy \`${currentNodeId}\`.`, ephemeral: true })
         .catch(() => {});
       return;
     }
+    const visible = this.visibleOptions(sourceNode, ctx);
+    const opt = visible[optIdx];
+    if (!opt) {
+      // Stan zmienił się między renderem a klikiem — re-render z aktualną listą.
+      await interaction
+        .update({
+          content: this.renderNode(npc, sourceNode, '_(opcja już niedostępna)_'),
+          components: buildDialogOptionRows(npc.id, currentNodeId, visible, player.id),
+        })
+        .catch(() => {});
+      return;
+    }
+
+    // Run effect (if any) PRZED nawigacją. Effect może zwrócić linię.
+    let effectLine = '';
+    if (opt.effect) {
+      const ret = opt.effect(ctx);
+      if (typeof ret === 'string') effectLine = ret;
+      this.stats.save();
+    }
+
+    if (opt.goto === 'end') {
+      await this.renderEnd(interaction, npc, player, effectLine);
+      return;
+    }
+    const targetNode = npc.dialog.getNode(opt.goto);
+    if (!targetNode) {
+      await interaction
+        .reply({ content: `Nieznany węzeł rozmowy \`${opt.goto}\`.`, ephemeral: true })
+        .catch(() => {});
+      return;
+    }
+    const newCtx = this.buildCtx(player, npc); // re-fetch po effect
+    const targetVisible = this.visibleOptions(targetNode, newCtx);
     await interaction
       .update({
-        content: this.renderNode(npc, node, player),
-        components: buildDialogOptionRows(npc.id, node.options, player.id),
+        content: this.renderNode(npc, targetNode, effectLine),
+        components: buildDialogOptionRows(npc.id, opt.goto, targetVisible, player.id),
       })
       .catch(() => {});
   }
 
-  private renderNode(npc: Npc, node: DialogNode, player: PlayerStats): string {
-    void player;
-    return [`💬 **Rozmowa z ${npc.name}**`, '', node.text].join('\n').slice(0, 1900);
+  // ── Helpers ────────────────────────────────────────
+
+  private buildCtx(player: PlayerStats, npc: Npc): DialogContext {
+    return { player, npc, quests: this.quests };
+  }
+
+  private visibleOptions(
+    node: DialogNode,
+    ctx: DialogContext,
+  ): ReadonlyArray<DialogOption> {
+    return node.options.filter((opt) => !opt.visibleIf || opt.visibleIf(ctx));
+  }
+
+  private renderNode(npc: Npc, node: DialogNode, prefixLine: string): string {
+    const parts = [`💬 **Rozmowa z ${npc.name}**`, ''];
+    if (prefixLine) parts.push(prefixLine, '');
+    parts.push(node.text);
+    return parts.join('\n').slice(0, 1900);
   }
 
   private async renderEnd(
     interaction: ButtonInteraction,
     npc: Npc,
     player: PlayerStats,
+    prefixLine: string,
   ): Promise<void> {
     const placement = findNpcCity(npc.id);
     const userId = player.id;
@@ -200,12 +247,9 @@ export class DialogService {
         ),
       );
     }
-    await interaction
-      .update({
-        content: `💬 **${npc.name}** kiwa głową na pożegnanie. _Rozmowa zakończona._`,
-        components: rows,
-      })
-      .catch(() => {});
+    const tail = `💬 **${npc.name}** kiwa głową na pożegnanie. _Rozmowa zakończona._`;
+    const content = prefixLine ? `${prefixLine}\n\n${tail}` : tail;
+    await interaction.update({ content, components: rows }).catch(() => {});
   }
 
   /** Wrapper bound do `.talk` command — przyjmuje `msg` ICommandContext. */

@@ -23,8 +23,8 @@ export function buildMenuRows(userId: string): ActionRowBuilder<ButtonBuilder>[]
       .setLabel('📘 Spelle')
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
-      .setCustomId(id('party', userId))
-      .setLabel('👥 Party')
+      .setCustomId(id('quests', userId))
+      .setLabel('📜 Questy')
       .setStyle(ButtonStyle.Primary),
   );
   const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -62,6 +62,10 @@ export function buildMenuRows(userId: string): ActionRowBuilder<ButtonBuilder>[]
       .setCustomId(id('chop', userId))
       .setLabel('🪓 Chop')
       .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(id('party', userId))
+      .setLabel('👥 Party')
+      .setStyle(ButtonStyle.Primary),
   );
   const row4 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()

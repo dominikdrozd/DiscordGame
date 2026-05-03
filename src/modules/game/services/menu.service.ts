@@ -16,6 +16,8 @@ import { ExpeditionService } from './expedition.service.js';
 import { CraftService } from './craft.service.js';
 import { BossService } from './boss.service.js';
 import { SpellsService } from './spells.service.js';
+import { SmithService } from './smith.service.js';
+import { QuestCommand } from '../commands/quest.command.js';
 
 export interface MenuGatherers {
   mine: GatheringCommand;
@@ -51,6 +53,8 @@ export class MenuService {
     private readonly bosses: BossService,
     private readonly inventory: MenuInventoryOpener,
     private readonly spells: SpellsService,
+    private readonly smith: SmithService,
+    private readonly questCommand: QuestCommand,
   ) {}
 
   async handle(ctx: ICommandContext): Promise<void> {
@@ -119,6 +123,19 @@ export class MenuService {
     if (action === 'cityshop') {
       const cityId = parts[2];
       return this.shop.openShopFromInteraction(interaction, cityId);
+    }
+    if (action === 'cityblacksmith') {
+      const cityId = parts[2];
+      return this.smith.openFromInteraction(interaction, cityId);
+    }
+    if (action === 'quests') {
+      await interaction
+        .update({
+          content: this.questCommand.renderList(player),
+          components: this.questCommand.buildRows(player),
+        })
+        .catch(() => {});
+      return;
     }
     if (action === 'citytalk') {
       const npcId = parts[3];

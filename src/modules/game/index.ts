@@ -37,6 +37,10 @@ import { DialogService } from './services/dialog.service.js';
 import { TalkCommand } from './commands/talk.command.js';
 import { SpellsService } from './services/spells.service.js';
 import { SpellsCommand } from './commands/spells.command.js';
+import { SmithService } from './services/smith.service.js';
+import { SmithCommand } from './commands/smith.command.js';
+import { QuestService } from './services/quest.service.js';
+import { QuestCommand } from './commands/quest.command.js';
 
 export interface GameServices {
   stats: PlayerStatsService;
@@ -58,7 +62,8 @@ function hasThreadCreate(
 export function createGameServices(): GameServices {
   const stats = new PlayerStatsService();
   const party = new PartyService();
-  const expeditions = new ExpeditionService(stats, party);
+  const quests = new QuestService(stats);
+  const expeditions = new ExpeditionService(stats, party, quests);
   return { stats, party, expeditions };
 }
 
@@ -66,20 +71,22 @@ export function registerGameCommands(manager: CommandManager, services: GameServ
   const { stats, party, expeditions } = services;
 
   // services state-bearing, paired 1:1 z komendą
+  const quests = new QuestService(stats);
   const duels = new DuelService(stats, party);
-  const bosses = new BossService(stats);
+  const bosses = new BossService(stats, quests);
   const dungeons = new DungeonService(stats);
   const crafting = new CraftService(stats);
   const inventory = new InventoryService(stats);
   const inventoryCommand = new InventoryCommand(inventory);
   const city = new CityService(stats, (id) => dungeons.hasActiveFor(id));
-  const dialog = new DialogService(stats);
+  const dialog = new DialogService(stats, quests);
   const cityCommand = new CityCommand(city, stats);
   const talkCommand = new TalkCommand(dialog);
   const mineCmd = new MineCommand(stats);
   const fishCmd = new FishCommand(stats);
   const chopCmd = new ChopCommand(stats);
   const spells = new SpellsService(stats);
+  const smith = new SmithService(stats);
 
   // Adapter: button click "🛒 Sklep" w widoku miasta → CityService.openShopForUser
   // z thread-routingiem do CityCommand (żeby wątek miał TTL i dispatch wiadomości).
@@ -144,6 +151,7 @@ export function registerGameCommands(manager: CommandManager, services: GameServ
     },
   };
 
+  const questCommand = new QuestCommand(quests, stats);
   const menu = new MenuService(
     stats,
     party,
@@ -155,6 +163,8 @@ export function registerGameCommands(manager: CommandManager, services: GameServ
     bosses,
     inventoryOpener,
     spells,
+    smith,
+    questCommand,
   );
 
   manager.register(new DuelCommand(duels));
@@ -176,6 +186,8 @@ export function registerGameCommands(manager: CommandManager, services: GameServ
   manager.register(cityCommand);
   manager.register(talkCommand);
   manager.register(new SpellsCommand(spells, stats));
+  manager.register(new SmithCommand(smith, stats));
+  manager.register(new QuestCommand(quests, stats));
   manager.register(new MenuCommand(menu));
 }
 
@@ -183,6 +195,9 @@ export function startAmbushLoop(client: Client, services: GameServices): AmbushS
   const ambush = new AmbushService(client, services.stats, services.party, (id, line) =>
     services.expeditions.logAmbush(id, line),
   );
+  // ExpeditionService musi mieć referencję do AmbushService żeby renderować
+  // "Wróć do walki" — bind po konstrukcji bo dependency cycle.
+  services.expeditions.bindAmbushService(ambush);
   ambush.start();
   return ambush;
 }

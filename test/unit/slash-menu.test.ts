@@ -8,6 +8,9 @@ import { CraftService } from '../../src/modules/game/services/craft.service.js';
 import { BossService } from '../../src/modules/game/services/boss.service.js';
 import { DialogService } from '../../src/modules/game/services/dialog.service.js';
 import { SpellsService } from '../../src/modules/game/services/spells.service.js';
+import { SmithService } from '../../src/modules/game/services/smith.service.js';
+import { QuestService } from '../../src/modules/game/services/quest.service.js';
+import { QuestCommand } from '../../src/modules/game/commands/quest.command.js';
 import { hasSlashCommand } from '../../src/types/command.types.js';
 import { tmpPlayerFile } from '../helpers/factories.js';
 
@@ -36,11 +39,14 @@ describe('MenuCommand /menu slash command', () => {
     file = tmpPlayerFile();
     stats = new PlayerStatsService(file);
     const party = new PartyService();
-    const exp = new ExpeditionService(stats, party);
+    const quests = new QuestService(stats);
+    const exp = new ExpeditionService(stats, party, quests);
     const craft = new CraftService(stats);
-    const bosses = new BossService(stats);
-    const dialog = new DialogService(stats);
+    const bosses = new BossService(stats, quests);
+    const dialog = new DialogService(stats, quests);
     const spells = new SpellsService(stats);
+    const smith = new SmithService(stats);
+    const questCommand = new QuestCommand(quests, stats);
     const noopOpener = { openShopFromInteraction: async () => {} };
     const noopInvOpener = { openInventoryFromInteraction: async () => {} };
     const noopGather = { runGather: () => '' };
@@ -56,6 +62,8 @@ describe('MenuCommand /menu slash command', () => {
       bosses,
       noopInvOpener,
       spells,
+      smith,
+      questCommand,
     );
     menuCmd = new MenuCommand(menu);
   });

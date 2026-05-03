@@ -39,6 +39,7 @@ export function makePlayer(overrides: Partial<PlayerStats> = {}): PlayerStats {
     primary: { str: 0, agi: 0, wit: 0, int: 0 },
     learnedSkills: [],
     unlearnedBooks: [],
+    quests: { active: [], completed: [], abandoned: [] },
     activeExpedition: null,
     cooldowns: {},
   };

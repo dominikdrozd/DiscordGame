@@ -32,6 +32,22 @@ export interface ItemTemplate {
   description?: string;
 }
 
+/**
+ * Pojedynczy upgrade itemu u kowala. Każdy `+1` dodaje jeden record
+ * do `ItemInstance.upgrades` z konkretnymi bonusami które dorzucił.
+ *
+ * Reversibility: failure ulepszenia (-1) usuwa **ostatni** record z listy,
+ * więc base.stats + sum(upgrades[..-1]) zwraca pierwotny snapshot bez
+ * konieczności pamiętania historii rolli.
+ */
+export interface UpgradeRecord {
+  attack?: number;
+  defense?: number;
+  hp?: number;
+  crit?: number;
+  speed?: number;
+}
+
 export interface ItemInstance {
   uid: string;
   baseId: string;
@@ -41,6 +57,8 @@ export interface ItemInstance {
   slot?: ItemSlot;
   toolKind?: ToolKind;
   toolTier?: number;
+  /** Lista upgradów (reversible, każdy +1 = 1 record). Brak = item bez ulepszeń. */
+  upgrades?: UpgradeRecord[];
 }
 
 export const RARITY_EMOJI: Record<Rarity, string> = {
@@ -138,6 +156,15 @@ export const ITEMS: Record<string, ItemTemplate> = {
 
   // ── CONSUMABLES ────────────────────────────────────
   potion_small: { id: 'potion_small', name: 'Mała Mikstura', type: 'consumable', rarity: 'common' },
+
+  // ── QUEST ITEMS ────────────────────────────────────
+  cykada_token: {
+    id: 'cykada_token',
+    name: 'Cykada Token',
+    type: 'resource',
+    rarity: 'rare',
+    description: 'Pamiątkowy żeton z Portu Cykada — przedmiot questowy.',
+  },
 
   // ── TOOL TEMPLATES (craftable) ─────────────────────
   pickaxe: {
@@ -290,8 +317,69 @@ export function fmtStats(s: ItemStats): string {
   return parts.join(', ') || '—';
 }
 
+/** Liczba zaaplikowanych upgradów (długość listy `upgrades`). 0 = brak. */
+export function itemUpgradeLevel(it: ItemInstance): number {
+  return it.upgrades?.length ?? 0;
+}
+
+/**
+ * Wymagany combat lvl do założenia/używania itemu = liczba upgradów.
+ * Base item bez upgradów = lvl 0 wymagany (każdy gracz może założyć).
+ * Każdy upgrade +1 dorzuca +1 wymaganego combat lvl.
+ */
+export function itemRequiredLevel(it: ItemInstance): number {
+  return itemUpgradeLevel(it);
+}
+
+/** Suma bazowych statów + wszystkich upgradów. Source-of-truth dla effective stats. */
+export function appliedItemStats(it: ItemInstance): ItemStats {
+  if (!it.upgrades || it.upgrades.length === 0) return it.stats;
+  const out: ItemStats = { ...it.stats };
+  for (const u of it.upgrades) {
+    if (u.attack) out.attack = (out.attack ?? 0) + u.attack;
+    if (u.defense) out.defense = (out.defense ?? 0) + u.defense;
+    if (u.hp) out.hp = (out.hp ?? 0) + u.hp;
+    if (u.crit) out.crit = (out.crit ?? 0) + u.crit;
+    if (u.speed) out.speed = (out.speed ?? 0) + u.speed;
+  }
+  return out;
+}
+
+/**
+ * Roluje pojedynczy upgrade record. DMG +2-3, każdy istniejący stat +1-3
+ * (rarity-aware: legendary/epic skłania się do 3, common do 1).
+ */
+export function rollUpgradeRecord(it: ItemInstance): UpgradeRecord {
+  const out: UpgradeRecord = {};
+  // DMG bonus zawsze 2-3 — broń skaluje się głównie z atakiem.
+  out.attack = randIntInclusive(2, 3);
+  // Pozostałe staty istniejące w bazie itemu — bonus 1-3 z rarity bias.
+  const [statMin, statMax] = upgradeStatRange(it.rarity);
+  for (const k of ['defense', 'hp', 'crit', 'speed'] as const) {
+    if ((it.stats[k] ?? 0) > 0) out[k] = randIntInclusive(statMin, statMax);
+  }
+  return out;
+}
+
+function upgradeStatRange(rarity: Rarity): [number, number] {
+  switch (rarity) {
+    case 'common':
+      return [1, 1];
+    case 'uncommon':
+      return [1, 2];
+    case 'rare':
+      return [2, 2];
+    case 'epic':
+      return [2, 3];
+    case 'legendary':
+      return [3, 3];
+  }
+}
+
 export function fmtInstance(it: ItemInstance): string {
-  return `${RARITY_EMOJI[it.rarity]} **${it.name}** (${fmtStats(it.stats)})`;
+  const lvl = itemUpgradeLevel(it);
+  const upgradeTag = lvl > 0 ? ` **[+${lvl}]**` : '';
+  return `${RARITY_EMOJI[it.rarity]} **${it.name}**${upgradeTag} (${fmtStats(appliedItemStats(it))})`;
 }
 
 export function fmtResource(id: string, qty: number): string {
@@ -327,12 +415,13 @@ const RARITY_STAT_MULT: Record<Rarity, number> = {
 export function itemSellPrice(it: ItemInstance): number {
   const base = RARITY_SELL_BASE[it.rarity];
   const mult = RARITY_STAT_MULT[it.rarity];
+  const applied = appliedItemStats(it);
   const statSum =
-    (it.stats.attack ?? 0) +
-    (it.stats.defense ?? 0) +
-    (it.stats.hp ?? 0) +
-    (it.stats.crit ?? 0) +
-    (it.stats.speed ?? 0);
+    (applied.attack ?? 0) +
+    (applied.defense ?? 0) +
+    (applied.hp ?? 0) +
+    (applied.crit ?? 0) +
+    (applied.speed ?? 0);
   let price = base + Math.round(statSum * mult);
   if (it.toolTier && it.toolTier > 1) {
     price = Math.round(price * (1 + (it.toolTier - 1) * 0.5));

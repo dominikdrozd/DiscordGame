@@ -24,6 +24,8 @@ import {
 } from '../ui/expedition-buttons.js';
 import { CLASSES, findSubclass, findSubclass2 } from '../classes/index.js';
 import { RACES } from '../races/index.js';
+import { QuestService } from './quest.service.js';
+import type { AmbushService } from '../engine/ambush.js';
 
 const MAX_LOG_LINES = 25;
 
@@ -47,10 +49,22 @@ export class ExpeditionService {
   private readonly browsers = new Map<string, BrowserState>();
   private readonly logs = new Map<string, string[]>();
 
+  /**
+   * `ambushService` jest setowane post-construction (`bindAmbushService`)
+   * bo AmbushService zależy od ExpeditionService przez `logAmbush` callback —
+   * cykl konstrukcji rozwiązany przez DI po fakcie.
+   */
+  private ambushService?: AmbushService;
+
   constructor(
     private readonly stats: PlayerStatsService,
     private readonly party: PartyService,
+    private readonly quests?: QuestService,
   ) {}
+
+  bindAmbushService(svc: AmbushService): void {
+    this.ambushService = svc;
+  }
 
   async handle(ctx: ICommandContext): Promise<void> {
     const { msg, prompt } = ctx;
@@ -84,6 +98,7 @@ export class ExpeditionService {
     if (action === 'enter') return this.handleEnter(interaction, userId);
     if (action === 'refresh') return this.refreshActive(interaction, player);
     if (action === 'claim') return this.handleClaim(interaction, player);
+    if (action === 'resume') return this.handleResume(interaction, player);
     if (action === 'close') return this.handleClose(interaction, userId);
   }
 
@@ -102,7 +117,7 @@ export class ExpeditionService {
     if (player.activeExpedition) {
       await msg.reply({
         content: this.renderActiveContent(player),
-        components: buildExpActiveRows(player.id, this.canClaim(player), false),
+        components: buildExpActiveRows(player.id, this.canClaim(player), false, this.inAmbush(player)),
       });
       return;
     }
@@ -145,7 +160,7 @@ export class ExpeditionService {
       await interaction
         .reply({
           content: this.renderActiveContent(player),
-          components: buildExpActiveRows(player.id, this.canClaim(player), false),
+          components: buildExpActiveRows(player.id, this.canClaim(player), false, this.inAmbush(player)),
           flags: MessageFlags.Ephemeral,
         })
         .catch(() => {});
@@ -179,7 +194,7 @@ export class ExpeditionService {
       await interaction
         .update({
           content: this.renderActiveContent(player),
-          components: buildExpActiveRows(player.id, this.canClaim(player), true),
+          components: buildExpActiveRows(player.id, this.canClaim(player), true, this.inAmbush(player)),
         })
         .catch(() => {});
       return;
@@ -262,11 +277,19 @@ export class ExpeditionService {
   private renderActiveContent(player: PlayerStats): string {
     if (!player.activeExpedition) return 'Nie masz aktywnej wyprawy.';
     const def = EXPEDITIONS[player.activeExpedition.destination];
+    const ambushedSince = player.activeExpedition.ambushedSince;
     const left = player.activeExpedition.endsAt - Date.now();
     const lines: string[] = [
       `🗺️ **${def?.name ?? player.activeExpedition.destination}** — wyprawa w toku`,
     ];
-    if (left <= 0) {
+    if (ambushedSince) {
+      const ambushElapsed = Date.now() - ambushedSince;
+      const state = this.ambushService?.getActiveStateForPlayer(player.id);
+      const threadLink = state ? `<#${state.thread.id}>` : '';
+      lines.push(
+        `⚔️ **Ambush w toku!** ${threadLink} — wyprawa zatrzymana (${Math.round(ambushElapsed / 60_000)} min walki). Klik **⚔️ Wróć do walki** żeby kontynuować.`,
+      );
+    } else if (left <= 0) {
       lines.push('✅ **Skończona** — kliknij **🎁 Zbierz** żeby odebrać nagrody.');
     } else {
       lines.push(`⏳ Pozostało **${Math.ceil(left / 60_000)}** min.`);
@@ -437,15 +460,30 @@ export class ExpeditionService {
     await interaction
       .update({
         content: this.renderActiveContent(player),
-        components: buildExpActiveRows(player.id, this.canClaim(player), fromMenu),
+        components: buildExpActiveRows(player.id, this.canClaim(player), fromMenu, this.inAmbush(player)),
       })
       .catch(() => {});
   }
 
   private async handleClaim(interaction: ButtonInteraction, player: PlayerStats): Promise<void> {
-    if (!player.activeExpedition || player.activeExpedition.endsAt > Date.now()) {
+    if (!player.activeExpedition) {
       await interaction
-        .reply({ content: 'Wyprawa jeszcze trwa lub nie istnieje.', ephemeral: true })
+        .reply({ content: 'Nie masz wyprawy do odebrania.', ephemeral: true })
+        .catch(() => {});
+      return;
+    }
+    if (player.activeExpedition.ambushedSince) {
+      await interaction
+        .reply({
+          content: '⚔️ Wyprawa zatrzymana — dokończ ambush najpierw.',
+          ephemeral: true,
+        })
+        .catch(() => {});
+      return;
+    }
+    if (player.activeExpedition.endsAt > Date.now()) {
+      await interaction
+        .reply({ content: 'Wyprawa jeszcze trwa.', ephemeral: true })
         .catch(() => {});
       return;
     }
@@ -459,6 +497,37 @@ export class ExpeditionService {
         components: fromMenu ? buildExpAfterRows(player.id) : [],
       })
       .catch(() => {});
+  }
+
+  /** Klik "⚔️ Wróć do walki" — re-prompt panelu w wątku ambushu. */
+  private async handleResume(
+    interaction: ButtonInteraction,
+    player: PlayerStats,
+  ): Promise<void> {
+    if (!this.ambushService) {
+      await interaction
+        .reply({ content: 'Brak aktywnej walki (ambush service unbound).', ephemeral: true })
+        .catch(() => {});
+      return;
+    }
+    const result = await this.ambushService.resumeForPlayer(player.id);
+    if (!result.ok) {
+      await interaction
+        .reply({ content: 'Nie masz aktywnej walki — być może już się skończyła.', ephemeral: true })
+        .catch(() => {});
+      return;
+    }
+    await interaction
+      .reply({
+        content: `⚔️ Panel akcji odświeżony w <#${result.threadId}>. Idź do wątku i kontynuuj walkę.`,
+        ephemeral: true,
+      })
+      .catch(() => {});
+  }
+
+  /** Czy gracz ma aktualnie aktywny ambush (block claim, show resume button). */
+  private inAmbush(player: PlayerStats): boolean {
+    return !!player.activeExpedition?.ambushedSince;
   }
 
   private async handleClose(interaction: ButtonInteraction, userId: string): Promise<void> {
@@ -531,6 +600,9 @@ export class ExpeditionService {
 
   private runClaim(player: PlayerStats): string {
     if (!player.activeExpedition) return 'Brak wyprawy.';
+    if (player.activeExpedition.ambushedSince) {
+      return '⚔️ Wyprawa zatrzymana — dokończ ambush najpierw.';
+    }
     const def = EXPEDITIONS[player.activeExpedition.destination];
     player.activeExpedition = null;
     if (!def) {
@@ -556,6 +628,8 @@ export class ExpeditionService {
         dropLine = `\nZnaleziono: ${fmtInstance(item)} \`${item.uid}\``;
       }
     }
+    const questDropLines = this.quests?.onExpeditionClaim(player) ?? [];
+    if (questDropLines.length > 0) dropLine += `\n${questDropLines.join('\n')}`;
     this.stats.save();
     return [
       `🏁 **${def.name}** zakończona!`,

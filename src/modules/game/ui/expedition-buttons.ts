@@ -18,12 +18,14 @@ export function buildExpBrowseRows(
 
 /**
  * Active expedition row — refresh + claim + close. Inny układ niż browser
- * (brak nav), więc nie używa `buildBrowseRows`.
+ * (brak nav), więc nie używa `buildBrowseRows`. Gdy `inAmbush=true` pokazujemy
+ * dodatkowy ⚔️ Wróć do walki — re-prompt panelu akcji w wątku ambushu.
  */
 export function buildExpActiveRows(
   userId: string,
   canClaim: boolean,
   fromMenu = false,
+  inAmbush = false,
 ): ActionRowBuilder<ButtonBuilder>[] {
   const id = (action: string): string => `exp:${action}:${userId}`;
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -35,12 +37,20 @@ export function buildExpActiveRows(
       .setCustomId(id('claim'))
       .setLabel('🎁 Zbierz')
       .setStyle(ButtonStyle.Success)
-      .setDisabled(!canClaim),
+      .setDisabled(!canClaim || inAmbush),
     new ButtonBuilder()
       .setCustomId(id('close'))
       .setLabel('✖ Zamknij')
       .setStyle(ButtonStyle.Danger),
   );
+  if (inAmbush) {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(id('resume'))
+        .setLabel('⚔️ Wróć do walki')
+        .setStyle(ButtonStyle.Danger),
+    );
+  }
   return fromMenu ? [row, buildBackToMenuRow(userId)] : [row];
 }
 

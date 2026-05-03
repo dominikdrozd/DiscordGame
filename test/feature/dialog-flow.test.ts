@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import { DialogService } from '../../src/modules/game/services/dialog.service.js';
 import { PlayerStatsService } from '../../src/modules/game/services/player-stats.js';
+import { QuestService } from '../../src/modules/game/services/quest.service.js';
 import { TalkCommand } from '../../src/modules/game/commands/talk.command.js';
 import { Marek } from '../../src/modules/game/npcs/port_cykada/marek.npc.js';
 import { tmpPlayerFile } from '../helpers/factories.js';
@@ -63,7 +64,7 @@ describe('DialogService flow', () => {
   beforeEach(() => {
     file = tmpPlayerFile();
     stats = new PlayerStatsService(file);
-    dialog = new DialogService(stats);
+    dialog = new DialogService(stats, new QuestService(stats));
   });
 
   afterEach(() => {
@@ -78,13 +79,26 @@ describe('DialogService flow', () => {
     expect(u?.content).toContain('Stary Marek');
     expect(u?.content).toContain('Porcie Cykada');
     expect(Array.isArray(u?.components)).toBe(true);
-    // 4 opcji w intro → 1 row z 4 buttonami
+    // intro filtered: quest_offer + 3 standard + end → 5 buttonów w 1 row
     expect(u?.components?.length).toBe(1);
   });
 
+  // Helper — index opcji w przefiltrowanej (visibleIf=true) liście intro
+  // dla świeżego gracza (questa nie wziął, nie ma item).
+  function introOptIdx(goto: string): number {
+    const marek = new Marek();
+    const intro = marek.dialog.getNode('intro');
+    if (!intro) throw new Error('intro missing');
+    // Świeży gracz: jedyna widoczna questowa opcja to "Masz dla mnie robotę?"
+    // (isStarted = false). Pozostałe questowe są ukryte.
+    const visible = intro.options.filter((o) => !o.visibleIf || o.goto === 'quest_offer');
+    return visible.findIndex((o) => o.goto === goto);
+  }
+
   test('handleInteraction goto valid node updates message with that node text', async () => {
     stats.get('p1', 'Tester');
-    const btn = makeBtn('dialog:goto:marek:about_city:p1');
+    const idx = introOptIdx('about_city');
+    const btn = makeBtn(`dialog:opt:marek:intro:${idx}:p1`);
     await dialog.handleInteraction(btn as never);
     const u = lastUpdate(btn);
     expect(u?.content).toContain('Port Cykada to brama');
@@ -92,7 +106,8 @@ describe('DialogService flow', () => {
 
   test('handleInteraction goto "end" renders farewell + return-to-city button', async () => {
     stats.get('p1', 'Tester');
-    const btn = makeBtn('dialog:goto:marek:end:p1');
+    const idx = introOptIdx('end');
+    const btn = makeBtn(`dialog:opt:marek:intro:${idx}:p1`);
     await dialog.handleInteraction(btn as never);
     const u = lastUpdate(btn);
     expect(u?.content).toContain('Rozmowa zakończona');
@@ -101,7 +116,7 @@ describe('DialogService flow', () => {
 
   test('handleInteraction rejects mismatched user', async () => {
     stats.get('p1', 'Tester');
-    const btn = makeBtn('dialog:goto:marek:intro:other_user');
+    const btn = makeBtn('dialog:opt:marek:intro:0:other_user');
     btn.user.id = 'p1'; // user clicks on someone else's dialog
     await dialog.handleInteraction(btn as never);
     expect(btn.reply).toHaveBeenCalledWith(
@@ -112,7 +127,7 @@ describe('DialogService flow', () => {
 
   test('handleInteraction with unknown NPC replies with restart hint', async () => {
     stats.get('p1', 'Tester');
-    const btn = makeBtn('dialog:goto:foo:intro:p1');
+    const btn = makeBtn('dialog:opt:foo:intro:0:p1');
     await dialog.handleInteraction(btn as never);
     expect(btn.reply).toHaveBeenCalledWith(
       expect.objectContaining({ content: expect.stringContaining('NPC już cię nie pamięta') }),
@@ -121,7 +136,7 @@ describe('DialogService flow', () => {
 
   test('handleInteraction with unknown nodeId replies error', async () => {
     stats.get('p1', 'Tester');
-    const btn = makeBtn('dialog:goto:marek:nieistniejacy:p1');
+    const btn = makeBtn('dialog:opt:marek:nieistniejacy:0:p1');
     await dialog.handleInteraction(btn as never);
     expect(btn.reply).toHaveBeenCalledWith(
       expect.objectContaining({ content: expect.stringContaining('Nieznany węzeł') }),
@@ -152,7 +167,7 @@ describe('TalkCommand', () => {
   beforeEach(() => {
     file = tmpPlayerFile();
     stats = new PlayerStatsService(file);
-    dialog = new DialogService(stats);
+    dialog = new DialogService(stats, new QuestService(stats));
     talk = new TalkCommand(dialog);
   });
 

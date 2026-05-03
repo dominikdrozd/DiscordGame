@@ -86,12 +86,17 @@ describe('city UI buttons', () => {
     const marek = new Marek();
     const intro = marek.dialog.getNode('intro');
     if (!intro) throw new Error('intro node missing');
-    const rows = rowsToJson(buildDialogOptionRows('marek', intro.options, 'p1'));
+    // Przefiltruj opcje tak jak DialogService — questowe mają visibleIf,
+    // bez nich w intro pokazują się tylko podstawowe (3 + end + opcjonalne).
+    const visible = intro.options.filter((o) => !o.visibleIf);
+    const rows = rowsToJson(buildDialogOptionRows('marek', 'intro', visible, 'p1'));
     const btns = rows.flatMap((r) => r.components);
-    expect(btns).toHaveLength(intro.options.length);
-    const endBtn = btns.find((b) => b.custom_id === 'dialog:goto:marek:end:p1');
+    expect(btns).toHaveLength(visible.length);
+    const endIdx = visible.findIndex((o) => o.goto === 'end');
+    const cityIdx = visible.findIndex((o) => o.goto === 'about_city');
+    const endBtn = btns.find((b) => b.custom_id === `dialog:opt:marek:intro:${endIdx}:p1`);
     expect(endBtn?.style).toBe(ButtonStyle.Danger);
-    const cityBtn = btns.find((b) => b.custom_id === 'dialog:goto:marek:about_city:p1');
+    const cityBtn = btns.find((b) => b.custom_id === `dialog:opt:marek:intro:${cityIdx}:p1`);
     expect(cityBtn?.style).toBe(ButtonStyle.Primary);
   });
 });

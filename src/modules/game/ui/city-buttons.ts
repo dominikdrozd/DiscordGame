@@ -59,6 +59,10 @@ export function buildCityViewRows(
       .setCustomId(`menu:cityshop:${cityId}:${userId}`)
       .setLabel('🛒 Sklep')
       .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`menu:cityblacksmith:${cityId}:${userId}`)
+      .setLabel('🔨 Kowal')
+      .setStyle(ButtonStyle.Success),
   );
   const rows: ActionRowBuilder<ButtonBuilder>[] = [actionRow];
 

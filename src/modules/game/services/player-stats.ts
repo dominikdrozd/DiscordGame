@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { ItemInstance, ItemSlot, ToolKind } from './items.js';
+import { appliedItemStats, itemRequiredLevel } from './items.js';
 import { CLASSES } from '../classes/index.js';
 
 export type SkillName = 'mining' | 'fishing' | 'woodcutting' | 'crafting' | 'combat';
@@ -32,6 +33,14 @@ export interface ActiveExpedition {
   endsAt: number;
   channelId?: string;
   partyId?: string;
+  /**
+   * Timestamp gdy zaczął się aktywny ambush. Dopóki ustawione,
+   * `runClaim` blokuje odbiór nagrody i czas pozostały do końca wyprawy
+   * jest "zamrożony" — `endsAt` nie zmienia się aż do zakończenia walki.
+   * Po finishu/timeoucie ambushu, jeśli wyprawa kontynuowana,
+   * `endsAt += (now - ambushedSince)` żeby wydłużyć czas o trwanie walki.
+   */
+  ambushedSince?: number;
 }
 
 export interface Inventory {
@@ -70,6 +79,18 @@ export interface PlayerStats {
    * Konsumowane przez `/skills learn <id>`.
    */
   unlearnedBooks: string[];
+  /**
+   * Stan questów. Quest **tylko raz** wzięty (started = jest w którejkolwiek
+   * z 3 list). Po zakończeniu / abandonie nie da się ponownie.
+   */
+  quests: {
+    /** Aktualnie aktywne — można robić progress. */
+    active: string[];
+    /** Zakończone (turn-in u NPC). */
+    completed: string[];
+    /** Porzucone — gracz wycofał się przed dokończeniem. */
+    abandoned: string[];
+  };
   activeExpedition?: ActiveExpedition | null;
   cooldowns: Record<string, number>;
 }
@@ -102,6 +123,7 @@ function defaultPlayer(id: string, name: string): PlayerStats {
     primary: { str: 0, agi: 0, wit: 0, int: 0 },
     learnedSkills: [],
     unlearnedBooks: [],
+    quests: { active: [], completed: [], abandoned: [] },
     activeExpedition: null,
     cooldowns: {},
   };
@@ -132,6 +154,11 @@ function ensureDefaults(p: any, id: string, name: string): PlayerStats {
     },
     learnedSkills: Array.isArray(p?.learnedSkills) ? [...p.learnedSkills] : [],
     unlearnedBooks: Array.isArray(p?.unlearnedBooks) ? [...p.unlearnedBooks] : [],
+    quests: {
+      active: Array.isArray(p?.quests?.active) ? [...p.quests.active] : [],
+      completed: Array.isArray(p?.quests?.completed) ? [...p.quests.completed] : [],
+      abandoned: Array.isArray(p?.quests?.abandoned) ? [...p.quests.abandoned] : [],
+    },
     gold: p?.gold ?? 100,
     raceId: p?.raceId,
     classId: p?.classId,
@@ -263,12 +290,16 @@ export class PlayerStatsService {
   /** Bazowy crit % w walce (constant w `combat.ts:CRIT_CHANCE`). */
   static readonly BASE_CRIT_PCT = 15;
 
-  /** Łączny bonus crit z ekwipunku (weapon + armor + tool). */
+  /** Łączny bonus crit z ekwipunku (weapon + armor + tool) — z upgradami. */
   critBonusFromEquipment(p: PlayerStats): number {
     const w = this.equippedItem(p, 'weapon');
     const a = this.equippedItem(p, 'armor');
     const t = this.equippedItem(p, 'tool');
-    return (w?.stats.crit ?? 0) + (a?.stats.crit ?? 0) + (t?.stats.crit ?? 0);
+    return (
+      (w ? appliedItemStats(w).crit ?? 0 : 0) +
+      (a ? appliedItemStats(a).crit ?? 0 : 0) +
+      (t ? appliedItemStats(t).crit ?? 0 : 0)
+    );
   }
 
   /** Pełen crit % w walce — baza + primary/attribute + ekwipunek. */
@@ -276,33 +307,36 @@ export class PlayerStatsService {
     return PlayerStatsService.BASE_CRIT_PCT + this.critBonus(p) + this.critBonusFromEquipment(p);
   }
 
-  /** Pełen max HP — base + primary + attribute + ekwipunek. */
+  /** Pełen max HP — base + primary + attribute + ekwipunek (z upgradami). */
   effectiveMaxHp(p: PlayerStats): number {
     const w = this.equippedItem(p, 'weapon');
     const a = this.equippedItem(p, 'armor');
     const t = this.equippedItem(p, 'tool');
     return (
-      this.hpFor(p) + (w?.stats.hp ?? 0) + (a?.stats.hp ?? 0) + (t?.stats.hp ?? 0)
+      this.hpFor(p) +
+      (w ? appliedItemStats(w).hp ?? 0 : 0) +
+      (a ? appliedItemStats(a).hp ?? 0 : 0) +
+      (t ? appliedItemStats(t).hp ?? 0 : 0)
     );
   }
 
-  /** Pełen damage bonus w walce — primary/attribute + ekwipunek (weapon + armor + tool). */
+  /** Pełen damage bonus — primary/attribute + ekwipunek (z upgradami). */
   effectiveDamageBonus(p: PlayerStats): number {
     const w = this.equippedItem(p, 'weapon');
     const a = this.equippedItem(p, 'armor');
     const t = this.equippedItem(p, 'tool');
     return (
       this.damageBonus(p) +
-      (w?.stats.attack ?? 0) +
-      (a?.stats.attack ?? 0) +
-      (t?.stats.attack ?? 0)
+      (w ? appliedItemStats(w).attack ?? 0 : 0) +
+      (a ? appliedItemStats(a).attack ?? 0 : 0) +
+      (t ? appliedItemStats(t).attack ?? 0 : 0)
     );
   }
 
-  /** Pełen defense bonus — primary/attribute + ekwipunek (głównie armor). */
+  /** Pełen defense bonus — primary/attribute + ekwipunek (głównie armor, z upgradami). */
   effectiveDefenseBonus(p: PlayerStats): number {
     const a = this.equippedItem(p, 'armor');
-    return this.defenseBonus(p) + (a?.stats.defense ?? 0);
+    return this.defenseBonus(p) + (a ? appliedItemStats(a).defense ?? 0 : 0);
   }
 
   /**
@@ -318,9 +352,9 @@ export class PlayerStatsService {
     return (
       classBase +
       p.primary.agi +
-      (w?.stats.speed ?? 0) +
-      (a?.stats.speed ?? 0) +
-      (t?.stats.speed ?? 0)
+      (w ? appliedItemStats(w).speed ?? 0 : 0) +
+      (a ? appliedItemStats(a).speed ?? 0 : 0) +
+      (t ? appliedItemStats(t).speed ?? 0 : 0)
     );
   }
 
@@ -438,6 +472,13 @@ export class PlayerStatsService {
         ok: false,
         reason: 'Nie posiadasz takiego itemu lub nie da się go założyć.',
       };
+    const reqLvl = itemRequiredLevel(item);
+    if (reqLvl > 0 && p.skills.combat.level < reqLvl) {
+      return {
+        ok: false,
+        reason: `Item wymaga combat lvl **${reqLvl}** (masz ${p.skills.combat.level}). Każdy upgrade dodaje +1 do wymaganego lvl.`,
+      };
+    }
     p.equipped[item.slot] = uid;
     return { ok: true, item };
   }

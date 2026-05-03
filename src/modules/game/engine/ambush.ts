@@ -47,11 +47,21 @@ import {
 
 const AMBUSH_CHECK_INTERVAL_MS = parseInt(process.env.AMBUSH_CHECK_INTERVAL_MS || '300000', 10);
 const AMBUSH_CHANCE = parseFloat(process.env.AMBUSH_CHANCE || '0.25');
-const AMBUSH_TIMEOUT_MS = 10 * 60_000;
+/**
+ * Maksymalny czas na zakończenie ambushu — 24h. Wcześniej było 10min ale
+ * gracz mógł przegapić walkę i stracić wyprawę przez mocno opóźnioną
+ * notyfikację. Przez ten czas wyprawa jest zamrożona (`ambushedSince`),
+ * więc długi timeout nie szkodzi tempu rozgrywki.
+ */
+const AMBUSH_TIMEOUT_MS = 24 * 60 * 60_000;
 
 interface AmbushBattleState extends BattleState {
   expedition: { destination: string; channelId: string };
   timeoutHandle?: NodeJS.Timeout;
+}
+
+function hasThreadId(t: unknown): t is { id: string } {
+  return !!t && typeof t === 'object' && 'id' in t && typeof (t as { id: unknown }).id === 'string';
 }
 
 export class AmbushService {
@@ -80,6 +90,115 @@ export class AmbushService {
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+  }
+
+  /**
+   * Zwraca aktywny ambush state gracza (jeśli jest). Używane przez
+   * ExpeditionService żeby pokazać "Wróć do walki" gdy gracz zamknął
+   * widok wyprawy podczas trwającego ambushu.
+   */
+  getActiveStateForPlayer(playerId: string): AmbushBattleState | undefined {
+    for (const state of this.states.values()) {
+      if (state.finished) continue;
+      const me = state.combatants.find((c) => c.team === 0 && c.id === playerId);
+      if (me && me.hp > 0) return state;
+    }
+    return undefined;
+  }
+
+  /**
+   * Re-prompt gracza w wątku ambushu — przydatne gdy odszedł od walki
+   * i wraca przez "Wróć do walki" w widoku wyprawy. Wysyła panel akcji
+   * od nowa do oryginalnego wątku.
+   *
+   * Fallback: jeśli stary wątek został usunięty (lub niedostępny —
+   * `send` rzuca), odtwarzamy nowy thread w parent channelu i migrujemy
+   * `state` do niego (re-key w `states` Map, czyszczenie starych
+   * `promptMessageIds`). Stan walki (HP/potki/skille/buffy/cooldowny)
+   * zachowany — Discord traci tylko historię chatu.
+   */
+  async resumeForPlayer(playerId: string): Promise<{ ok: boolean; threadId?: string }> {
+    const state = this.getActiveStateForPlayer(playerId);
+    if (!state) return { ok: false };
+
+    const tryUnarchive = async (): Promise<void> => {
+      if (typeof state.thread.setArchived === 'function') {
+        await state.thread.setArchived(false).catch(() => {});
+      }
+    };
+    const sendBoard = async (): Promise<boolean> => {
+      try {
+        await state.thread.send(
+          `⚔️ <@${playerId}> wraca do walki — aktualny stan:\n${this.fmtBoard(state)}`,
+        );
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    await tryUnarchive();
+    let alive = await sendBoard();
+
+    if (!alive) {
+      // Wątek zniknął — odtwórz nowy w parent channelu, migruj state.
+      const newThread = await this.recreateThreadFor(state, playerId);
+      if (!newThread || !hasThreadId(newThread)) {
+        console.error('[ambush] resume fail: thread gone, parent channel unreachable');
+        return { ok: false };
+      }
+      this.states.delete(state.id);
+      state.id = newThread.id;
+      state.thread = newThread;
+      state.promptMessageIds.clear();
+      this.states.set(newThread.id, state);
+      alive = await sendBoard();
+      if (!alive) return { ok: false };
+    }
+
+    try {
+      await this.promptHumans(state);
+    } catch (e) {
+      console.error('[ambush] resume promptHumans fail:', errMsg(e));
+    }
+    return { ok: true, threadId: state.thread.id };
+  }
+
+  /**
+   * Odtwarza wątek ambushu w parent channelu po jego usunięciu.
+   * Zwraca nowy thread (z API) lub null jeśli odtworzenie nieudane
+   * (np. brak permissions, channel zniknął razem z wątkiem).
+   */
+  private async recreateThreadFor(
+    state: AmbushBattleState,
+    playerId: string,
+  ): Promise<unknown> {
+    try {
+      const channel = await this.client.channels.fetch(state.expedition.channelId).catch(() => null);
+      if (!channel || !channel.isTextBased() || !('send' in channel)) return null;
+      const players = state.combatants
+        .filter((c) => c.team === 0)
+        .map((c) => `<@${c.id}>`)
+        .join(' ');
+      const announcement = await channel
+        .send(`⚔️ ${players} — wątek ambushu został odtworzony, kontynuujcie walkę!`)
+        .catch(() => null);
+      if (!announcement || typeof (announcement as { startThread?: unknown }).startThread !== 'function') {
+        return null;
+      }
+      const thread = await (announcement as {
+        startThread: (opts: { name: string; autoArchiveDuration: number }) => Promise<unknown>;
+      })
+        .startThread({
+          name: `Ambush (resume): ${playerId}`.slice(0, 100),
+          autoArchiveDuration: 60,
+        })
+        .catch(() => null);
+      return thread ?? null;
+    } catch (e) {
+      console.error('[ambush] recreate thread fail:', errMsg(e));
+      return null;
+    }
   }
 
   async handleInteraction(interaction: ButtonInteraction): Promise<void> {
@@ -230,6 +349,12 @@ export class AmbushService {
     }
 
     const expDestination = members[0].activeExpedition!.destination;
+    const ambushStart = Date.now();
+    // Zamrażamy czas wyprawy — `endsAt` nie liczy się aż do finishu/timeoutu.
+    for (const m of members) {
+      if (m.activeExpedition) m.activeExpedition.ambushedSince = ambushStart;
+    }
+    this.stats.save();
     const state: AmbushBattleState = {
       id: thread.id,
       thread,
@@ -251,7 +376,7 @@ export class AmbushService {
 
     const mobLine = mobCombatants.map((m) => `**${m.name}** (${m.hp} HP)`).join(', ');
     await thread.send(
-      `Wrogowie: ${mobLine}. Każdy członek party klika dla siebie — runda się rozliczy gdy wszyscy podadzą akcje. ${AMBUSH_TIMEOUT_MS / 60_000} min na całość.`,
+      `Wrogowie: ${mobLine}. Każdy członek party klika dla siebie — runda się rozliczy gdy wszyscy podadzą akcje. **Wyprawa zatrzymana** — dokończcie walkę w ciągu **${Math.round(AMBUSH_TIMEOUT_MS / 60_000 / 60)} h** lub przepada.`,
     );
     await this.promptHumans(state);
   }
@@ -293,6 +418,11 @@ export class AmbushService {
       controller: 'ai',
     };
 
+    const ambushStart = Date.now();
+    // Zamrażamy czas wyprawy gracza — `endsAt` nie liczy się przez ambush.
+    if (player.activeExpedition) player.activeExpedition.ambushedSince = ambushStart;
+    this.stats.save();
+
     const state: AmbushBattleState = {
       id: thread.id,
       thread,
@@ -311,7 +441,7 @@ export class AmbushService {
     state.timeoutHandle.unref?.();
 
     await thread.send(
-      `**${mobCombatant.name}** (${mobCombatant.hp} HP, +${mobCombatant.damageBonus} dmg) blokuje Ci drogę! Masz ${AMBUSH_TIMEOUT_MS / 60_000} min na walkę — w przeciwnym razie wyprawa pada.`,
+      `**${mobCombatant.name}** (${mobCombatant.hp} HP, +${mobCombatant.damageBonus} dmg) blokuje Ci drogę! **Wyprawa zatrzymana** — dokończ walkę w ciągu **${Math.round(AMBUSH_TIMEOUT_MS / 60_000 / 60)} h** lub przepada.`,
     );
     await this.promptHumans(state);
   }
@@ -515,6 +645,7 @@ export class AmbushService {
       );
     } else {
       const lines: string[] = ['🏆 **Ambush — zwycięstwo!** Banda pokonana, łupy:'];
+      const now = Date.now();
       for (const pc of playerCombatants) {
         const p = this.stats.get(pc.id, pc.name);
         const drops = def?.lootTable ? rollLootMany(def.lootTable, p.skills.combat.level, 1) : [];
@@ -527,12 +658,18 @@ export class AmbushService {
         lines.push(
           `• <@${p.id}>: ${dropLabels.length ? dropLabels.join(', ') : '(nic)'} (+25 XP combat${leveled ? ' 🎉 LEVEL UP!' : ''})`,
         );
+        // Wydłuż czas wyprawy o czas trwania walki — gracz nie traci tempa.
+        if (p.activeExpedition?.ambushedSince) {
+          const elapsed = now - p.activeExpedition.ambushedSince;
+          p.activeExpedition.endsAt += elapsed;
+          p.activeExpedition.ambushedSince = undefined;
+        }
         this.logAmbush(
           p.id,
-          `🏆 Pokonano bandę: ${dropLabels.length ? dropLabels.join(', ') : 'brak lootu'} (+25 XP combat).`,
+          `🏆 Pokonano bandę: ${dropLabels.length ? dropLabels.join(', ') : 'brak lootu'} (+25 XP combat). Wyprawa wznowiona.`,
         );
       }
-      lines.push('Wyprawa kontynuowana.');
+      lines.push('Wyprawa wznowiona — czas pozostały do końca przesunięty o trwanie walki.');
       this.stats.save();
       await postBattleSummary(state.thread, lines.join('\n').slice(0, 1900));
     }
@@ -552,9 +689,10 @@ export class AmbushService {
       this.logAmbush(p.id, `⏰ Timeout w ambushu — wyprawa przepadła.`);
     }
     this.stats.save();
+    const hours = Math.round(AMBUSH_TIMEOUT_MS / 60_000 / 60);
     await postBattleSummary(
       state.thread,
-      `⏰ **Ambush — timeout!** Brak akcji w czasie ${AMBUSH_TIMEOUT_MS / 60_000} min — wyprawa pada.`,
+      `⏰ **Ambush — timeout!** Brak akcji w czasie ${hours} h — wyprawa pada.`,
     );
     await closeBattleThread(state.thread, '🏁 Wątek zamknięty po timeoucie.');
     this.states.delete(state.id);

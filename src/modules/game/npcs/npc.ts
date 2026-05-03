@@ -1,4 +1,5 @@
 import type { PlayerStats } from '../services/player-stats.js';
+import type { QuestService } from '../services/quest.service.js';
 
 /**
  * Pojedyncza odpowiedź gracza w dialogu — jeden button.
@@ -6,14 +7,19 @@ import type { PlayerStats } from '../services/player-stats.js';
  * `goto` wskazuje docelowy `nodeId` w tym samym dialogu lub literał `'end'`,
  * który kończy rozmowę i wraca do widoku miasta.
  *
- * `visibleIf` i `effect` są zarezerwowane na questy/warunki — na razie nieużywane,
- * ale TS pozwala je dodać bez modyfikacji konsumentów.
+ * `visibleIf`: filtr widoczności opcji — np. tylko gdy quest active /
+ * gracz ma item / ukończył wcześniejszego questa. Wywoływane przy
+ * każdym renderze noda przez DialogService.
+ *
+ * `effect`: side-effect po kliknięciu opcji (np. `quests.take('first_steps')`).
+ * Wywoływane PRZED nawigacją do `goto`. DialogService sam zapisuje stan
+ * po `effect`, więc callback tylko mutuje `ctx.player` / `ctx.quests`.
  */
 export interface DialogOption {
   readonly label: string;
   readonly goto: string;
   readonly visibleIf?: (ctx: DialogContext) => boolean;
-  readonly effect?: (ctx: DialogContext) => void;
+  readonly effect?: (ctx: DialogContext) => string | void;
 }
 
 export interface DialogNode {
@@ -36,6 +42,11 @@ export abstract class Dialog {
 export interface DialogContext {
   readonly player: PlayerStats;
   readonly npc: Npc;
+  /**
+   * Quest API dostępne w `visibleIf` / `effect` opcji dialogowych.
+   * Przekazywane przez DialogService przy renderze i obsłudze kliku.
+   */
+  readonly quests: QuestService;
 }
 
 export abstract class Npc {

@@ -36,6 +36,7 @@ import { buildPanelOpenerRow, buildTargetRow } from '../ui/battle-buttons.js';
 import { buildBossBrowseRows } from '../ui/boss-buttons.js';
 import { ITEMS } from './items.js';
 import { SKILLS } from '../skills/index.js';
+import { QuestService } from './quest.service.js';
 import { type Mob } from '../mobs/index.js';
 import { displayName, errMsg } from '../../../utils.js';
 
@@ -74,7 +75,10 @@ export class BossService {
   private readonly states = new Map<string, BossBattleState>();
   private readonly browsers = new Map<string, BrowserState>();
 
-  constructor(private readonly stats: PlayerStatsService) {}
+  constructor(
+    private readonly stats: PlayerStatsService,
+    private readonly quests?: QuestService,
+  ) {}
 
   async start(ctx: ICommandContext): Promise<void> {
     const { msg, prompt, registerThread } = ctx;
@@ -603,11 +607,13 @@ export class BossService {
         );
       } else {
         const award = awardReward(this.stats, player, def.rewards);
+        const questLines = this.quests?.onBossKilled(player, state.bossId) ?? [];
         await postBattleSummary(
           state.thread,
           [
             `🏆 **${def.name}** pokonany! Zwycięża **${playerCombatant.name}** (${playerCombatant.hp}/${playerCombatant.maxHp} HP).`,
             ...award.lines,
+            ...questLines,
           ].join('\n'),
         );
       }
