@@ -10,7 +10,7 @@ import type { ICommandContext } from '../../../types/command.types.js';
 import { PlayerStatsService, type PlayerStats } from './player-stats.js';
 import { PartyService } from './party.js';
 import { CITIES, getCity, listCities, type City } from '../cities/index.js';
-import { EXPEDITIONS, REGION_LVL_REQ } from '../engine/encounters.js';
+import { DUNGEONS, EXPEDITIONS, REGION_LVL_REQ } from '../engine/encounters.js';
 import { CLASSES, findSubclass, findSubclass2, listClasses, fmtPrimary } from '../classes/index.js';
 import { RACES, listRaces, fmtRaceStats } from '../races/index.js';
 import { fmtStats } from './items.js';
@@ -45,8 +45,6 @@ export interface MenuInventoryOpener {
   /** Klik 🎒 Plecak w menu — adapter w `registerGameCommands` rejestruje wątek do `InventoryCommand`. */
   openInventoryFromInteraction(interaction: ButtonInteraction): Promise<void>;
 }
-
-const DUNGEONS_LIST = ['spizarnia_babci', 'smocza_dziupla'];
 
 interface ButtonBuilderLike {
   customId: string;
@@ -510,12 +508,23 @@ export class MenuService {
   }
 
   private renderDungeonList(p: PlayerStats): string {
-    void p;
-    return [
-      '🏰 **Dungeony**',
-      '_Wpisz_ `.dungeon <id>` _żeby wejść._',
+    const partyEntity = this.party.getByMember(p.id);
+    const lines: string[] = [
+      '🏰 **Dungeony** _(wszystkie party-only)_',
+      partyEntity
+        ? `_Twoje party: ${partyEntity.members.length} osób, lider <@${partyEntity.leaderId}>._`
+        : '_Nie masz party — `.party create` + zaproszenia, potem `.dungeon <id>`._',
       '',
-      ...DUNGEONS_LIST.map((id) => `• \`${id}\``),
-    ].join('\n');
+    ];
+    const sorted = Object.values(DUNGEONS).sort((a, b) => a.baseTier - b.baseTier);
+    for (const d of sorted) {
+      const lvlReq = d.requiredCombatLevel ? ` · lvl ${d.requiredCombatLevel}+` : '';
+      lines.push(
+        `• \`${d.id}\` — **${d.name}** · ${d.rooms.length} pokoi · T${d.baseTier} (final T${Math.min(d.baseTier + 1, 5)})${lvlReq} · party ${d.minPartySize}+`,
+      );
+      lines.push(`  _${d.description}_`);
+    }
+    lines.push('', 'Użycie: `.dungeon <id>` (lider party).');
+    return lines.join('\n').slice(0, 1900);
   }
 }
