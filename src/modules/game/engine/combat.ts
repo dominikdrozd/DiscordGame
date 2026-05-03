@@ -76,6 +76,8 @@ export interface Combatant {
   damageBonus: number;
   defenseBonus?: number;
   critBonus?: number;
+  /** Inicjatywa — wyższy speed = atakuje pierwszy w fazach skill/item/atak. */
+  speed?: number;
   defending: boolean;
   /** zostaje dla bossów / wstecznej zgodności (mikstury z hardcodowanego limitu) */
   potionsLeft: number;

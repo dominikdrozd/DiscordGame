@@ -87,7 +87,7 @@ export class StatsCommand implements ICommand, ISlashCommand {
     );
     lines.push('**Stats efektywne (z primary + ekwipunek):**');
     lines.push(
-      `• max HP: **${this.stats.effectiveMaxHp(p)}** · bonus dmg: **+${this.stats.effectiveDamageBonus(p)}** · bonus def: **+${this.stats.effectiveDefenseBonus(p)}** · crit: **${this.stats.effectiveCritPercent(p).toFixed(1)}%** _(baza 15% + bonusy)_ · SP: **${this.stats.spellPower(p)}**`,
+      `• max HP: **${this.stats.effectiveMaxHp(p)}** · bonus dmg: **+${this.stats.effectiveDamageBonus(p)}** · bonus def: **+${this.stats.effectiveDefenseBonus(p)}** · crit: **${this.stats.effectiveCritPercent(p).toFixed(1)}%** _(baza 15% + bonusy)_ · ⚡ speed: **${this.stats.effectiveSpeed(p)}** _(AGI + ekwipunek)_ · SP: **${this.stats.spellPower(p)}**`,
     );
     lines.push('');
     lines.push('**Skille:**');

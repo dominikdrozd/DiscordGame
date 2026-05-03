@@ -288,6 +288,20 @@ export class PlayerStatsService {
     return this.defenseBonus(p) + (a?.stats.defense ?? 0);
   }
 
+  /**
+   * Inicjatywa w walce — AGI + speed z ekwipunku. Wyższy speed = combatant
+   * atakuje pierwszy. `combat-battle.ts` sortuje fazy skill/item/attack
+   * po speed desc.
+   */
+  effectiveSpeed(p: PlayerStats): number {
+    const w = this.equippedItem(p, 'weapon');
+    const a = this.equippedItem(p, 'armor');
+    const t = this.equippedItem(p, 'tool');
+    return (
+      p.primary.agi + (w?.stats.speed ?? 0) + (a?.stats.speed ?? 0) + (t?.stats.speed ?? 0)
+    );
+  }
+
   // ── PvP outcome ────────────────────────────────────
   awardWin(
     winnerId: string,

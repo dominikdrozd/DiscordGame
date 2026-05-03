@@ -5,6 +5,7 @@ import {
   getDamageAmp,
   getDefenseAmp,
   decrementCooldowns,
+  getSlowAmount,
   isControlled,
 } from '../../src/modules/game/engine/buffs.js';
 import { makeCombatant } from '../helpers/factories.js';
@@ -110,16 +111,30 @@ describe('decrementCooldowns', () => {
   });
 });
 
-describe('isControlled', () => {
-  test('detects slow buff as controlling', () => {
+describe('getSlowAmount', () => {
+  test('zwraca 0 bez slow buffów', () => {
     const c = makeCombatant();
-    addBuff(c, { id: 'freeze', kind: 'slow', source: 'mage', ttl: 1 });
-    expect(isControlled(c)).toBe(true);
+    expect(getSlowAmount(c)).toBe(0);
   });
 
-  test('returns false when no slow', () => {
+  test('sumuje amount z aktywnych slow buffów', () => {
     const c = makeCombatant();
-    addBuff(c, { id: 'shield', kind: 'shield', source: 's', ttl: 1, amount: 5 });
+    addBuff(c, { id: 'freeze', kind: 'slow', source: 'mage', ttl: 2, amount: 3 });
+    addBuff(c, { id: 'tar', kind: 'slow', source: 'rogue', ttl: 1, amount: 2 });
+    expect(getSlowAmount(c)).toBe(5);
+  });
+
+  test('default amount = 5 gdy nie ustawione', () => {
+    const c = makeCombatant();
+    addBuff(c, { id: 'freeze', kind: 'slow', source: 'mage', ttl: 1 });
+    expect(getSlowAmount(c)).toBe(5);
+  });
+});
+
+describe('isControlled (deprecated)', () => {
+  test('zwraca zawsze false — slow nie paraliżuje już', () => {
+    const c = makeCombatant();
+    addBuff(c, { id: 'freeze', kind: 'slow', source: 'mage', ttl: 1, amount: 5 });
     expect(isControlled(c)).toBe(false);
   });
 });

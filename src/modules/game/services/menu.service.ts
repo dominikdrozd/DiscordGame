@@ -205,7 +205,7 @@ export class MenuService {
       `STR ${p.primary.str} · AGI ${p.primary.agi} · WIT ${p.primary.wit} · INT ${p.primary.int}`,
       '',
       '**Stats bojowe (z ekwipunkiem):**',
-      `HP: **${this.stats.effectiveMaxHp(p)}** · Dmg: **+${this.stats.effectiveDamageBonus(p)}** · Def: **+${this.stats.effectiveDefenseBonus(p)}** · Crit: **${this.stats.effectiveCritPercent(p).toFixed(1)}%** · SP: **${this.stats.spellPower(p)}**`,
+      `HP: **${this.stats.effectiveMaxHp(p)}** · Dmg: **+${this.stats.effectiveDamageBonus(p)}** · Def: **+${this.stats.effectiveDefenseBonus(p)}** · Crit: **${this.stats.effectiveCritPercent(p).toFixed(1)}%** · ⚡ Spd: **${this.stats.effectiveSpeed(p)}** · SP: **${this.stats.spellPower(p)}**`,
       `_(crit zawiera bazę 15% wspólną dla wszystkich + bonusy)_`,
       '',
       '**Założony ekwipunek:**',

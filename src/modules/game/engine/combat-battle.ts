@@ -8,7 +8,7 @@ import {
   checkFinish,
   findCombatant,
 } from './battle-state.js';
-import { applyBuffsAtRoundEnd, decrementCooldowns, isControlled } from './buffs.js';
+import { applyBuffsAtRoundEnd, decrementCooldowns, getSlowAmount } from './buffs.js';
 import { getSkill, setCooldown } from '../skills/index.js';
 
 export interface BattleRoundResult {
@@ -44,10 +44,33 @@ function resolveSkillTargets(
   }
 }
 
+/**
+ * Kolejność akcji w fazach skill/item/attack — sortowana po `speed` desc.
+ * Tie-break: stable order (oryginalny index), żeby testy były deterministyczne.
+ *
+ * Defend (faza 1) i end-of-round buffy (faza 5) są order-independent —
+ * defend tylko ustawia flagę, buffy aplikują DoT/HoT do każdego osobno.
+ */
+function effectiveBattleSpeed(c: BattleCombatant): number {
+  return (c.speed ?? 0) - getSlowAmount(c);
+}
+
+function bySpeed(state: BattleState): BattleCombatant[] {
+  return [...state.combatants]
+    .map((c, i) => ({ c, i }))
+    .sort((a, b) => {
+      const sa = effectiveBattleSpeed(a.c);
+      const sb = effectiveBattleSpeed(b.c);
+      if (sb !== sa) return sb - sa;
+      return a.i - b.i;
+    })
+    .map((x) => x.c);
+}
+
 export function resolveBattleRound(state: BattleState): BattleRoundResult {
   const lines: string[] = [];
 
-  // 1. defends
+  // 1. defends — order-independent, iteruj zwykle
   for (const c of state.combatants) {
     if (c.hp <= 0) continue;
     const action = state.pending.get(c.id);
@@ -58,25 +81,23 @@ export function resolveBattleRound(state: BattleState): BattleRoundResult {
     }
   }
 
+  const initiative = bySpeed(state);
+
   // 2. heal/buff skille (targeting ally/self/allAllies)
-  for (const c of state.combatants) {
+  for (const c of initiative) {
     if (c.hp <= 0) continue;
     const action = state.pending.get(c.id);
     if (action?.kind !== 'skill' || !action.skillId) continue;
     const skill = getSkill(action.skillId);
     if (!skill) continue;
     if (!['ally', 'self', 'allAllies'].includes(skill.targeting)) continue;
-    if (isControlled(c)) {
-      lines.push(`🥶 **${c.name}** jest sparaliżowany — traci turę.`);
-      continue;
-    }
     const targets = resolveSkillTargets(state, c, action);
     lines.push(skill.apply(state, c, targets));
     setCooldown(c, skill.id, skill.cooldown);
   }
 
-  // 3. items / consumables
-  for (const c of state.combatants) {
+  // 3. items / consumables — speed order
+  for (const c of initiative) {
     if (c.hp <= 0) continue;
     const action = state.pending.get(c.id);
     if (action?.kind !== 'item') continue;
@@ -84,8 +105,8 @@ export function resolveBattleRound(state: BattleState): BattleRoundResult {
     else lines.push(applyPotion(c));
   }
 
-  // 4. attacks + damage skille (targeting enemy/allEnemies)
-  for (const c of state.combatants) {
+  // 4. attacks + damage skille (targeting enemy/allEnemies) — speed order
+  for (const c of initiative) {
     if (c.hp <= 0) continue;
     const action = state.pending.get(c.id);
     if (!action) continue;
@@ -94,7 +115,6 @@ export function resolveBattleRound(state: BattleState): BattleRoundResult {
       const skill = getSkill(action.skillId);
       if (!skill) continue;
       if (!['enemy', 'allEnemies'].includes(skill.targeting)) continue;
-      if (isControlled(c)) continue; // już dodaliśmy log w fazie 2 dla heali, tutaj cicho
       const targets = resolveSkillTargets(state, c, action);
       lines.push(skill.apply(state, c, targets));
       setCooldown(c, skill.id, skill.cooldown);
@@ -102,10 +122,6 @@ export function resolveBattleRound(state: BattleState): BattleRoundResult {
     }
 
     if (action.kind === 'attack') {
-      if (isControlled(c)) {
-        lines.push(`🥶 **${c.name}** jest sparaliżowany — nie atakuje.`);
-        continue;
-      }
       let target: BattleCombatant | undefined;
       if (action.targetId) target = findCombatant(state, action.targetId);
       if (!target || target.hp <= 0) {

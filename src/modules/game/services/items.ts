@@ -8,6 +8,8 @@ export interface ItemStats {
   defense?: number;
   hp?: number;
   crit?: number; // %
+  /** Inicjatywa w walce — wyższy speed atakuje pierwszy. Items mogą dodać. */
+  speed?: number;
 }
 
 const STAT_KEYS = [
@@ -15,6 +17,7 @@ const STAT_KEYS = [
   'defense',
   'hp',
   'crit',
+  'speed',
 ] as const satisfies readonly (keyof ItemStats)[];
 
 export interface ItemTemplate {
@@ -70,30 +73,30 @@ const RARITY_STAT_RANGES: Record<
 > = {
   common: {
     count: 1,
-    ranges: { attack: [1, 3], defense: [1, 2], hp: [1, 3], crit: [0, 1] },
+    ranges: { attack: [1, 3], defense: [1, 2], hp: [1, 3], crit: [0, 1], speed: [0, 1] },
   },
   uncommon: {
     count: 2,
-    ranges: { attack: [3, 6], defense: [2, 4], hp: [3, 6], crit: [1, 2] },
+    ranges: { attack: [3, 6], defense: [2, 4], hp: [3, 6], crit: [1, 2], speed: [1, 2] },
   },
   rare: {
     count: 3,
-    ranges: { attack: [6, 10], defense: [4, 7], hp: [6, 10], crit: [2, 4] },
+    ranges: { attack: [6, 10], defense: [4, 7], hp: [6, 10], crit: [2, 4], speed: [2, 4] },
   },
   epic: {
     count: 3,
-    ranges: { attack: [10, 15], defense: [7, 11], hp: [10, 15], crit: [4, 7] },
+    ranges: { attack: [10, 15], defense: [7, 11], hp: [10, 15], crit: [4, 7], speed: [3, 6] },
   },
   legendary: {
     count: 4,
-    ranges: { attack: [15, 25], defense: [11, 18], hp: [15, 25], crit: [7, 12] },
+    ranges: { attack: [15, 25], defense: [11, 18], hp: [15, 25], crit: [7, 12], speed: [5, 10] },
   },
 };
 
 const STATS_BY_TYPE: Record<ItemType, Array<keyof ItemStats>> = {
-  weapon: ['attack', 'crit', 'hp'],
+  weapon: ['attack', 'crit', 'hp', 'speed'],
   armor: ['defense', 'hp', 'attack'],
-  tool: ['attack'],
+  tool: ['attack', 'speed'],
   resource: [],
   consumable: [],
 };
@@ -283,6 +286,7 @@ export function fmtStats(s: ItemStats): string {
   if (s.defense) parts.push(`+${s.defense} def`);
   if (s.hp) parts.push(`+${s.hp} hp`);
   if (s.crit) parts.push(`+${s.crit}% crit`);
+  if (s.speed) parts.push(`+${s.speed} spd`);
   return parts.join(', ') || '—';
 }
 
@@ -324,7 +328,11 @@ export function itemSellPrice(it: ItemInstance): number {
   const base = RARITY_SELL_BASE[it.rarity];
   const mult = RARITY_STAT_MULT[it.rarity];
   const statSum =
-    (it.stats.attack ?? 0) + (it.stats.defense ?? 0) + (it.stats.hp ?? 0) + (it.stats.crit ?? 0);
+    (it.stats.attack ?? 0) +
+    (it.stats.defense ?? 0) +
+    (it.stats.hp ?? 0) +
+    (it.stats.crit ?? 0) +
+    (it.stats.speed ?? 0);
   let price = base + Math.round(statSum * mult);
   if (it.toolTier && it.toolTier > 1) {
     price = Math.round(price * (1 + (it.toolTier - 1) * 0.5));

@@ -23,6 +23,7 @@ export function buildPlayerCombatant(
   // combat.ts dodaje bazę CRIT_CHANCE (0.15) — combatant.critBonus to BONUS bez bazy.
   const critBonus =
     (stats.critBonus(p) + stats.critBonusFromEquipment(p)) / 100;
+  const speed = stats.effectiveSpeed(p);
   const consumables = snapshotConsumables(p);
   const skills: string[] = [];
   if (p.classId) {
@@ -45,6 +46,7 @@ export function buildPlayerCombatant(
     damageBonus,
     defenseBonus,
     critBonus,
+    speed,
     defending: false,
     // Gracze NIE dostają darmowych potek — używają tylko tych z plecaka.
     // `potionsLeft` zostawiamy dla AI/bossów (mob.toCombatant ustawia własne).

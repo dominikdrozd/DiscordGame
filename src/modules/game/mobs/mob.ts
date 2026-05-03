@@ -35,6 +35,8 @@ export abstract class Mob {
   tier: MobTier = 1;
   readonly defenseBonus?: number;
   readonly critBonus?: number;
+  /** Inicjatywa moba — wyższy = atakuje przed graczem o niższym speed. */
+  readonly speed?: number;
   readonly potions: number = 0;
   readonly skills: readonly string[] = [];
   readonly attackLines?: readonly string[];
@@ -62,6 +64,7 @@ export abstract class Mob {
       damageBonus,
       defenseBonus,
       critBonus: this.critBonus,
+      speed: this.speed,
       defending: false,
       potionsLeft: this.potions,
       skills: this.skills.length ? [...this.skills] : undefined,

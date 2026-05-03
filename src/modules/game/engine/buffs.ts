@@ -54,9 +54,24 @@ export function consumeShield(c: Combatant, dmg: number): { absorbed: number; re
   return { absorbed, remaining: dmg - absorbed };
 }
 
-export function isControlled(c: Combatant): boolean {
-  if (!c.buffs) return false;
-  return c.buffs.some((b) => b.kind === 'slow');
+/**
+ * Suma redukcji `speed` z aktywnych slow-buffów.
+ *
+ * Semantyka: slow już NIE paraliżuje (gracz wciąż wybiera akcję), tylko
+ * obniża inicjatywę w fazach skill/item/attack. Combatant z niskim speed
+ * uderza ostatni — może paść zanim zaatakuje. Default amount = 5 jeśli
+ * skill nie ustawił własnego.
+ */
+export function getSlowAmount(c: Combatant): number {
+  if (!c.buffs) return 0;
+  return c.buffs
+    .filter((b) => b.kind === 'slow')
+    .reduce((s, b) => s + (b.amount ?? 5), 0);
+}
+
+/** @deprecated — slow nie paraliżuje już, tylko obniża speed. Zwraca zawsze false. */
+export function isControlled(_c: Combatant): boolean {
+  return false;
 }
 
 export function getTauntCasterId(c: Combatant): string | undefined {
