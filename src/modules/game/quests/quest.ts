@@ -60,5 +60,12 @@ export interface QuestDef {
    * "daje materiały na siekierę", gracz nie musi grindować sam).
    */
   materialsOnTake?: Record<string, number>;
+  /**
+   * Auto-complete przy `take()` jeśli gracz **już ma** odpowiedni atrybut.
+   * Przykład: `marek_pick_race` z `autoCompleteIfHas: 'race'` — jeśli gracz
+   * już wybrał rasę (np. ze starszego save'a), quest natychmiast się zalicza
+   * z rewardem zamiast utknąć w aktywnych bez możliwości turn-inu.
+   */
+  autoCompleteIfHas?: 'race' | 'class';
   reward: QuestReward;
 }

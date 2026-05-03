@@ -29,14 +29,6 @@ export function buildMenuRows(userId: string): ActionRowBuilder<ButtonBuilder>[]
   );
   const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
-      .setCustomId(id('race', userId))
-      .setLabel('🧬 Rasa')
-      .setStyle(ButtonStyle.Primary),
-    new ButtonBuilder()
-      .setCustomId(id('class', userId))
-      .setLabel('⚔️ Klasa')
-      .setStyle(ButtonStyle.Primary),
-    new ButtonBuilder()
       .setCustomId(id('mine', userId))
       .setLabel('⛏️ Mine')
       .setStyle(ButtonStyle.Success),
@@ -48,6 +40,10 @@ export function buildMenuRows(userId: string): ActionRowBuilder<ButtonBuilder>[]
       .setCustomId(id('chop', userId))
       .setLabel('🪓 Chop')
       .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(id('party', userId))
+      .setLabel('👥 Party')
+      .setStyle(ButtonStyle.Primary),
   );
   const row3 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
@@ -73,12 +69,6 @@ export function buildMenuRows(userId: string): ActionRowBuilder<ButtonBuilder>[]
   );
   const row4 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
-      .setCustomId(id('party', userId))
-      .setLabel('👥 Party')
-      .setStyle(ButtonStyle.Primary),
-  );
-  const row5 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
       .setCustomId(id('refresh', userId))
       .setLabel('🔄 Odśwież')
       .setStyle(ButtonStyle.Secondary),
@@ -87,7 +77,7 @@ export function buildMenuRows(userId: string): ActionRowBuilder<ButtonBuilder>[]
       .setLabel('✖ Zamknij')
       .setStyle(ButtonStyle.Danger),
   );
-  return [row1, row2, row3, row4, row5];
+  return [row1, row2, row3, row4];
 }
 
 /** Dolny rząd "← Menu" + close — re-export z `browser-buttons.ts` żeby

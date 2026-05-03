@@ -111,8 +111,6 @@ export class MenuService {
     if (action === 'stats') return this.update(interaction, this.renderStats(player), true);
     if (action === 'inv') return this.inventory.openInventoryFromInteraction(interaction);
     if (action === 'skills') return this.update(interaction, this.renderSkills(player), true);
-    if (action === 'race') return this.update(interaction, this.renderRace(player), true);
-    if (action === 'class') return this.update(interaction, this.renderClass(player), true);
     if (action === 'party') return this.update(interaction, this.renderParty(player), true);
     if (action === 'exp') return this.expeditions.openFromInteraction(interaction);
     if (action === 'city' || action === 'citylist') {

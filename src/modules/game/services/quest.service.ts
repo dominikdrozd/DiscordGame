@@ -109,6 +109,16 @@ export class QuestService {
       }
       if (granted.length) line += `\n🎒 Dostałeś: ${granted.join(', ')}.`;
     }
+    // Auto-complete gdy gracz już spełnia warunek (np. ma rasę/klasę z
+    // wcześniejszego save'a). Inaczej quest utknąłby w aktywnych bez UI
+    // do turn-inu.
+    if (
+      (quest.autoCompleteIfHas === 'race' && p.raceId) ||
+      (quest.autoCompleteIfHas === 'class' && p.classId)
+    ) {
+      const turn = this.turnIn(p, questId);
+      if (turn.ok) line += `\n${turn.line}`;
+    }
     return { ok: true, line };
   }
 

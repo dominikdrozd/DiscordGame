@@ -12,6 +12,7 @@ export const marekPickRace: QuestDef = {
     'Marek prosi cię żebyś zdecydował **kim jesteś**. Otwórz `/menu` → 🧬 Rasa, zobacz opisy i wybierz przez `/race pick id:<id>`. Wróć do Marka.',
   giverNpcId: 'marek',
   prerequisiteQuestIds: ['first_steps'],
+  autoCompleteIfHas: 'race',
   reward: {
     gold: 100,
     xp: 50,
