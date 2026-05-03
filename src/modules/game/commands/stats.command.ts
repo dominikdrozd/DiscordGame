@@ -4,7 +4,6 @@ import {
   type ChatInputCommandInteraction,
 } from 'discord.js';
 import type {
-  ICommand,
   ICommandContext,
   ISlashCommand,
 } from '../../../types/command.types.js';
@@ -13,13 +12,13 @@ import { fmtInstance } from '../services/items.js';
 import { RACES } from '../races/index.js';
 import { CLASSES, findSubclass, findSubclass2 } from '../classes/index.js';
 import { displayName } from '../../../utils.js';
+import { BaseCommand } from './base.command.js';
 
-export class StatsCommand implements ICommand, ISlashCommand {
+export class StatsCommand extends BaseCommand implements ISlashCommand {
   readonly name = 'stats';
   readonly prefix = '.stats';
   readonly description =
     'Pokazuje profil gracza: poziom PvP, skille, atrybuty, ekwipunek, statystyki walki. Użycie: `.stats` lub `.stats @user` lub `/stats [user]`.';
-  readonly requiresPrompt = false;
 
   readonly slashDefinition = new SlashCommandBuilder()
     .setName('stats')
@@ -29,15 +28,8 @@ export class StatsCommand implements ICommand, ISlashCommand {
     )
     .toJSON();
 
-  constructor(private readonly stats: PlayerStatsService) {}
-
-  matches(content: string): boolean {
-    const t = content.trim();
-    return t === this.prefix || t.startsWith(this.prefix + ' ');
-  }
-
-  extractPrompt(content: string): string {
-    return content.slice(this.prefix.length).trim();
+  constructor(private readonly stats: PlayerStatsService) {
+    super();
   }
 
   async execute(ctx: ICommandContext): Promise<void> {

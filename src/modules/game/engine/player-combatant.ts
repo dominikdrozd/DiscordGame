@@ -2,7 +2,6 @@ import { type Combatant } from './combat.js';
 import type { PlayerStats } from '../services/player-stats.js';
 import type { PlayerStatsService } from '../services/player-stats.js';
 import { isCombatConsumable } from '../services/items.js';
-import { CLASSES, findSubclass, findSubclass2 } from '../classes/index.js';
 
 function snapshotConsumables(p: PlayerStats): Record<string, number> {
   const out: Record<string, number> = {};
@@ -25,19 +24,9 @@ export function buildPlayerCombatant(
     (stats.critBonus(p) + stats.critBonusFromEquipment(p)) / 100;
   const speed = stats.effectiveSpeed(p);
   const consumables = snapshotConsumables(p);
-  const skills: string[] = [];
-  if (p.classId) {
-    const cls = CLASSES[p.classId];
-    if (cls) skills.push(...cls.startingSkills);
-    if (p.subclassId) {
-      const sc = findSubclass(p.classId, p.subclassId);
-      if (sc) skills.push(...sc.bonusSkills);
-      if (p.subclass2Id) {
-        const sc2 = findSubclass2(p.classId, p.subclassId, p.subclass2Id);
-        if (sc2) skills.push(...sc2.bonusSkills);
-      }
-    }
-  }
+  // Wczytujemy z `learnedSkills` — auto-fill robiony przez applyClass /
+  // applySubclass / book drops; `/skills learn` dla ręcznej nauki.
+  const skills = [...p.learnedSkills];
   return {
     id: p.id,
     name: p.name,
@@ -47,6 +36,7 @@ export function buildPlayerCombatant(
     defenseBonus,
     critBonus,
     speed,
+    primary: { ...p.primary },
     defending: false,
     // Gracze NIE dostają darmowych potek — używają tylko tych z plecaka.
     // `potionsLeft` zostawiamy dla AI/bossów (mob.toCombatant ustawia własne).

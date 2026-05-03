@@ -15,6 +15,7 @@ import { DialogService } from './dialog.service.js';
 import { ExpeditionService } from './expedition.service.js';
 import { CraftService } from './craft.service.js';
 import { BossService } from './boss.service.js';
+import { SpellsService } from './spells.service.js';
 
 export interface MenuGatherers {
   mine: GatheringCommand;
@@ -49,6 +50,7 @@ export class MenuService {
     private readonly crafting: CraftService,
     private readonly bosses: BossService,
     private readonly inventory: MenuInventoryOpener,
+    private readonly spells: SpellsService,
   ) {}
 
   async handle(ctx: ICommandContext): Promise<void> {
@@ -124,6 +126,7 @@ export class MenuService {
     }
     if (action === 'craft') return this.crafting.openFromInteraction(interaction);
     if (action === 'boss') return this.bosses.openFromInteraction(interaction);
+    if (action === 'spells') return this.spells.openFromInteraction(interaction);
     if (action === 'dungeon') return this.update(interaction, this.renderDungeonList(player), true);
     if (action === 'mine') return this.runGather(interaction, player, this.gatherers.mine);
     if (action === 'fish') return this.runGather(interaction, player, this.gatherers.fish);

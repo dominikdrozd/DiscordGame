@@ -4,13 +4,13 @@ import {
   type ChatInputCommandInteraction,
 } from 'discord.js';
 import type {
-  ICommand,
   ICommandContext,
   ISlashCommand,
 } from '../../../types/command.types.js';
 import { DuelService } from '../services/duel.service.js';
+import { BaseCommand } from './base.command.js';
 
-export class DuelCommand implements ICommand, ISlashCommand {
+export class DuelCommand extends BaseCommand implements ISlashCommand {
   readonly name = 'duel';
   readonly prefix = '.duel';
   readonly description =
@@ -24,14 +24,8 @@ export class DuelCommand implements ICommand, ISlashCommand {
     )
     .toJSON();
 
-  constructor(private readonly duels: DuelService) {}
-
-  matches(content: string): boolean {
-    return content.startsWith(this.prefix + ' ') || content.trim() === this.prefix;
-  }
-
-  extractPrompt(content: string): string {
-    return content.slice(this.prefix.length).trim();
+  constructor(private readonly duels: DuelService) {
+    super();
   }
 
   async execute(ctx: ICommandContext): Promise<void> {

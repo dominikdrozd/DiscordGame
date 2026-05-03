@@ -6,7 +6,6 @@ import {
   type ChatInputCommandInteraction,
 } from 'discord.js';
 import type {
-  ICommand,
   ICommandContext,
   ISlashCommand,
 } from '../../../types/command.types.js';
@@ -14,6 +13,7 @@ import { DialogService } from '../services/dialog.service.js';
 import { getCity, listCities } from '../cities/index.js';
 import { findNpcCity, getNpc } from '../npcs/index.js';
 import { displayName } from '../../../utils.js';
+import { BaseCommand } from './base.command.js';
 
 /**
  * Cienki access-point do rozmów z NPC. Cała logika dialogu w `DialogService`.
@@ -23,12 +23,11 @@ import { displayName } from '../../../utils.js';
  *  - `.talk <city_id> <npc_id>` / `/talk start npc:<id>` — start rozmowy
  *  - `.talk <npc_id>` — skrót (znajdź miasto NPC automatycznie)
  */
-export class TalkCommand implements ICommand, ISlashCommand {
+export class TalkCommand extends BaseCommand implements ISlashCommand {
   readonly name = 'talk';
   readonly prefix = '.talk';
   readonly description =
     'Rozmowa z NPC. `.talk` lista, `.talk <city> <npc>` start. `/talk list|start` ephemeral.';
-  readonly requiresPrompt = false;
 
   readonly slashDefinition = new SlashCommandBuilder()
     .setName('talk')
@@ -48,15 +47,8 @@ export class TalkCommand implements ICommand, ISlashCommand {
     )
     .toJSON();
 
-  constructor(private readonly dialog: DialogService) {}
-
-  matches(content: string): boolean {
-    const t = content.trim();
-    return t === this.prefix || t.startsWith(this.prefix + ' ');
-  }
-
-  extractPrompt(content: string): string {
-    return content.slice(this.prefix.length).trim();
+  constructor(private readonly dialog: DialogService) {
+    super();
   }
 
   async execute(ctx: ICommandContext): Promise<void> {

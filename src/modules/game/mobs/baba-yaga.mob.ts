@@ -1,12 +1,16 @@
-import { Mob, type MobReward } from './mob.js';
+import { Mob, type MobReward, type MobTier } from './mob.js';
+import type { PrimaryStats } from '../services/player-stats.js';
 
 export class BabaYaga extends Mob {
   readonly id = 'baba_jaga';
   readonly name = 'Baba Jaga z Bloku';
-  readonly hp = 160;
-  readonly damageBonus = 9;
+  readonly tier: MobTier = 3;
+  readonly hp = 130;
+  readonly damageBonus = 12;
   override readonly defenseBonus = 3;
   override readonly critBonus = 0.1;
+  override readonly speed = 3;
+  override readonly primary: PrimaryStats = { str: 6, agi: 2, wit: 6, int: 16 };
   override readonly potions = 2;
   readonly description = 'Zna nalewki, klątwy i numer do skarbówki.';
   override readonly skills = ['trucizna', 'lodowy_grad'];
@@ -27,5 +31,10 @@ export class BabaYaga extends Mob {
     rolls: 3,
     dropPool: ['sword_silver', 'armor_silver'],
     guaranteedDropChance: 0.7,
+    bookDrops: [
+      { skillId: 'blood_vortex', chance: 0.02 },
+      { skillId: 'second_wind', chance: 0.02 },
+      { skillId: 'saviors_grace', chance: 0.02 },
+    ],
   };
 }

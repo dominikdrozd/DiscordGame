@@ -35,6 +35,7 @@ import { awardReward } from './reward.service.js';
 import { buildPanelOpenerRow, buildTargetRow } from '../ui/battle-buttons.js';
 import { buildBossBrowseRows } from '../ui/boss-buttons.js';
 import { ITEMS } from './items.js';
+import { SKILLS } from '../skills/index.js';
 import { type Mob } from '../mobs/index.js';
 import { displayName, errMsg } from '../../../utils.js';
 
@@ -201,6 +202,16 @@ export class BossService {
         const pool = def.rewards.dropPool.map((id) => ITEMS[id]?.name ?? id).join(', ');
         const chance = Math.round((def.rewards.guaranteedDropChance ?? 0) * 100);
         lines.push(`• 🎁 Rzadki drop (${chance}%): ${pool}`);
+      }
+      if (def.rewards.bookDrops && def.rewards.bookDrops.length > 0) {
+        const books = def.rewards.bookDrops
+          .map((b) => {
+            const skill = SKILLS[b.skillId];
+            const pct = Math.round(b.chance * 100);
+            return `**${skill?.name ?? b.skillId}** (${pct}%)`;
+          })
+          .join(', ');
+        lines.push(`• 📜 Księgi super-spelli: ${books}`);
       }
     }
     const cdLeft = this.stats.remainingCooldown(player, 'boss');

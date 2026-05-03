@@ -17,6 +17,11 @@ export interface ClassDef {
   role: Role;
   description: string;
   primaryBonus: PrimaryStats;
+  /**
+   * Bazowa inicjatywa klasy — niezależna od AGI. Sumuje się z AGI
+   * i bonusami z ekwipunku w `effectiveSpeed`. Gracz bez klasy ma 0.
+   */
+  baseSpeed: number;
   startingSkills: string[];
   subclasses: SubclassDef[];
 }
@@ -31,6 +36,7 @@ export const CLASSES: Record<string, ClassDef> = {
     role: 'Tank',
     description: 'Mur i tarcza — ściąga aggro, redukuje obrażenia, dużo HP.',
     primaryBonus: { str: 2, agi: 0, wit: 1, int: 0 },
+    baseSpeed: 2,
     startingSkills: ['taunt', 'tarcza_jelita'],
     subclasses: [
       {
@@ -87,6 +93,7 @@ export const CLASSES: Record<string, ClassDef> = {
     role: 'DPS',
     description: 'Sztylety, trucizny, krity z cienia.',
     primaryBonus: { str: 1, agi: 2, wit: 0, int: 0 },
+    baseSpeed: 7,
     startingSkills: ['cios_w_plecy', 'trucizna'],
     subclasses: [
       {
@@ -143,6 +150,7 @@ export const CLASSES: Record<string, ClassDef> = {
     role: 'DPS',
     description: 'AoE i kontrola — żywioły dzikie, mózg jeszcze dzikszy.',
     primaryBonus: { str: 0, agi: 0, wit: 0, int: 3 },
+    baseSpeed: 4,
     startingSkills: ['kula_ognia', 'lodowy_grad'],
     subclasses: [
       {
@@ -199,6 +207,7 @@ export const CLASSES: Record<string, ClassDef> = {
     role: 'Healer',
     description: 'Natura, regeneracja, hybryda heal+def.',
     primaryBonus: { str: 0, agi: 1, wit: 1, int: 1 },
+    baseSpeed: 5,
     startingSkills: ['splot_korzeni', 'kora_debu'],
     subclasses: [
       {
@@ -255,6 +264,7 @@ export const CLASSES: Record<string, ClassDef> = {
     role: 'Healer',
     description: 'Wiara, burst heal, tarcze. Może wskrzesić raz na dungeon.',
     primaryBonus: { str: 0, agi: 0, wit: 1, int: 2 },
+    baseSpeed: 3,
     startingSkills: ['swiate_uzdrowienie', 'tarcza_wiary'],
     subclasses: [
       {

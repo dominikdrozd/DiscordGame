@@ -5,7 +5,6 @@ import {
   type ChatInputCommandInteraction,
 } from 'discord.js';
 import type {
-  ICommand,
   ICommandContext,
   ISlashCommand,
 } from '../../../types/command.types.js';
@@ -21,13 +20,13 @@ import {
   fmtPrimary,
 } from '../classes/index.js';
 import { displayName } from '../../../utils.js';
+import { BaseCommand } from './base.command.js';
 
-export class ClassCommand implements ICommand, ISlashCommand {
+export class ClassCommand extends BaseCommand implements ISlashCommand {
   readonly name = 'class';
   readonly prefix = '.class';
   readonly description =
     'Klasy. `.class` lista; `.class info/pick/subclass/subclass2/reset <id>`. Slash: `/class list|info|pick|subclass|subclass2|reset`.';
-  readonly requiresPrompt = false;
 
   readonly slashDefinition = new SlashCommandBuilder()
     .setName('class')
@@ -68,15 +67,8 @@ export class ClassCommand implements ICommand, ISlashCommand {
     .addSubcommand((sc) => sc.setName('reset').setDescription('Cofnij wybór klasy/subklas'))
     .toJSON();
 
-  constructor(private readonly stats: PlayerStatsService) {}
-
-  matches(content: string): boolean {
-    const t = content.trim();
-    return t === this.prefix || t.startsWith(this.prefix + ' ');
-  }
-
-  extractPrompt(content: string): string {
-    return content.slice(this.prefix.length).trim();
+  constructor(private readonly stats: PlayerStatsService) {
+    super();
   }
 
   async execute(ctx: ICommandContext): Promise<void> {
@@ -165,7 +157,7 @@ export class ClassCommand implements ICommand, ISlashCommand {
     const lines = [
       `🛡️ **${cls.name}** (\`${cls.id}\`) — ${cls.role}`,
       cls.description,
-      `*Bonus primary:* ${fmtPrimary(cls.primaryBonus)}`,
+      `*Bonus primary:* ${fmtPrimary(cls.primaryBonus)} · *base ⚡speed:* ${cls.baseSpeed}`,
       `*Skille startowe:* ${cls.startingSkills.join(', ')}`,
       '',
       '**Subklasy** (unlock @ combat lvl ' + SUBCLASS_UNLOCK_LEVEL + '):',
@@ -188,7 +180,7 @@ export class ClassCommand implements ICommand, ISlashCommand {
   private tryPick(player: PlayerStats, id: string): string {
     const cls = getClass(id);
     if (!cls) return `Nie ma klasy \`${id}\`.`;
-    const result = this.stats.applyClass(player, cls.id, cls.primaryBonus);
+    const result = this.stats.applyClass(player, cls.id, cls.primaryBonus, cls.startingSkills);
     if (!result.ok) return result.reason ?? 'Nie udało się wybrać klasy.';
     this.stats.save();
     return `✅ Witaj wśród **${cls.name}** (${cls.role}). Otrzymujesz: ${fmtPrimary(cls.primaryBonus)}, skille: ${cls.startingSkills.join(', ')}.`;
@@ -208,6 +200,7 @@ export class ClassCommand implements ICommand, ISlashCommand {
       sc.id,
       sc.primaryBonus,
       SUBCLASS_UNLOCK_LEVEL,
+      sc.bonusSkills,
     );
     if (!result.ok) return result.reason ?? 'Nie udało się wybrać subklasy.';
     this.stats.save();
@@ -229,6 +222,7 @@ export class ClassCommand implements ICommand, ISlashCommand {
       sc2.id,
       sc2.primaryBonus,
       SUBCLASS2_UNLOCK_LEVEL,
+      sc2.bonusSkills,
     );
     if (!result.ok) return result.reason ?? 'Nie udało się wybrać tier-2 subklasy.';
     this.stats.save();

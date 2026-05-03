@@ -7,7 +7,6 @@ import {
   type ChatInputCommandInteraction,
 } from 'discord.js';
 import type {
-  ICommand,
   ICommandContext,
   ISlashCommand,
 } from '../../../types/command.types.js';
@@ -15,13 +14,13 @@ import { CityService } from '../services/city.service.js';
 import { CITIES, listCities } from '../cities/index.js';
 import { ITEMS } from '../services/items.js';
 import { PlayerStatsService } from '../services/player-stats.js';
+import { BaseCommand } from './base.command.js';
 
-export class CityCommand implements ICommand, ISlashCommand {
+export class CityCommand extends BaseCommand implements ISlashCommand {
   readonly name = 'city';
   readonly prefix = '.city';
   readonly description =
     'Miasta i handel. `/city list|info|shop|buy|sell` lub `.city ...`.';
-  readonly requiresPrompt = false;
 
   readonly slashDefinition = new SlashCommandBuilder()
     .setName('city')
@@ -73,15 +72,8 @@ export class CityCommand implements ICommand, ISlashCommand {
   constructor(
     private readonly city: CityService,
     private readonly stats: PlayerStatsService,
-  ) {}
-
-  matches(content: string): boolean {
-    const t = content.trim();
-    return t === this.prefix || t.startsWith(this.prefix + ' ');
-  }
-
-  extractPrompt(content: string): string {
-    return content.slice(this.prefix.length).trim();
+  ) {
+    super();
   }
 
   async execute(ctx: ICommandContext): Promise<void> {

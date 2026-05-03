@@ -4,7 +4,6 @@ import {
   type ChatInputCommandInteraction,
 } from 'discord.js';
 import type {
-  ICommand,
   ICommandContext,
   ISlashCommand,
 } from '../../../types/command.types.js';
@@ -14,6 +13,7 @@ import {
   type PrimaryAttribute,
 } from '../services/player-stats.js';
 import { displayName } from '../../../utils.js';
+import { BaseCommand } from './base.command.js';
 
 const VALID: readonly PrimaryAttribute[] = ['str', 'agi', 'wit', 'int'];
 
@@ -21,12 +21,11 @@ function isPrimaryAttribute(s: string): s is PrimaryAttribute {
   return s === 'str' || s === 'agi' || s === 'wit' || s === 'int';
 }
 
-export class SkillsCommand implements ICommand, ISlashCommand {
+export class SkillsCommand extends BaseCommand implements ISlashCommand {
   readonly name = 'skills';
   readonly prefix = '.skills';
   readonly description =
     'Atrybuty primary. `.skills` pokazuje stan; `.skills add <str|agi|wit|int> <punkty>` rozdziela niewyłożone punkty.';
-  readonly requiresPrompt = false;
 
   readonly slashDefinition = new SlashCommandBuilder()
     .setName('skills')
@@ -54,15 +53,8 @@ export class SkillsCommand implements ICommand, ISlashCommand {
     )
     .toJSON();
 
-  constructor(private readonly stats: PlayerStatsService) {}
-
-  matches(content: string): boolean {
-    const t = content.trim();
-    return t === this.prefix || t.startsWith(this.prefix + ' ');
-  }
-
-  extractPrompt(content: string): string {
-    return content.slice(this.prefix.length).trim();
+  constructor(private readonly stats: PlayerStatsService) {
+    super();
   }
 
   async execute(ctx: ICommandContext): Promise<void> {

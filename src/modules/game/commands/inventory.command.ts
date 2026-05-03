@@ -5,33 +5,25 @@ import {
   type ChatInputCommandInteraction,
 } from 'discord.js';
 import type {
-  ICommand,
   ICommandContext,
   ISlashCommand,
 } from '../../../types/command.types.js';
 import { InventoryService } from '../services/inventory.service.js';
+import { BaseCommand } from './base.command.js';
 
-export class InventoryCommand implements ICommand, ISlashCommand {
+export class InventoryCommand extends BaseCommand implements ISlashCommand {
   readonly name = 'inv';
   readonly prefix = '.inv';
   readonly description =
     'Otwiera plecak w prywatnym wątku — `/inv` lub `.inv`. Każdy item ma toggle Załóż/Zdejmij.';
-  readonly requiresPrompt = false;
 
   readonly slashDefinition = new SlashCommandBuilder()
     .setName('inv')
     .setDescription('Otwórz plecak w prywatnym wątku')
     .toJSON();
 
-  constructor(private readonly inventory: InventoryService) {}
-
-  matches(content: string): boolean {
-    const t = content.trim();
-    return t === this.prefix || t.startsWith(this.prefix + ' ');
-  }
-
-  extractPrompt(content: string): string {
-    return content.slice(this.prefix.length).trim();
+  constructor(private readonly inventory: InventoryService) {
+    super();
   }
 
   async execute(ctx: ICommandContext): Promise<void> {

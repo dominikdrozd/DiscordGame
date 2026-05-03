@@ -7,6 +7,7 @@ import { ExpeditionService } from '../../src/modules/game/services/expedition.se
 import { CraftService } from '../../src/modules/game/services/craft.service.js';
 import { BossService } from '../../src/modules/game/services/boss.service.js';
 import { DialogService } from '../../src/modules/game/services/dialog.service.js';
+import { SpellsService } from '../../src/modules/game/services/spells.service.js';
 import { hasSlashCommand } from '../../src/types/command.types.js';
 import { tmpPlayerFile } from '../helpers/factories.js';
 
@@ -39,6 +40,7 @@ describe('MenuCommand /menu slash command', () => {
     const craft = new CraftService(stats);
     const bosses = new BossService(stats);
     const dialog = new DialogService(stats);
+    const spells = new SpellsService(stats);
     const noopOpener = { openShopFromInteraction: async () => {} };
     const noopInvOpener = { openInventoryFromInteraction: async () => {} };
     const noopGather = { runGather: () => '' };
@@ -53,6 +55,7 @@ describe('MenuCommand /menu slash command', () => {
       craft,
       bosses,
       noopInvOpener,
+      spells,
     );
     menuCmd = new MenuCommand(menu);
   });

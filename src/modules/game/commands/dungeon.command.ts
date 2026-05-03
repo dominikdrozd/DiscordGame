@@ -5,19 +5,18 @@ import {
   type ChatInputCommandInteraction,
 } from 'discord.js';
 import type {
-  ICommand,
   ICommandContext,
   ISlashCommand,
 } from '../../../types/command.types.js';
 import { DungeonService } from '../services/dungeon.service.js';
 import { DUNGEONS } from '../engine/encounters.js';
+import { BaseCommand } from './base.command.js';
 
-export class DungeonCommand implements ICommand, ISlashCommand {
+export class DungeonCommand extends BaseCommand implements ISlashCommand {
   readonly name = 'dungeon';
   readonly prefix = '.dungeon';
   readonly description =
     'Multi-encounter dungeon. `/dungeon id:<id>` lub `.dungeon <id>`. Cooldown 30 min.';
-  readonly requiresPrompt = false;
 
   readonly slashDefinition = new SlashCommandBuilder()
     .setName('dungeon')
@@ -27,15 +26,8 @@ export class DungeonCommand implements ICommand, ISlashCommand {
     )
     .toJSON();
 
-  constructor(private readonly dungeons: DungeonService) {}
-
-  matches(content: string): boolean {
-    const t = content.trim();
-    return t === this.prefix || t.startsWith(this.prefix + ' ');
-  }
-
-  extractPrompt(content: string): string {
-    return content.slice(this.prefix.length).trim();
+  constructor(private readonly dungeons: DungeonService) {
+    super();
   }
 
   async execute(ctx: ICommandContext): Promise<void> {

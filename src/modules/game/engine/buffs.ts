@@ -1,6 +1,16 @@
 import type { Combatant } from './combat.js';
 
-export type BuffKind = 'dot' | 'hot' | 'shield' | 'defense_amp' | 'damage_amp' | 'taunt' | 'slow';
+export type BuffKind =
+  | 'dot'
+  | 'hot'
+  | 'shield'
+  | 'defense_amp'
+  | 'damage_amp'
+  | 'taunt'
+  | 'slow'
+  | 'lifesteal'
+  | 'evasion'
+  | 'crit_amp';
 
 export interface Buff {
   id: string;
@@ -77,6 +87,24 @@ export function isControlled(_c: Combatant): boolean {
 export function getTauntCasterId(c: Combatant): string | undefined {
   if (!c.buffs) return undefined;
   return c.buffs.find((b) => b.kind === 'taunt')?.casterId;
+}
+
+/** Suma % lifesteal z aktywnych buffów (1-100). 0 = brak. */
+export function getLifestealPercent(c: Combatant): number {
+  if (!c.buffs) return 0;
+  return c.buffs.filter((b) => b.kind === 'lifesteal').reduce((s, b) => s + (b.amount ?? 0), 0);
+}
+
+/** Suma % evasion z aktywnych buffów — sumuje się z bazowym DODGE_CHANCE. */
+export function getEvasionPercent(c: Combatant): number {
+  if (!c.buffs) return 0;
+  return c.buffs.filter((b) => b.kind === 'evasion').reduce((s, b) => s + (b.amount ?? 0), 0);
+}
+
+/** Suma bonus crit % z aktywnych buffów (sumuje się z critBonus z primary). */
+export function getCritAmp(c: Combatant): number {
+  if (!c.buffs) return 0;
+  return c.buffs.filter((b) => b.kind === 'crit_amp').reduce((s, b) => s + (b.amount ?? 0), 0);
 }
 
 export function addBuff(c: Combatant, buff: Buff): void {

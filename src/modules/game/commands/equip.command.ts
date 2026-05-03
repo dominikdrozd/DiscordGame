@@ -5,15 +5,15 @@ import {
   type ChatInputCommandInteraction,
 } from 'discord.js';
 import type {
-  ICommand,
   ICommandContext,
   ISlashCommand,
 } from '../../../types/command.types.js';
 import { PlayerStatsService, type PlayerStats } from '../services/player-stats.js';
 import { fmtInstance } from '../services/items.js';
 import { displayName } from '../../../utils.js';
+import { BaseCommand } from './base.command.js';
 
-export class EquipCommand implements ICommand, ISlashCommand {
+export class EquipCommand extends BaseCommand implements ISlashCommand {
   readonly name = 'equip';
   readonly prefix = '.equip';
   readonly description =
@@ -31,14 +31,8 @@ export class EquipCommand implements ICommand, ISlashCommand {
     )
     .toJSON();
 
-  constructor(private readonly stats: PlayerStatsService) {}
-
-  matches(content: string): boolean {
-    return content.startsWith(this.prefix + ' ') || content.trim() === this.prefix;
-  }
-
-  extractPrompt(content: string): string {
-    return content.slice(this.prefix.length).trim();
+  constructor(private readonly stats: PlayerStatsService) {
+    super();
   }
 
   async execute(ctx: ICommandContext): Promise<void> {

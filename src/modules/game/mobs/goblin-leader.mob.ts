@@ -1,12 +1,15 @@
 import { Mob, type MobReward, type MobTier } from './mob.js';
+import type { PrimaryStats } from '../services/player-stats.js';
 
 export class GoblinLeader extends Mob {
   readonly id = 'goblin_lider';
   readonly name = 'Goblin Lider Frytkowy';
   readonly tier: MobTier = 2;
-  readonly hp = 75;
-  readonly damageBonus = 5;
+  readonly hp = 95;
+  readonly damageBonus = 7;
   override readonly defenseBonus = 1;
+  override readonly speed = 5;
+  override readonly primary: PrimaryStats = { str: 7, agi: 3, wit: 4, int: 0 };
   override readonly potions = 1;
   readonly description = 'Dowódca bandy goblinów spod fast-foodu, dorabia w call-center.';
   override readonly skills = ['cios_w_plecy', 'taunt'];
@@ -27,5 +30,9 @@ export class GoblinLeader extends Mob {
     rolls: 3,
     dropPool: ['sword_iron', 'armor_iron'],
     guaranteedDropChance: 0.6,
+    bookDrops: [
+      { skillId: 'time_shield', chance: 0.02 },
+      { skillId: 'mana_burst', chance: 0.02 },
+    ],
   };
 }

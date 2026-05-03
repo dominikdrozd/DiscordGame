@@ -8,21 +8,20 @@ import {
   type ChatInputCommandInteraction,
 } from 'discord.js';
 import type {
-  ICommand,
   ICommandContext,
   ISlashCommand,
 } from '../../../types/command.types.js';
 import { PartyService, MAX_PARTY } from '../services/party.js';
 import { displayName } from '../../../utils.js';
+import { BaseCommand } from './base.command.js';
 
-export class PartyCommand implements ICommand, ISlashCommand {
+export class PartyCommand extends BaseCommand implements ISlashCommand {
   readonly name = 'party';
   readonly prefix = '.party';
   readonly description =
     'Party. `.party` / `/party status`; `create`; `invite @user`; `leave`; `kick @user`; `disband`. Max ' +
     MAX_PARTY +
     ' osób.';
-  readonly requiresPrompt = false;
 
   readonly slashDefinition = new SlashCommandBuilder()
     .setName('party')
@@ -67,15 +66,8 @@ export class PartyCommand implements ICommand, ISlashCommand {
     .addSubcommand((sc) => sc.setName('disband').setDescription('Rozwiąż party (lider only)'))
     .toJSON();
 
-  constructor(private readonly party: PartyService) {}
-
-  matches(content: string): boolean {
-    const t = content.trim();
-    return t === this.prefix || t.startsWith(this.prefix + ' ');
-  }
-
-  extractPrompt(content: string): string {
-    return content.slice(this.prefix.length).trim();
+  constructor(private readonly party: PartyService) {
+    super();
   }
 
   async execute(ctx: ICommandContext): Promise<void> {

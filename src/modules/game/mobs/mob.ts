@@ -1,5 +1,13 @@
 import type { Combatant } from '../engine/combat.js';
 import type { LootEntry } from '../services/loot.js';
+import type { PrimaryStats } from '../services/player-stats.js';
+
+export interface BookDrop {
+  /** ID super-spella w SKILLS rejestrze. */
+  skillId: string;
+  /** Szansa na drop księgi (0-1). */
+  chance: number;
+}
 
 export interface MobReward {
   xp: number;
@@ -8,6 +16,11 @@ export interface MobReward {
   rolls?: number;
   dropPool?: string[];
   guaranteedDropChance?: number;
+  /**
+   * Księgi super-spelli — każda rolowana niezależnie. Auto-grant do
+   * `learnedSkills` przy dropie (gracz nie musi nic robić).
+   */
+  bookDrops?: BookDrop[];
 }
 
 export type MobTier = 1 | 2 | 3 | 4 | 5;
@@ -37,6 +50,12 @@ export abstract class Mob {
   readonly critBonus?: number;
   /** Inicjatywa moba — wyższy = atakuje przed graczem o niższym speed. */
   readonly speed?: number;
+  /**
+   * Atrybuty primary moba — domyślnie zera. INT napędza spellPower (×2),
+   * pozostałe wchodzą w skill scaling przez `caster.primary` w skillach.
+   * Skalują się z TIER_MULTIPLIERS razem z hp/dmg.
+   */
+  readonly primary?: PrimaryStats;
   readonly potions: number = 0;
   readonly skills: readonly string[] = [];
   readonly attackLines?: readonly string[];
@@ -56,6 +75,12 @@ export abstract class Mob {
     const damageBonus = Math.round(this.damageBonus * mult);
     const defenseBonus =
       this.defenseBonus !== undefined ? Math.round(this.defenseBonus * mult) : undefined;
+    const primary: PrimaryStats = {
+      str: Math.round((this.primary?.str ?? 0) * mult),
+      agi: Math.round((this.primary?.agi ?? 0) * mult),
+      wit: Math.round((this.primary?.wit ?? 0) * mult),
+      int: Math.round((this.primary?.int ?? 0) * mult),
+    };
     return {
       id,
       name,
@@ -65,6 +90,8 @@ export abstract class Mob {
       defenseBonus,
       critBonus: this.critBonus,
       speed: this.speed,
+      primary,
+      spellPower: primary.int * 2,
       defending: false,
       potionsLeft: this.potions,
       skills: this.skills.length ? [...this.skills] : undefined,

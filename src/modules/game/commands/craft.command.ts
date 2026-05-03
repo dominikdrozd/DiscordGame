@@ -4,32 +4,24 @@ import {
   type ChatInputCommandInteraction,
 } from 'discord.js';
 import type {
-  ICommand,
   ICommandContext,
   ISlashCommand,
 } from '../../../types/command.types.js';
 import { CraftService } from '../services/craft.service.js';
+import { BaseCommand } from './base.command.js';
 
-export class CraftCommand implements ICommand, ISlashCommand {
+export class CraftCommand extends BaseCommand implements ISlashCommand {
   readonly name = 'craft';
   readonly prefix = '.craft';
   readonly description = 'Crafting. `/craft` ephemeral browser; `.craft <recipeId>` szybki craft.';
-  readonly requiresPrompt = false;
 
   readonly slashDefinition = new SlashCommandBuilder()
     .setName('craft')
     .setDescription('Otwórz interaktywny browser craftingu (ephemeral)')
     .toJSON();
 
-  constructor(private readonly crafting: CraftService) {}
-
-  matches(content: string): boolean {
-    const t = content.trim();
-    return t === this.prefix || t.startsWith(this.prefix + ' ');
-  }
-
-  extractPrompt(content: string): string {
-    return content.slice(this.prefix.length).trim();
+  constructor(private readonly crafting: CraftService) {
+    super();
   }
 
   async execute(ctx: ICommandContext): Promise<void> {

@@ -19,6 +19,10 @@ export function buildMenuRows(userId: string): ActionRowBuilder<ButtonBuilder>[]
       .setLabel('✨ Skills')
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
+      .setCustomId(id('spells', userId))
+      .setLabel('📘 Spelle')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
       .setCustomId(id('party', userId))
       .setLabel('👥 Party')
       .setStyle(ButtonStyle.Primary),
@@ -72,16 +76,7 @@ export function buildMenuRows(userId: string): ActionRowBuilder<ButtonBuilder>[]
   return [row1, row2, row3, row4];
 }
 
-/** Dolny rząd "← Menu" + close — wstawiany pod każdy sub-view menu. */
-export function buildBackToMenuRow(userId: string): ActionRowBuilder<ButtonBuilder> {
-  return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId(id('back', userId))
-      .setLabel('← Menu')
-      .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId(id('close', userId))
-      .setLabel('✖ Zamknij')
-      .setStyle(ButtonStyle.Danger),
-  );
-}
+/** Dolny rząd "← Menu" + close — re-export z `browser-buttons.ts` żeby
+ * jedno źródło prawdy dla wszystkich sub-views (boss/craft/exp/spells/menu).
+ */
+export { buildBackToMenuRow } from './browser-buttons.js';

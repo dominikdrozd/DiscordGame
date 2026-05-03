@@ -4,19 +4,19 @@ import {
   type ChatInputCommandInteraction,
 } from 'discord.js';
 import type {
-  ICommand,
   ICommandContext,
   ISlashCommand,
 } from '../../../types/command.types.js';
 import { PlayerStatsService, type PlayerStats } from '../services/player-stats.js';
 import { fmtInstance, type ItemSlot } from '../services/items.js';
 import { displayName } from '../../../utils.js';
+import { BaseCommand } from './base.command.js';
 
 function isItemSlot(s: string): s is ItemSlot {
   return s === 'weapon' || s === 'armor' || s === 'tool';
 }
 
-export class UnequipCommand implements ICommand, ISlashCommand {
+export class UnequipCommand extends BaseCommand implements ISlashCommand {
   readonly name = 'unequip';
   readonly prefix = '.unequip';
   readonly description =
@@ -38,14 +38,8 @@ export class UnequipCommand implements ICommand, ISlashCommand {
     )
     .toJSON();
 
-  constructor(private readonly stats: PlayerStatsService) {}
-
-  matches(content: string): boolean {
-    return content.startsWith(this.prefix + ' ') || content.trim() === this.prefix;
-  }
-
-  extractPrompt(content: string): string {
-    return content.slice(this.prefix.length).trim();
+  constructor(private readonly stats: PlayerStatsService) {
+    super();
   }
 
   async execute(ctx: ICommandContext): Promise<void> {

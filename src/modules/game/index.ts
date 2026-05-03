@@ -35,6 +35,8 @@ import {
 } from './services/menu.service.js';
 import { DialogService } from './services/dialog.service.js';
 import { TalkCommand } from './commands/talk.command.js';
+import { SpellsService } from './services/spells.service.js';
+import { SpellsCommand } from './commands/spells.command.js';
 
 export interface GameServices {
   stats: PlayerStatsService;
@@ -77,6 +79,7 @@ export function registerGameCommands(manager: CommandManager, services: GameServ
   const mineCmd = new MineCommand(stats);
   const fishCmd = new FishCommand(stats);
   const chopCmd = new ChopCommand(stats);
+  const spells = new SpellsService(stats);
 
   // Adapter: button click "🛒 Sklep" w widoku miasta → CityService.openShopForUser
   // z thread-routingiem do CityCommand (żeby wątek miał TTL i dispatch wiadomości).
@@ -151,6 +154,7 @@ export function registerGameCommands(manager: CommandManager, services: GameServ
     crafting,
     bosses,
     inventoryOpener,
+    spells,
   );
 
   manager.register(new DuelCommand(duels));
@@ -171,6 +175,7 @@ export function registerGameCommands(manager: CommandManager, services: GameServ
   manager.register(new ClassCommand(stats));
   manager.register(cityCommand);
   manager.register(talkCommand);
+  manager.register(new SpellsCommand(spells, stats));
   manager.register(new MenuCommand(menu));
 }
 

@@ -37,6 +37,8 @@ export function makePlayer(overrides: Partial<PlayerStats> = {}): PlayerStats {
     unspentPoints: 0,
     attribute: { attack: 0, defense: 0, hp: 0, crit: 0 },
     primary: { str: 0, agi: 0, wit: 0, int: 0 },
+    learnedSkills: [],
+    unlearnedBooks: [],
     activeExpedition: null,
     cooldowns: {},
   };

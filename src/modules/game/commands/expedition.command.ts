@@ -4,33 +4,25 @@ import {
   type ChatInputCommandInteraction,
 } from 'discord.js';
 import type {
-  ICommand,
   ICommandContext,
   ISlashCommand,
 } from '../../../types/command.types.js';
 import { ExpeditionService } from '../services/expedition.service.js';
+import { BaseCommand } from './base.command.js';
 
-export class ExpeditionCommand implements ICommand, ISlashCommand {
+export class ExpeditionCommand extends BaseCommand implements ISlashCommand {
   readonly name = 'expedition';
   readonly prefix = '.expedition';
   readonly description =
     'Wyprawy. `/expedition` browser ephemeral; `.expedition` browser publiczny; `.expedition start/claim/status` subkomendy.';
-  readonly requiresPrompt = false;
 
   readonly slashDefinition = new SlashCommandBuilder()
     .setName('expedition')
     .setDescription('Otwórz browser wypraw (ephemeral) lub zarządzaj aktywną wyprawą')
     .toJSON();
 
-  constructor(private readonly expeditions: ExpeditionService) {}
-
-  matches(content: string): boolean {
-    const t = content.trim();
-    return t === this.prefix || t.startsWith(this.prefix + ' ');
-  }
-
-  extractPrompt(content: string): string {
-    return content.slice(this.prefix.length).trim();
+  constructor(private readonly expeditions: ExpeditionService) {
+    super();
   }
 
   async execute(ctx: ICommandContext): Promise<void> {

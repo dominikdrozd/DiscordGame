@@ -1,4 +1,12 @@
-import { getDamageAmp, getDefenseAmp, consumeShield } from './buffs.js';
+import {
+  getDamageAmp,
+  getDefenseAmp,
+  consumeShield,
+  getLifestealPercent,
+  getEvasionPercent,
+  getCritAmp,
+} from './buffs.js';
+import type { PrimaryStats } from '../services/player-stats.js';
 
 export const ATTACK_NAMES = [
   'Cios Zatrutego Pieroga',
@@ -91,8 +99,10 @@ export interface Combatant {
   skillCooldowns?: Record<string, number>;
   /** aktywne buffy / debuffy (DoT, HoT, shield, taunt, slow, def_amp, dmg_amp) */
   buffs?: import('./buffs.js').Buff[];
-  /** spell power — INT bonus do skill damage/heal */
+  /** spell power — derive: primary.int * 2; cached snapshot z player-stats / mob */
   spellPower?: number;
+  /** Snapshot primary stats (STR/AGI/WIT/INT) — używane przez skill scaling. */
+  primary?: PrimaryStats;
   /** flavor lines używane jako nazwa ataku (zamiast globalnego ATTACK_NAMES) */
   attackLines?: string[];
 }
@@ -101,9 +111,21 @@ export function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+function applyLifesteal(attacker: Combatant, dmgDealt: number): string {
+  const pct = getLifestealPercent(attacker);
+  if (pct <= 0 || dmgDealt <= 0) return '';
+  const heal = Math.floor((dmgDealt * pct) / 100);
+  if (heal <= 0) return '';
+  const before = attacker.hp;
+  attacker.hp = Math.min(attacker.maxHp, attacker.hp + heal);
+  const restored = attacker.hp - before;
+  return restored > 0 ? ` 🩸 (+${restored} HP lifesteal)` : '';
+}
+
 export function applyAttack(attacker: Combatant, defender: Combatant): string {
   const attackName = pick(attacker.attackLines ?? ATTACK_NAMES);
-  if (Math.random() < DODGE_CHANCE) {
+  const dodgeChance = DODGE_CHANCE + getEvasionPercent(defender) / 100;
+  if (Math.random() < dodgeChance) {
     return `**${attacker.name}** ładuje **${attackName}**, ale **${defender.name}** odpala **${pick(DODGE_NAMES)}** i unika!`;
   }
   let baseDmg = 10 + Math.floor(Math.random() * 21) + attacker.damageBonus + getDamageAmp(attacker);
@@ -111,7 +133,7 @@ export function applyAttack(attacker: Combatant, defender: Combatant): string {
   if (totalDef > 0) {
     baseDmg = Math.max(1, baseDmg - totalDef);
   }
-  const critChance = CRIT_CHANCE + (attacker.critBonus ?? 0);
+  const critChance = CRIT_CHANCE + (attacker.critBonus ?? 0) + getCritAmp(attacker) / 100;
   const crit = Math.random() < critChance;
   let dmg = crit ? baseDmg * CRIT_MULTIPLIER : baseDmg;
   const critTag = crit ? ' 💥 **KRYT!**' : '';
@@ -123,15 +145,17 @@ export function applyAttack(attacker: Combatant, defender: Combatant): string {
     const shield = consumeShield(defender, dmg);
     dmg = shield.remaining;
     defender.hp = Math.max(0, defender.hp - dmg);
+    const lifestealNote = applyLifesteal(attacker, dmg);
     const shieldNote = shield.absorbed > 0 ? ` (tarcza pochłonęła ${shield.absorbed})` : '';
-    return `⚔️ **${attacker.name}** przebija **${attackName}** przez gardę **${defender.name}** i robi **${dmg}** dmg${critTag}${shieldNote} (obrona nieskuteczna).`;
+    return `⚔️ **${attacker.name}** przebija **${attackName}** przez gardę **${defender.name}** i robi **${dmg}** dmg${critTag}${shieldNote}${lifestealNote} (obrona nieskuteczna).`;
   }
   const shieldOpen = consumeShield(defender, dmg);
   dmg = shieldOpen.remaining;
   defender.hp = Math.max(0, defender.hp - dmg);
+  const lifestealNote = applyLifesteal(attacker, dmg);
   const shieldOpenNote =
     shieldOpen.absorbed > 0 ? ` (tarcza pochłonęła ${shieldOpen.absorbed})` : '';
-  return `⚔️ **${attacker.name}** odpala **${attackName}** i robi **${dmg}** dmg.${critTag}${shieldOpenNote}`;
+  return `⚔️ **${attacker.name}** odpala **${attackName}** i robi **${dmg}** dmg.${critTag}${shieldOpenNote}${lifestealNote}`;
 }
 
 export function applyDefend(p: Combatant): string {

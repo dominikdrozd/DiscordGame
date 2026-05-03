@@ -5,20 +5,19 @@ import {
   type ChatInputCommandInteraction,
 } from 'discord.js';
 import type {
-  ICommand,
   ICommandContext,
   ISlashCommand,
 } from '../../../types/command.types.js';
 import { PlayerStatsService, type PlayerStats } from '../services/player-stats.js';
 import { RACES, getRace, listRaces, fmtRaceStats } from '../races/index.js';
 import { displayName } from '../../../utils.js';
+import { BaseCommand } from './base.command.js';
 
-export class RaceCommand implements ICommand, ISlashCommand {
+export class RaceCommand extends BaseCommand implements ISlashCommand {
   readonly name = 'race';
   readonly prefix = '.race';
   readonly description =
     'Rasy. `.race` lista; `.race info/pick/reset <id>`. Slash: `/race list|info|pick|reset`.';
-  readonly requiresPrompt = false;
 
   readonly slashDefinition = new SlashCommandBuilder()
     .setName('race')
@@ -43,15 +42,8 @@ export class RaceCommand implements ICommand, ISlashCommand {
     .addSubcommand((sc) => sc.setName('reset').setDescription('Cofnij wybór rasy'))
     .toJSON();
 
-  constructor(private readonly stats: PlayerStatsService) {}
-
-  matches(content: string): boolean {
-    const t = content.trim();
-    return t === this.prefix || t.startsWith(this.prefix + ' ');
-  }
-
-  extractPrompt(content: string): string {
-    return content.slice(this.prefix.length).trim();
+  constructor(private readonly stats: PlayerStatsService) {
+    super();
   }
 
   async execute(ctx: ICommandContext): Promise<void> {
