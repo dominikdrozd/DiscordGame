@@ -1,5 +1,8 @@
 import { City, type Merchant } from './city.js';
 import { Npc } from '../npcs/npc.js';
+import { Janosz } from '../npcs/oakhaven/janosz.npc.js';
+import { Eryk } from '../npcs/oakhaven/eryk.npc.js';
+import { Borut } from '../npcs/oakhaven/borut.npc.js';
 
 export class Oakhaven extends City {
   readonly id = 'oakhaven';
@@ -7,7 +10,7 @@ export class Oakhaven extends City {
   readonly description =
     'Główne miasto ludzkie, osadzone wokół potężnego dębu. Centrum handlu Serca Quelthasee.';
   readonly region = 2;
-  readonly npcs: Npc[] = [];
+  readonly npcs: Npc[] = [new Janosz(), new Eryk(), new Borut()];
   readonly merchants: Merchant[] = [
     {
       id: 'lesnik_olaf',

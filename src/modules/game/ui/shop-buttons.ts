@@ -1,6 +1,8 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 
 export const MAX_SELL_QTY = 5;
+/** Bulk-buy qtys dostępne na pojedynczym buttonie. */
+export const BUY_QTYS: readonly number[] = [1, 5, 10];
 
 function id(action: string, cityId: string, userId: string, itemId?: string, arg?: string): string {
   let s = `shop:${action}:${cityId}:${userId}`;
@@ -20,13 +22,18 @@ export interface ShopItemRowData {
 }
 
 export function buildShopItemRows(data: ShopItemRowData): ActionRowBuilder<ButtonBuilder>[] {
-  const main = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId(id('buy', data.cityId, data.userId, data.itemId))
-      .setLabel(`Kup (${data.buyPrice} zł)`)
-      .setStyle(ButtonStyle.Success)
-      .setDisabled(data.playerGold < data.buyPrice),
-  );
+  // Trzy buttony bulk-buy (×1 / ×5 / ×10) — każdy disabled gdy nie stać.
+  const main = new ActionRowBuilder<ButtonBuilder>();
+  for (const qty of BUY_QTYS) {
+    const cost = data.buyPrice * qty;
+    main.addComponents(
+      new ButtonBuilder()
+        .setCustomId(id('buy', data.cityId, data.userId, data.itemId, String(qty)))
+        .setLabel(`Kup ×${qty} (${cost} zł)`)
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(data.playerGold < cost),
+    );
+  }
   if (data.haveQty > 0) {
     main.addComponents(
       new ButtonBuilder()

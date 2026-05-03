@@ -159,11 +159,31 @@ export async function recordItemPick(
   state: BattleState,
 ): Promise<boolean> {
   const [, battleId, combatantId, itemId] = interaction.customId.split(':');
-  if (state.id !== battleId) return false;
-  if (interaction.user.id !== combatantId) return false;
-  if (state.pending.has(combatantId)) return false;
+  if (state.id !== battleId) {
+    await interaction
+      .update({ content: 'Ten przycisk dotyczy innej walki.', components: [] })
+      .catch(() => {});
+    return false;
+  }
+  if (interaction.user.id !== combatantId) {
+    await interaction
+      .update({ content: 'To nie twój przycisk.', components: [] })
+      .catch(() => {});
+    return false;
+  }
+  if (state.pending.has(combatantId)) {
+    await interaction
+      .update({ content: 'Już wybrałeś akcję — czekamy na pozostałych.', components: [] })
+      .catch(() => {});
+    return false;
+  }
   const me = findCombatant(state, combatantId);
-  if (!me || me.hp <= 0) return false;
+  if (!me || me.hp <= 0) {
+    await interaction
+      .update({ content: 'Już nie żyjesz w tej walce.', components: [] })
+      .catch(() => {});
+    return false;
+  }
 
   // potion_small jest łączony — sprawdzamy zarówno darmowy pool (potionsLeft)
   // jak i plecak. Pozostałe consumables tylko z plecaka.
@@ -218,11 +238,31 @@ export async function handleSkillPick(
   state: BattleState,
 ): Promise<boolean> {
   const [, battleId, combatantId, skillId] = interaction.customId.split(':');
-  if (state.id !== battleId) return false;
-  if (interaction.user.id !== combatantId) return false;
-  if (state.pending.has(combatantId)) return false;
+  if (state.id !== battleId) {
+    await interaction
+      .update({ content: 'Ten przycisk dotyczy innej walki.', components: [] })
+      .catch(() => {});
+    return false;
+  }
+  if (interaction.user.id !== combatantId) {
+    await interaction
+      .update({ content: 'To nie twój przycisk.', components: [] })
+      .catch(() => {});
+    return false;
+  }
+  if (state.pending.has(combatantId)) {
+    await interaction
+      .update({ content: 'Już wybrałeś akcję — czekamy na pozostałych.', components: [] })
+      .catch(() => {});
+    return false;
+  }
   const me = findCombatant(state, combatantId);
-  if (!me || me.hp <= 0) return false;
+  if (!me || me.hp <= 0) {
+    await interaction
+      .update({ content: 'Już nie żyjesz w tej walce.', components: [] })
+      .catch(() => {});
+    return false;
+  }
   const skill = getSkill(skillId);
   if (!skill) {
     await interaction.update({ content: 'Nieznany skill.', components: [] }).catch(() => {});
@@ -276,13 +316,38 @@ export async function handleSkillTarget(
   const parts = interaction.customId.split(':');
   const [, battleId, combatantId, skillId] = parts;
   const targetId = parts.slice(4).join(':');
-  if (state.id !== battleId) return false;
-  if (interaction.user.id !== combatantId) return false;
-  if (state.pending.has(combatantId)) return false;
+  if (state.id !== battleId) {
+    await interaction
+      .update({ content: 'Ten przycisk dotyczy innej walki.', components: [] })
+      .catch(() => {});
+    return false;
+  }
+  if (interaction.user.id !== combatantId) {
+    await interaction
+      .update({ content: 'To nie twój przycisk.', components: [] })
+      .catch(() => {});
+    return false;
+  }
+  if (state.pending.has(combatantId)) {
+    await interaction
+      .update({ content: 'Już wybrałeś akcję — czekamy na pozostałych.', components: [] })
+      .catch(() => {});
+    return false;
+  }
   const me = findCombatant(state, combatantId);
-  if (!me || me.hp <= 0) return false;
+  if (!me || me.hp <= 0) {
+    await interaction
+      .update({ content: 'Już nie żyjesz w tej walce.', components: [] })
+      .catch(() => {});
+    return false;
+  }
   const skill = getSkill(skillId);
-  if (!skill) return false;
+  if (!skill) {
+    await interaction
+      .update({ content: 'Nieznany skill.', components: [] })
+      .catch(() => {});
+    return false;
+  }
   const target = findCombatant(state, targetId);
   if (!target || target.hp <= 0) {
     await interaction.update({ content: 'Cel padł.', components: [] }).catch(() => {});

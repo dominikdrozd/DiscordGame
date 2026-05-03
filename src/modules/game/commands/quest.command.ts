@@ -161,6 +161,9 @@ export class QuestCommand extends BaseCommand implements ISlashCommand {
     const active = this.quests.active(p);
     const completed = this.quests.completed(p);
     const available = this.quests.available(p);
+    const abandoned = p.quests.abandoned
+      .map((id) => this.quests.allQuests().find((q) => q.id === id))
+      .filter((q): q is QuestDef => !!q);
     const lines: string[] = ['📜 **Questy**'];
 
     lines.push('');
@@ -177,6 +180,13 @@ export class QuestCommand extends BaseCommand implements ISlashCommand {
     lines.push(`**Ukończone (${completed.length}):**`);
     if (completed.length === 0) lines.push('_jeszcze żadnego._');
     else for (const q of completed) lines.push(`✅ **${q.name}**`);
+
+    if (abandoned.length > 0) {
+      lines.push('');
+      lines.push(`**Porzucone (${abandoned.length}):**`);
+      for (const q of abandoned)
+        lines.push(`🗑️ **${q.name}** — _możesz wziąć ponownie u ${q.giverNpcId}._`);
+    }
 
     lines.push('');
     lines.push(`**Dostępne (${available.length}):**`);

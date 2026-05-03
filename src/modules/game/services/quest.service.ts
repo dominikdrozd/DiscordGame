@@ -66,12 +66,24 @@ export class QuestService {
     return p.quests.completed.map((id) => QUESTS[id]).filter((q): q is QuestDef => !!q);
   }
 
+  /** Wszystkie zarejestrowane questy — używane przez QuestCommand do
+   * resolvowania abandoned IDs do QuestDef. */
+  allQuests(): QuestDef[] {
+    return Object.values(QUESTS);
+  }
+
   // ── Actions ────────────────────────────────────────
 
   canTake(p: PlayerStats, quest: QuestDef): { ok: boolean; reason?: string } {
-    if (this.isStarted(p, quest.id)) {
-      return { ok: false, reason: 'Już brałeś tego questa.' };
+    // Aktywny → już masz, nie da się drugi raz wziąć.
+    if (p.quests.active.includes(quest.id)) {
+      return { ok: false, reason: 'Quest jest już aktywny.' };
     }
+    // Ukończony → permanentne, nie można powtarzać.
+    if (p.quests.completed.includes(quest.id)) {
+      return { ok: false, reason: 'Quest już ukończony.' };
+    }
+    // Porzucony → MOŻNA wziąć ponownie (`take()` wyczyści entry w abandoned).
     if (quest.requiredCombatLevel && p.skills.combat.level < quest.requiredCombatLevel) {
       return {
         ok: false,
@@ -95,8 +107,15 @@ export class QuestService {
     if (!quest) return { ok: false, line: `Nie ma questa \`${questId}\`.` };
     const check = this.canTake(p, quest);
     if (!check.ok) return { ok: false, line: `🚫 ${check.reason}` };
+    // Retake z porzuconych — usuń z abandoned listy.
+    const wasAbandoned = p.quests.abandoned.includes(quest.id);
+    if (wasAbandoned) {
+      p.quests.abandoned = p.quests.abandoned.filter((id) => id !== quest.id);
+    }
     p.quests.active.push(quest.id);
-    let line = `📜 Wziąłeś questa: **${quest.name}**.`;
+    let line = wasAbandoned
+      ? `📜 Bierzesz questa **${quest.name}** ponownie.`
+      : `📜 Wziąłeś questa: **${quest.name}**.`;
     // Tutorialowe questy mogą mieć materialsOnTake — Marek "daje" graczowi
     // surowce na craftowanie narzędzia, żeby gracz nie musiał grindować.
     if (quest.materialsOnTake) {

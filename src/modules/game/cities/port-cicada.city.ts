@@ -1,13 +1,16 @@
 import { City, type Merchant } from './city.js';
 import { Npc } from '../npcs/npc.js';
 import { Marek } from '../npcs/port_cykada/marek.npc.js';
+import { Bartek } from '../npcs/port_cykada/bartek.npc.js';
+import { Hela } from '../npcs/port_cykada/hela.npc.js';
+import { Olek } from '../npcs/port_cykada/olek.npc.js';
 
 export class PortCicada extends City {
   readonly id = 'port_cykada';
   readonly name = 'Port Cykada';
   readonly description = 'Miasto startowe i główny port handlowy. Tu zaczyna się każda przygoda.';
   readonly region = 1;
-  readonly npcs: Npc[] = [new Marek()];
+  readonly npcs: Npc[] = [new Marek(), new Bartek(), new Hela(), new Olek()];
   readonly merchants: Merchant[] = [
     {
       id: 'rybak_borys',

@@ -72,14 +72,17 @@ describe('city UI buttons', () => {
     expect(allBtns.some((b) => b.custom_id === 'menu:close:p1')).toBe(true);
   });
 
-  test('buildCityViewRows: miasto bez NPC ma tylko shop + back', () => {
+  test('buildCityViewRows: miasto z wieloma NPC dorzuca citytalk button per NPC', () => {
     const oakhaven = listCities().find((c) => c.id === 'oakhaven');
     if (!oakhaven) throw new Error('oakhaven missing');
     const rows = rowsToJson(buildCityViewRows(oakhaven.id, oakhaven.npcs, 'p1'));
     const ids = rows.flatMap((r) => r.components).map((b) => b.custom_id);
-    expect(ids.some((id) => id.startsWith('menu:citytalk:'))).toBe(false);
     expect(ids).toContain('menu:cityshop:oakhaven:p1');
     expect(ids).toContain('menu:citylist:p1');
+    // Po dodaniu profession chains Oakhaven ma 3 NPC.
+    for (const npc of oakhaven.npcs) {
+      expect(ids).toContain(`menu:citytalk:oakhaven:${npc.id}:p1`);
+    }
   });
 
   test('buildDialogOptionRows: opcja "end" ma styl Danger, reszta Primary', () => {

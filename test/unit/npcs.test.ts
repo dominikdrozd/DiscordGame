@@ -23,16 +23,23 @@ function collectReachableNodes(d: Dialog): Set<string> {
 }
 
 describe('NPC registry & dialog graphs', () => {
-  test('Port Cykada has Marek registered with id "marek"', () => {
+  test('Port Cykada has Marek + 3 profession-chain starters (bartek/hela/olek)', () => {
     const city = listCities().find((c) => c.id === 'port_cykada');
     expect(city).toBeDefined();
-    expect(city?.npcs.map((n) => n.id)).toEqual(['marek']);
+    expect(city?.npcs.map((n) => n.id).sort()).toEqual(
+      ['bartek', 'hela', 'marek', 'olek'].sort(),
+    );
   });
 
-  test('other cities (region 2-4) start with empty NPC list', () => {
-    for (const id of ['oakhaven', 'krasnoludzka_twierdza', 'czarna_cytadela']) {
-      const c = listCities().find((x) => x.id === id);
-      expect(c?.npcs).toEqual([]);
+  test('Oakhaven, Twierdza, Cytadela mają po 3 NPC (gornik/rybak/drwal)', () => {
+    const expected: Record<string, string[]> = {
+      oakhaven: ['janosz', 'eryk', 'borut'],
+      krasnoludzka_twierdza: ['grom_kowal', 'druin', 'thordin'],
+      czarna_cytadela: ['wraul', 'lowca_krakena', 'straznik_drzewa'],
+    };
+    for (const [cityId, ids] of Object.entries(expected)) {
+      const c = listCities().find((x) => x.id === cityId);
+      expect(c?.npcs.map((n) => n.id).sort()).toEqual(ids.sort());
     }
   });
 
@@ -78,5 +85,35 @@ describe('NPC registry & dialog graphs', () => {
       n.options.some((o) => o.goto === 'end'),
     );
     expect(hasEndOption).toBe(true);
+  });
+
+  test('wszyscy NPC w rejestrze: dialog graf bez orphans + wszystkie goto valid', () => {
+    for (const city of listCities()) {
+      for (const npc of city.npcs) {
+        const dialog = npc.dialog;
+        const nodeIds = new Set(Object.keys(dialog.nodes));
+        for (const [nodeId, node] of Object.entries(dialog.nodes)) {
+          for (const opt of node.options) {
+            if (opt.goto === 'end') continue;
+            if (!nodeIds.has(opt.goto)) {
+              throw new Error(
+                `${npc.id}: node "${nodeId}" → "${opt.goto}" nie istnieje w grafie`,
+              );
+            }
+          }
+        }
+        const reachable = collectReachableNodes(dialog);
+        for (const id of nodeIds) {
+          if (!reachable.has(id)) {
+            throw new Error(`${npc.id}: node "${id}" nieosiągalny ze startNodeId`);
+          }
+        }
+        // każdy ma ≥1 path do end (przynajmniej "Bywaj.")
+        const hasEnd = Object.values(dialog.nodes).some((n) =>
+          n.options.some((o) => o.goto === 'end'),
+        );
+        if (!hasEnd) throw new Error(`${npc.id}: brak ścieżki do "end"`);
+      }
+    }
   });
 });

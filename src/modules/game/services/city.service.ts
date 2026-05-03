@@ -128,7 +128,7 @@ export class CityService {
     }
     this.resetIdleTimer(state);
 
-    if (action === 'buy') return this.handleBuy(interaction, state, itemId);
+    if (action === 'buy') return this.handleBuy(interaction, state, itemId, arg);
     if (action === 'sell') return this.handleSellMode(interaction, state, itemId);
     if (action === 'sellqty') return this.handleSellQty(interaction, state, itemId, arg);
     if (action === 'close') return this.handleClose(interaction, state);
@@ -414,24 +414,27 @@ export class CityService {
     interaction: ButtonInteraction,
     state: ShopState,
     itemId: string | undefined,
+    qtyArg: string | undefined,
   ): Promise<void> {
     const item = itemId ? this.findItem(state, itemId) : undefined;
     if (!item) {
       await interaction.reply({ content: 'Nieznany item.', ephemeral: true }).catch(() => {});
       return;
     }
+    const qty = Math.max(1, parseInt(qtyArg ?? '1', 10) || 1);
+    const totalCost = item.buyPrice * qty;
     const player = this.stats.get(state.userId);
-    if (!this.stats.hasGold(player, item.buyPrice)) {
+    if (!this.stats.hasGold(player, totalCost)) {
       await interaction
         .reply({
-          content: `Brakuje złota — masz ${player.gold}, potrzebujesz ${item.buyPrice}.`,
+          content: `Brakuje złota — masz ${player.gold}, potrzebujesz ${totalCost} (×${qty}).`,
           ephemeral: true,
         })
         .catch(() => {});
       return;
     }
-    this.stats.removeGold(player, item.buyPrice);
-    this.stats.addResource(player, item.itemId, 1);
+    this.stats.removeGold(player, totalCost);
+    this.stats.addResource(player, item.itemId, qty);
     this.stats.save();
     state.sellModeItems.delete(item.itemId);
     await this.refreshItemMessage(interaction, state, item);
