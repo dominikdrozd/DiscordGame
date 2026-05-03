@@ -41,6 +41,14 @@ export interface ActiveExpedition {
    * `endsAt += (now - ambushedSince)` żeby wydłużyć czas o trwanie walki.
    */
   ambushedSince?: number;
+  /**
+   * Forced final encounter na koniec ekspedycji — gracz musi pokonać moba
+   * z tierem ekspedycji ZANIM odbierze loot. Flag `true` po wygranej tej
+   * walki — oznacza że claim może faktycznie awardować rewardy.
+   * Przy pierwszym `claim` po endsAt: triggeruje walkę, set false → true
+   * po wygranej. Loss klieruje `activeExpedition = null`.
+   */
+  finalFightDone?: boolean;
 }
 
 export interface Inventory {

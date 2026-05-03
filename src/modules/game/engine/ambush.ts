@@ -158,6 +158,28 @@ export class AmbushService {
   }
 
   /**
+   * Forced final encounter na koniec ekspedycji — triggerowany przez
+   * `ExpeditionService.handleClaim` gdy gracz próbuje odebrać loot.
+   * Tworzy ambush identyczny z random ambushem, ale gwarantowany.
+   * Po wygranej `finishAmbush` ustawia `activeExpedition.finalFightDone`,
+   * pozwalając kolejnemu klikowi "Zbierz" awardować rewardy.
+   */
+  async triggerForcedFinaleFor(playerId: string): Promise<boolean> {
+    if (this.hasActiveAmbushForPlayer(playerId)) return false;
+    const player = this.stats.get(playerId);
+    const exp = player.activeExpedition;
+    if (!exp) return false;
+    if (exp.partyId) {
+      const party = this.party.get(exp.partyId);
+      if (!party) return false;
+      await this.triggerPartyAmbush(party);
+    } else {
+      await this.triggerAmbush(playerId);
+    }
+    return true;
+  }
+
+  /**
    * Odtwarza wątek ambushu w parent channelu po jego usunięciu.
    * Zwraca nowy thread (z API) lub null jeśli odtworzenie nieudane
    * (np. brak permissions, channel zniknął razem z wątkiem).
@@ -457,6 +479,11 @@ export class AmbushService {
           const elapsed = now - p.activeExpedition.ambushedSince;
           p.activeExpedition.endsAt += elapsed;
           p.activeExpedition.ambushedSince = undefined;
+        }
+        // Zaliczamy "final encounter" — każda wygrana ambush zalicza wymóg
+        // walki na końcu ekspedycji (random LUB forced przy claim).
+        if (p.activeExpedition) {
+          p.activeExpedition.finalFightDone = true;
         }
         this.logAmbush(
           p.id,

@@ -487,6 +487,23 @@ export class ExpeditionService {
         .catch(() => {});
       return;
     }
+    // Forced final encounter — gracz musi pokonać moba ZANIM odbierze
+    // łupy. Każda wygrana ambush w trakcie ekspedycji zalicza wymóg
+    // (finalFightDone=true). Jeśli gracz nie miał ambush'a — triggerujemy
+    // gwarantowanego na klik "Zbierz".
+    if (!player.activeExpedition.finalFightDone && this.ambushService) {
+      const triggered = await this.ambushService.triggerForcedFinaleFor(player.id);
+      if (triggered) {
+        await interaction
+          .reply({
+            content:
+              '⚔️ **Strażnik regionu zastępuje ci drogę!** Pokonaj go w wątku ambushu, potem kliknij **🎁 Zbierz** ponownie.',
+            ephemeral: true,
+          })
+          .catch(() => {});
+        return;
+      }
+    }
     const fromMenu = this.browsers.get(player.id)?.fromMenu ?? false;
     const summary = this.runClaim(player);
     this.logs.delete(player.id);
