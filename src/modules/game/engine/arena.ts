@@ -15,6 +15,8 @@ import { errMsg } from '../../../utils.js';
 const TICK_MS = 60_000;
 /** Codzienna godzina ogłoszenia areny (lokalna strefa). */
 const ARENA_HOUR = 18;
+/** Minuta w godzinie. */
+const ARENA_MINUTE = 10;
 /** Okno rejestracji od ogłoszenia do startu turnieju. */
 const REGISTRATION_WINDOW_MS = 15 * 60_000;
 const MIN_PARTICIPANTS = 2;
@@ -39,15 +41,15 @@ function hasSendable(c: unknown): c is { send: (payload: unknown) => Promise<unk
   return typeof (c as { send: unknown }).send === 'function';
 }
 
-/** Najbliższy timestamp 18:00 lokalnie po `now`. */
+/** Najbliższy timestamp ARENA_HOUR:ARENA_MINUTE lokalnie po `now`. */
 function nextArenaSlot(now: number): number {
   const d = new Date(now);
   const today = new Date(d);
-  today.setHours(ARENA_HOUR, 0, 0, 0);
+  today.setHours(ARENA_HOUR, ARENA_MINUTE, 0, 0);
   if (today.getTime() > now) return today.getTime();
   const tomorrow = new Date(d);
   tomorrow.setDate(tomorrow.getDate() + 1);
-  tomorrow.setHours(ARENA_HOUR, 0, 0, 0);
+  tomorrow.setHours(ARENA_HOUR, ARENA_MINUTE, 0, 0);
   return tomorrow.getTime();
 }
 
@@ -199,7 +201,12 @@ export class ArenaService {
 
   private async spawnAnnouncement(): Promise<void> {
     const channelId = process.env.ARENA_CHANNEL_ID ?? process.env.WORLD_BOSS_CHANNEL_ID;
-    if (!channelId) return;
+    if (!channelId) {
+      console.warn(
+        '[arena] ARENA_CHANNEL_ID (ani WORLD_BOSS_CHANNEL_ID) nie ustawione — pomijam announcement. Ustaw w .env żeby ogłaszać arenę.',
+      );
+      return;
+    }
     if (this.pendingEvent) return;
 
     const channel = await this.client.channels.fetch(channelId).catch(() => null);
@@ -208,21 +215,38 @@ export class ArenaService {
       return;
     }
 
+    // Pingujemy wszystkich graczy z profilem żeby dostali notyfikację —
+    // inaczej ogłoszenie utonie w kanale i nikt go nie zobaczy.
+    const allPlayers = this.stats.list();
+    const mentions = allPlayers.map((p) => `<@${p.id}>`);
+    // Discord 2000 char limit — przy >50 graczach dzielimy na batche.
+    const MENTION_BATCH = 50;
+
     const registrationEndsAt = Date.now() + REGISTRATION_WINDOW_MS;
     const sent = await channel
       .send({
         content: [
           '🏟️ **ARENA OTWARTA!**',
+          mentions.slice(0, MENTION_BATCH).join(' '),
           `Codzienny turniej PvP. Rejestracja **${Math.round(REGISTRATION_WINDOW_MS / 60_000)} min**.`,
           `Min ${MIN_PARTICIPANTS}, max ${MAX_PARTICIPANTS} graczy. Single-elimination — wygrywa jeden.`,
           `🏆 **Nagroda dla mistrza:** ${WINNER_GOLD} zł + ${WINNER_XP} PvP XP + ${WINNER_COMBAT_XP} combat XP.`,
           `🥈 **Runner-up:** ${RUNNER_UP_GOLD} zł + ${RUNNER_UP_XP} PvP XP.`,
           '',
           '_Gracze na ekspedycji nie mogą startować — kliknij **Anuluj wyprawę** żeby się zapisać._',
-        ].join('\n'),
+        ]
+          .filter(Boolean)
+          .join('\n')
+          .slice(0, 1900),
         components: [buildAnnounceRow()],
       })
       .catch(() => null);
+    // Dodatkowe batches mentions jeśli > 50 graczy.
+    for (let i = MENTION_BATCH; i < mentions.length; i += MENTION_BATCH) {
+      await channel
+        .send({ content: mentions.slice(i, i + MENTION_BATCH).join(' ').slice(0, 1900) })
+        .catch(() => {});
+    }
 
     const announceMsgId =
       sent && typeof sent === 'object' && 'id' in sent && typeof sent.id === 'string'
@@ -248,7 +272,7 @@ export class ArenaService {
     if (!evt) {
       await interaction
         .reply({
-          content: 'Rejestracja zamknięta — następna arena jutro o 18:00.',
+          content: 'Rejestracja zamknięta — następna arena jutro o 18:10.',
           ephemeral: true,
         })
         .catch(() => {});
@@ -442,7 +466,7 @@ export class ArenaService {
         ? `🥈 Runner-up: **${this.stats.get(result.runnerUpId).name}** (+${RUNNER_UP_GOLD} zł, +${RUNNER_UP_XP} XP).`
         : '',
       '',
-      'Następna arena jutro o 18:00.',
+      'Następna arena jutro o 18:10.',
     ]
       .filter(Boolean)
       .join('\n');

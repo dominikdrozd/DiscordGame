@@ -182,9 +182,14 @@ export class WorldBossService {
 
   private async spawnAnnouncement(): Promise<void> {
     const channelId = process.env.WORLD_BOSS_CHANNEL_ID;
-    if (!channelId) return; // brak konfiguracji — loop jest no-op
-    if (this.pendingEvent) return; // poprzedni event się jeszcze nie skończył
-    if (this.battles.size > 0) return; // poprzednia walka trwa
+    if (!channelId) {
+      console.warn(
+        '[world-boss] WORLD_BOSS_CHANNEL_ID nie ustawione — pomijam announcement. Ustaw w .env żeby ogłaszać world bossy.',
+      );
+      return;
+    }
+    if (this.pendingEvent) return;
+    if (this.battles.size > 0) return;
 
     const channel = await this.client.channels.fetch(channelId).catch(() => null);
     if (!channel || !hasSendable(channel)) {
@@ -192,19 +197,32 @@ export class WorldBossService {
       return;
     }
 
+    const allPlayers = this.stats.list();
+    const mentions = allPlayers.map((p) => `<@${p.id}>`);
+    const MENTION_BATCH = 50;
+
     const registrationEndsAt = Date.now() + REGISTRATION_WINDOW_MS;
     const sent = await channel
       .send({
         content: [
           '🌋 **POJAWIA SIĘ WORLD BOSS!**',
+          mentions.slice(0, MENTION_BATCH).join(' '),
           `Zbierzcie się w ciągu **${Math.round(REGISTRATION_WINDOW_MS / 60_000)} min** —`,
           `kliknij guzik poniżej, żeby dołączyć. Min ${MIN_PARTICIPANTS}, max ${MAX_PARTICIPANTS} graczy.`,
           'Tier bossa zostanie dopasowany do avg combat lvl uczestników.',
           'Drop: bazowe rewardy bossa + bonusowy lege/epicki item per gracz.',
-        ].join('\n'),
+        ]
+          .filter(Boolean)
+          .join('\n')
+          .slice(0, 1900),
         components: [buildAnnounceRow(channelId)],
       })
       .catch(() => null);
+    for (let i = MENTION_BATCH; i < mentions.length; i += MENTION_BATCH) {
+      await channel
+        .send({ content: mentions.slice(i, i + MENTION_BATCH).join(' ').slice(0, 1900) })
+        .catch(() => {});
+    }
 
     const announceMsgId =
       sent && typeof sent === 'object' && 'id' in sent && typeof sent.id === 'string'
