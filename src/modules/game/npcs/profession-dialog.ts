@@ -22,8 +22,6 @@ export interface ProfessionStage {
 export interface ProfessionDialogConfig {
   readonly intro: string;
   readonly stages: readonly ProfessionStage[];
-  /** Tekst pożegnalny kierujący do końca / lore. */
-  readonly farewell?: string;
 }
 
 function questBranch(stage: ProfessionStage): DialogOption[] {
@@ -122,10 +120,6 @@ export class ProfessionDialog extends Dialog {
           { label: 'Wstrzymaj się.', goto: 'intro' },
         ],
       };
-    }
-
-    if (cfg.farewell) {
-      nodes.intro.options.push({ label: cfg.farewell, goto: 'end' });
     }
 
     this.nodes = nodes;
