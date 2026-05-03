@@ -198,7 +198,7 @@ export class DialogService {
   // ── Helpers ────────────────────────────────────────
 
   private buildCtx(player: PlayerStats, npc: Npc): DialogContext {
-    return { player, npc, quests: this.quests };
+    return { player, npc, quests: this.quests, stats: this.stats };
   }
 
   private visibleOptions(

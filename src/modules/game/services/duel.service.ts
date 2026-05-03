@@ -32,6 +32,7 @@ import {
 } from '../engine/battle-helpers.js';
 import { buildPanelOpenerRow, buildTargetRow } from '../ui/battle-buttons.js';
 import { displayName, errMsg } from '../../../utils.js';
+import type { QuestService } from './quest.service.js';
 
 function hasThreadCreateLocal(
   c: unknown,
@@ -56,6 +57,7 @@ export class DuelService {
   constructor(
     private readonly stats: PlayerStatsService,
     private readonly party: PartyService,
+    private readonly quests?: QuestService,
   ) {}
 
   /** Slash `/duel user:@target` — ephemeral confirm + public thread z walką. */
@@ -99,6 +101,19 @@ export class DuelService {
     );
     const stats2 = this.stats.get(opponent.id, opponent.globalName || opponent.username);
 
+    if (stats1.activeExpedition) {
+      await interaction
+        .editReply({ content: '🚫 Jesteś na wyprawie — pojedynki niedostępne.' })
+        .catch(() => {});
+      return;
+    }
+    if (stats2.activeExpedition) {
+      await interaction
+        .editReply({ content: `🚫 <@${opponent.id}> jest na wyprawie — nie może walczyć teraz.` })
+        .catch(() => {});
+      return;
+    }
+
     let thread: unknown;
     try {
       thread = await channel.threads.create({
@@ -133,6 +148,17 @@ export class DuelService {
     }
     if (opponent.bot) {
       await msg.reply('Z botami się nie biję, znajdź sobie człowieka.');
+      return;
+    }
+
+    const myStats = this.stats.get(msg.author.id, displayName(msg));
+    if (myStats.activeExpedition) {
+      await msg.reply('🚫 Jesteś na wyprawie — pojedynki niedostępne. Dokończ wyprawę najpierw.');
+      return;
+    }
+    const oppStatsCheck = this.stats.get(opponent.id, opponent.globalName || opponent.username);
+    if (oppStatsCheck.activeExpedition) {
+      await msg.reply(`🚫 <@${opponent.id}> jest na wyprawie — nie może walczyć teraz.`);
       return;
     }
 
@@ -499,12 +525,19 @@ export class DuelService {
       const loseLines = award.losers.map(
         (l) => `💀 ${l.stats.name} L${l.stats.level} (+${l.gainedXp} XP)`,
       );
+      // Quest hook — auto-complete duel questów dla obu stron.
+      const questLines: string[] = [];
+      if (this.quests) {
+        for (const w of award.winners) questLines.push(...this.quests.onDuelComplete(w.stats, true));
+        for (const l of award.losers) questLines.push(...this.quests.onDuelComplete(l.stats, false));
+      }
       await postBattleSummary(
         state.thread,
         [
           `⚔️ **Party-duel zakończony!** Drużyna **${result.winnerTeam === 0 ? 'A' : 'B'}** wygrywa.`,
           ...winLines,
           ...loseLines,
+          ...questLines,
         ].join('\n'),
       );
       await closeBattleThread(state.thread, '🏁 Party-duel zakończony — wątek archiwizujemy.');
@@ -523,12 +556,19 @@ export class DuelService {
     const levelMsg = award.winnerLeveledUp
       ? `\n🎉 **${award.winner.name}** awansuje na poziom **${award.winner.level}**! (+1 punkt do rozdania)`
       : '';
+    // Quest hook — auto-complete duel questów dla obu stron.
+    const questLines: string[] = [];
+    if (this.quests) {
+      questLines.push(...this.quests.onDuelComplete(award.winner, true));
+      questLines.push(...this.quests.onDuelComplete(award.loser, false));
+    }
     await postBattleSummary(
       state.thread,
       [
         `⚔️ **Pojedynek rozstrzygnięty!**`,
         `💀 **${loserCombatant.name}** pada! Zwycięża **${winnerCombatant.name}** (${winnerCombatant.hp}/${winnerCombatant.maxHp} HP). 🏆`,
         `📈 ${winnerCombatant.name} L${award.winner.level} (${award.winner.xp} XP, ${award.winner.wins}W/${award.winner.losses}L) | ${loserCombatant.name} L${award.loser.level} (${award.loser.xp} XP, ${award.loser.wins}W/${award.loser.losses}L).${levelMsg}`,
+        ...questLines,
       ].join('\n'),
     );
     await closeBattleThread(state.thread, '🏁 Pojedynek zakończony — wątek archiwizujemy.');

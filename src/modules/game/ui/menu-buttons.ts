@@ -29,6 +29,28 @@ export function buildMenuRows(userId: string): ActionRowBuilder<ButtonBuilder>[]
   );
   const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
+      .setCustomId(id('race', userId))
+      .setLabel('🧬 Rasa')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(id('class', userId))
+      .setLabel('⚔️ Klasa')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(id('mine', userId))
+      .setLabel('⛏️ Mine')
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(id('fish', userId))
+      .setLabel('🎣 Fish')
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(id('chop', userId))
+      .setLabel('🪓 Chop')
+      .setStyle(ButtonStyle.Success),
+  );
+  const row3 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
       .setCustomId(id('exp', userId))
       .setLabel('🗺️ Wyprawy')
       .setStyle(ButtonStyle.Success),
@@ -49,25 +71,13 @@ export function buildMenuRows(userId: string): ActionRowBuilder<ButtonBuilder>[]
       .setLabel('🏰 Dungeony')
       .setStyle(ButtonStyle.Success),
   );
-  const row3 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId(id('mine', userId))
-      .setLabel('⛏️ Mine')
-      .setStyle(ButtonStyle.Success),
-    new ButtonBuilder()
-      .setCustomId(id('fish', userId))
-      .setLabel('🎣 Fish')
-      .setStyle(ButtonStyle.Success),
-    new ButtonBuilder()
-      .setCustomId(id('chop', userId))
-      .setLabel('🪓 Chop')
-      .setStyle(ButtonStyle.Success),
+  const row4 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(id('party', userId))
       .setLabel('👥 Party')
       .setStyle(ButtonStyle.Primary),
   );
-  const row4 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+  const row5 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(id('refresh', userId))
       .setLabel('🔄 Odśwież')
@@ -77,7 +87,7 @@ export function buildMenuRows(userId: string): ActionRowBuilder<ButtonBuilder>[]
       .setLabel('✖ Zamknij')
       .setStyle(ButtonStyle.Danger),
   );
-  return [row1, row2, row3, row4];
+  return [row1, row2, row3, row4, row5];
 }
 
 /** Dolny rząd "← Menu" + close — re-export z `browser-buttons.ts` żeby

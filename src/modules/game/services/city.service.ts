@@ -81,6 +81,13 @@ export class CityService {
 
   async handle(ctx: ICommandContext): Promise<void> {
     const { msg, prompt } = ctx;
+    const player = this.stats.get(msg.author.id, msg.author.globalName ?? msg.author.username);
+    if (player.activeExpedition) {
+      await msg.reply(
+        '🚫 Jesteś na wyprawie — nie możesz wejść do miasta. Wróć po `.expedition claim` (albo `🎁 Zbierz` w menu).',
+      );
+      return;
+    }
     const args = prompt.split(/\s+/).filter(Boolean);
     const sub = args[0] ?? '';
 

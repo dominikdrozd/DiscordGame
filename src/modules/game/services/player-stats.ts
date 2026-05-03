@@ -90,6 +90,11 @@ export interface PlayerStats {
     completed: string[];
     /** Porzucone — gracz wycofał się przed dokończeniem. */
     abandoned: string[];
+    /**
+     * Per-quest metadata zapisywana przy completionie — używane np. w
+     * dialogach żeby pokazać różne komentarze ("wygrałeś" / "przegrałeś").
+     */
+    meta?: Record<string, { wonDuel?: boolean }>;
   };
   activeExpedition?: ActiveExpedition | null;
   cooldowns: Record<string, number>;
@@ -123,7 +128,7 @@ function defaultPlayer(id: string, name: string): PlayerStats {
     primary: { str: 0, agi: 0, wit: 0, int: 0 },
     learnedSkills: [],
     unlearnedBooks: [],
-    quests: { active: [], completed: [], abandoned: [] },
+    quests: { active: [], completed: [], abandoned: [], meta: {} },
     activeExpedition: null,
     cooldowns: {},
   };
@@ -158,6 +163,8 @@ function ensureDefaults(p: any, id: string, name: string): PlayerStats {
       active: Array.isArray(p?.quests?.active) ? [...p.quests.active] : [],
       completed: Array.isArray(p?.quests?.completed) ? [...p.quests.completed] : [],
       abandoned: Array.isArray(p?.quests?.abandoned) ? [...p.quests.abandoned] : [],
+      meta:
+        typeof p?.quests?.meta === 'object' && p?.quests?.meta ? { ...p.quests.meta } : {},
     },
     gold: p?.gold ?? 100,
     raceId: p?.raceId,

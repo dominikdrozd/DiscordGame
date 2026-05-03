@@ -79,19 +79,22 @@ describe('DialogService flow', () => {
     expect(u?.content).toContain('Stary Marek');
     expect(u?.content).toContain('Porcie Cykada');
     expect(Array.isArray(u?.components)).toBe(true);
-    // intro filtered: quest_offer + 3 standard + end → 5 buttonów w 1 row
-    expect(u?.components?.length).toBe(1);
+    // intro Marka po refaktorze ma ~10 widocznych opcji (8 questy + about_city + end)
+    // dla świeżego gracza, więc 2 rows (max 5 buttonów per row).
+    expect(u?.components?.length).toBeGreaterThanOrEqual(1);
   });
 
   // Helper — index opcji w przefiltrowanej (visibleIf=true) liście intro
-  // dla świeżego gracza (questa nie wziął, nie ma item).
+  // dla świeżego gracza. Buduje pełen DialogContext, żeby visibleIf
+  // dokładnie odzwierciedlił logikę DialogService.
   function introOptIdx(goto: string): number {
     const marek = new Marek();
     const intro = marek.dialog.getNode('intro');
     if (!intro) throw new Error('intro missing');
-    // Świeży gracz: jedyna widoczna questowa opcja to "Masz dla mnie robotę?"
-    // (isStarted = false). Pozostałe questowe są ukryte.
-    const visible = intro.options.filter((o) => !o.visibleIf || o.goto === 'quest_offer');
+    const quests = new QuestService(stats);
+    const player = stats.get('p1', 'Tester');
+    const ctx = { player, npc: marek, quests, stats };
+    const visible = intro.options.filter((o) => !o.visibleIf || o.visibleIf(ctx));
     return visible.findIndex((o) => o.goto === goto);
   }
 

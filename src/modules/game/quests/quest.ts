@@ -29,8 +29,10 @@ export interface QuestDef {
   id: string;
   name: string;
   description: string;
-  /** Id NPC od którego się bierze (i u którego oddaje). */
+  /** Id NPC od którego się bierze (i u którego oddaje, jeśli `turnInNpcId` nie ustawione). */
   giverNpcId: string;
+  /** NPC u którego oddaje się questa (referral quests — domyślnie = giverNpcId). */
+  turnInNpcId?: string;
   /** Wymóg combat lvl żeby wziąć. */
   requiredCombatLevel?: number;
   /** Inne questy które muszą być completed (chain quests). */
@@ -40,9 +42,23 @@ export interface QuestDef {
    * Dropi się do `inventory.resources`.
    */
   expeditionDrop?: { itemId: string; chance: number };
+  /**
+   * Item dropujący z gatheringu (mining/fishing/woodcutting) dopóki quest
+   * aktywny. QuestService.onGathering(p, skill) hookuje GatheringCommand.
+   */
+  gatheringDrop?: { skill: 'mining' | 'fishing' | 'woodcutting'; itemId: string; chance: number };
   /** Wymagany item (consumed) na turn-in. */
   turnInItem?: { itemId: string; qty: number };
   /** Boss kill który auto-completuje questa (zamiast turn-inu). */
   killBoss?: string;
+  /** Auto-complete po udanym upgradzie u kowala. */
+  triggerOnUpgrade?: boolean;
+  /** Auto-complete po pojedynku PvP (wygrana lub przegrana). */
+  triggerOnDuel?: boolean;
+  /**
+   * Materiały dane graczowi przy `take()` — pomocne dla tutorialu (Marek
+   * "daje materiały na siekierę", gracz nie musi grindować sam).
+   */
+  materialsOnTake?: Record<string, number>;
   reward: QuestReward;
 }

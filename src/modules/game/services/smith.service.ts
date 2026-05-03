@@ -15,6 +15,7 @@ import {
 } from './items.js';
 import { getCity } from '../cities/index.js';
 import { buildSmithBrowseRows } from '../ui/smith-buttons.js';
+import type { QuestService } from './quest.service.js';
 
 /**
  * SmithService — system ulepszania itemów u kowala. Browser pattern z
@@ -76,7 +77,10 @@ function upgradeableItems(p: PlayerStats): ItemInstance[] {
 export class SmithService {
   private readonly browsers = new Map<string, BrowserState>();
 
-  constructor(private readonly stats: PlayerStatsService) {}
+  constructor(
+    private readonly stats: PlayerStatsService,
+    private readonly quests?: QuestService,
+  ) {}
 
   /** Wejście z `menu:cityblacksmith:<cityId>` — interaction.update na ephemeral. */
   async openFromInteraction(interaction: ButtonInteraction, cityId: string): Promise<void> {
@@ -195,9 +199,12 @@ export class SmithService {
       if (!item.upgrades) item.upgrades = [];
       item.upgrades.push(record);
       const bonusText = fmtStats({ ...record });
+      // Quest hook — auto-complete questy z `triggerOnUpgrade`.
+      const questLines = this.quests?.onItemUpgraded(p) ?? [];
+      const questSuffix = questLines.length > 0 ? `\n${questLines.join('\n')}` : '';
       return {
         ok: true,
-        line: `✅ **Sukces!** ${item.name} → **+${targetLvl}** (bonus: ${bonusText}). Koszt: ${cost}g, ${useDiamonds}💎.`,
+        line: `✅ **Sukces!** ${item.name} → **+${targetLvl}** (bonus: ${bonusText}). Koszt: ${cost}g, ${useDiamonds}💎.${questSuffix}`,
       };
     } else {
       // Failure: pop last upgrade record. If level was 0 — nothing to pop, item zostaje na 0.

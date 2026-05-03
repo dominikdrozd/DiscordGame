@@ -1,20 +1,19 @@
 import type { QuestDef } from './quest.js';
 
 /**
- * Pierwszy quest dany przez Marka w Porcie Cykada. Gracz idzie na wyprawy
- * w nadziei na drop "Cykada Token" (30% per claim). Z 1 tokenem wraca do
- * Marka po nagrodę. Demonstruje:
- *  - dialog conditional (Marek ofera quest tylko jak nie jest started)
- *  - expedition drop hook (token dropujący tylko gdy quest active)
- *  - turn-in via dialog effect (consumed item + reward)
+ * Q1 — pierwszy quest tutorialowy. Marek prosi o przyniesienie pamiątki
+ * z dowolnej wyprawy. Drop **100% per claim** dopóki quest aktywny —
+ * gracz musi WZIĄĆ questa przed wyprawą, inaczej token nie wpadnie.
+ *
+ * Demonstracja: dialog → take → expedition flow → claim → drop → turn-in.
  */
 export const firstSteps: QuestDef = {
   id: 'first_steps',
-  name: 'Pierwsze Kroki',
+  name: 'Pierwsza Wyprawa',
   description:
-    'Stary Marek prosi cię o przyniesienie pamiątki z wyprawy — **Cykada Token**. Idź na dowolną wyprawę, jest 30% szans że token wpadnie do plecaka. Wróć do Marka.',
+    'Idź na **dowolną wyprawę** mając tego questa aktywnego — Cykada Token wpadnie ci do plecaka po zakończeniu (100%). Wróć do Marka po nagrodę.',
   giverNpcId: 'marek',
-  expeditionDrop: { itemId: 'cykada_token', chance: 0.3 },
+  expeditionDrop: { itemId: 'cykada_token', chance: 1.0 },
   turnInItem: { itemId: 'cykada_token', qty: 1 },
   reward: {
     gold: 200,

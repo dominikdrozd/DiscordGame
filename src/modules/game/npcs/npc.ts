@@ -1,4 +1,4 @@
-import type { PlayerStats } from '../services/player-stats.js';
+import type { PlayerStats, PlayerStatsService } from '../services/player-stats.js';
 import type { QuestService } from '../services/quest.service.js';
 
 /**
@@ -47,6 +47,8 @@ export interface DialogContext {
    * Przekazywane przez DialogService przy renderze i obsłudze kliku.
    */
   readonly quests: QuestService;
+  /** PlayerStatsService — pozwala dialogowi mutować postać (applyRace/applyClass). */
+  readonly stats: PlayerStatsService;
 }
 
 export abstract class Npc {

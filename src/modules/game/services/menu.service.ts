@@ -4,8 +4,8 @@ import { PlayerStatsService, type PlayerStats } from './player-stats.js';
 import { PartyService } from './party.js';
 import { CITIES, getCity, listCities, type City } from '../cities/index.js';
 import { EXPEDITIONS, REGION_LVL_REQ } from '../engine/encounters.js';
-import { CLASSES, findSubclass, findSubclass2 } from '../classes/index.js';
-import { RACES } from '../races/index.js';
+import { CLASSES, findSubclass, findSubclass2, listClasses, fmtPrimary } from '../classes/index.js';
+import { RACES, listRaces, fmtRaceStats } from '../races/index.js';
 import { fmtStats } from './items.js';
 import { displayName } from '../../../utils.js';
 import { buildMenuRows, buildBackToMenuRow } from '../ui/menu-buttons.js';
@@ -111,9 +111,18 @@ export class MenuService {
     if (action === 'stats') return this.update(interaction, this.renderStats(player), true);
     if (action === 'inv') return this.inventory.openInventoryFromInteraction(interaction);
     if (action === 'skills') return this.update(interaction, this.renderSkills(player), true);
+    if (action === 'race') return this.update(interaction, this.renderRace(player), true);
+    if (action === 'class') return this.update(interaction, this.renderClass(player), true);
     if (action === 'party') return this.update(interaction, this.renderParty(player), true);
     if (action === 'exp') return this.expeditions.openFromInteraction(interaction);
     if (action === 'city' || action === 'citylist') {
+      if (player.activeExpedition) {
+        return this.update(
+          interaction,
+          '🚫 Jesteś na wyprawie — nie możesz wejść do miasta. Wróć po `🎁 Zbierz` w `/menu` → 🗺️ Wyprawy.',
+          true,
+        );
+      }
       return this.renderCityListView(interaction, player);
     }
     if (action === 'citypick') {
@@ -142,9 +151,27 @@ export class MenuService {
       return this.dialog.startFromInteraction(interaction, npcId);
     }
     if (action === 'craft') return this.crafting.openFromInteraction(interaction);
-    if (action === 'boss') return this.bosses.openFromInteraction(interaction);
+    if (action === 'boss') {
+      if (player.activeExpedition) {
+        return this.update(
+          interaction,
+          '🚫 Jesteś na wyprawie — bossowie niedostępni. Dokończ wyprawę najpierw.',
+          true,
+        );
+      }
+      return this.bosses.openFromInteraction(interaction);
+    }
     if (action === 'spells') return this.spells.openFromInteraction(interaction);
-    if (action === 'dungeon') return this.update(interaction, this.renderDungeonList(player), true);
+    if (action === 'dungeon') {
+      if (player.activeExpedition) {
+        return this.update(
+          interaction,
+          '🚫 Jesteś na wyprawie — dungeony niedostępne. Dokończ wyprawę najpierw.',
+          true,
+        );
+      }
+      return this.update(interaction, this.renderDungeonList(player), true);
+    }
     if (action === 'mine') return this.runGather(interaction, player, this.gatherers.mine);
     if (action === 'fish') return this.runGather(interaction, player, this.gatherers.fish);
     if (action === 'chop') return this.runGather(interaction, player, this.gatherers.chop);
@@ -250,6 +277,51 @@ export class MenuService {
       `🎯 Niewydane punkty primary: **${p.unspentPoints}**`,
       '_Punkty primary rozdzielisz przez `.skills add <str|agi|wit|int> <ile>`._',
     ].join('\n');
+  }
+
+  private renderRace(p: PlayerStats): string {
+    const lines: string[] = [`🧬 **Rasy** — twoja: **${p.raceId ? RACES[p.raceId]?.name ?? p.raceId : 'brak'}**`, ''];
+    for (const r of listRaces()) {
+      const tag = r.id === p.raceId ? ' ✅' : '';
+      lines.push(`• \`${r.id}\` — **${r.name}**${tag} (${fmtRaceStats(r)})`);
+      lines.push(`  _${r.description}_`);
+    }
+    lines.push('');
+    if (!p.raceId) {
+      lines.push('Wybór rasy odbywa się przez **dialog ze Starym Markiem** w Porcie Cykada — quest "Krew i Pochodzenie".');
+    } else {
+      lines.push('Wybór jest dożywotni — zmiana będzie możliwa w ostatnim mieście (przyszła feature).');
+    }
+    return lines.join('\n').slice(0, 1900);
+  }
+
+  private renderClass(p: PlayerStats): string {
+    const cls = p.classId ? CLASSES[p.classId] : undefined;
+    const sub1 = p.classId && p.subclassId ? findSubclass(p.classId, p.subclassId) : undefined;
+    const sub2 =
+      p.classId && p.subclassId && p.subclass2Id
+        ? findSubclass2(p.classId, p.subclassId, p.subclass2Id)
+        : undefined;
+    const currentDisplay = cls
+      ? `${cls.name}${sub1 ? ` / ${sub1.name}` : ''}${sub2 ? ` / ${sub2.name}` : ''}`
+      : 'brak';
+    const lines: string[] = [`⚔️ **Klasy** — twoja: **${currentDisplay}**`, ''];
+    for (const c of listClasses()) {
+      const tag = c.id === p.classId ? ' ✅' : '';
+      lines.push(`• \`${c.id}\` — **${c.name}**${tag} (${c.role}) · base ⚡${c.baseSpeed}`);
+      lines.push(`  _${c.description}_ — bonus: ${fmtPrimary(c.primaryBonus)}`);
+    }
+    lines.push('');
+    if (!p.classId) {
+      lines.push(
+        'Wybór klasy odbywa się przez **dialog ze Starym Markiem** w Porcie Cykada — quest "Ścieżka Wojownika".',
+      );
+    } else {
+      lines.push(
+        `Combat L${p.skills.combat.level} — wybór jest dożywotni. Tier-1 subklasa od lvl 20, tier-2 od 40 (osobne UI w przyszłości).`,
+      );
+    }
+    return lines.join('\n').slice(0, 1900);
   }
 
   private renderParty(p: PlayerStats): string {

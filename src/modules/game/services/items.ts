@@ -165,6 +165,27 @@ export const ITEMS: Record<string, ItemTemplate> = {
     rarity: 'rare',
     description: 'Pamiątkowy żeton z Portu Cykada — przedmiot questowy.',
   },
+  marek_ore: {
+    id: 'marek_ore',
+    name: 'Próbka Rudy Marka',
+    type: 'resource',
+    rarity: 'uncommon',
+    description: 'Specjalna ruda dla Marka — wykopiesz ją tylko gdy jego quest jest aktywny.',
+  },
+  marek_log: {
+    id: 'marek_log',
+    name: 'Próbka Drewna Marka',
+    type: 'resource',
+    rarity: 'uncommon',
+    description: 'Specjalne drewno dla Marka — wytniesz tylko gdy jego quest jest aktywny.',
+  },
+  marek_fish_token: {
+    id: 'marek_fish_token',
+    name: 'Łuska Cykady',
+    type: 'resource',
+    rarity: 'uncommon',
+    description: 'Rzadka łuska — Marek dał ci wędkę i prosił o przyniesienie tego okazu.',
+  },
 
   // ── TOOL TEMPLATES (craftable) ─────────────────────
   pickaxe: {

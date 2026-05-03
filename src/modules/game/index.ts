@@ -23,8 +23,9 @@ import { UnequipCommand } from './commands/unequip.command.js';
 import { InventoryCommand } from './commands/inventory.command.js';
 import { StatsCommand } from './commands/stats.command.js';
 import { SkillsCommand } from './commands/skills.command.js';
-import { RaceCommand } from './commands/race.command.js';
-import { ClassCommand } from './commands/class.command.js';
+// RaceCommand i ClassCommand celowo NIE rejestrowane — wybór rasy/klasy
+// odbywa się tylko przez dialog Marka (Q2 + Q3). Last-city change-class
+// dodamy w przyszłości.
 import { PartyCommand } from './commands/party.command.js';
 import { CityCommand } from './commands/city.command.js';
 import { MenuCommand } from './commands/menu.command.js';
@@ -72,7 +73,7 @@ export function registerGameCommands(manager: CommandManager, services: GameServ
 
   // services state-bearing, paired 1:1 z komendą
   const quests = new QuestService(stats);
-  const duels = new DuelService(stats, party);
+  const duels = new DuelService(stats, party, quests);
   const bosses = new BossService(stats, quests);
   const dungeons = new DungeonService(stats);
   const crafting = new CraftService(stats);
@@ -86,7 +87,11 @@ export function registerGameCommands(manager: CommandManager, services: GameServ
   const fishCmd = new FishCommand(stats);
   const chopCmd = new ChopCommand(stats);
   const spells = new SpellsService(stats);
-  const smith = new SmithService(stats);
+  const smith = new SmithService(stats, quests);
+  // Wire quest service do gathering commands (mining/fishing/woodcutting drops).
+  mineCmd.bindQuests(quests);
+  fishCmd.bindQuests(quests);
+  chopCmd.bindQuests(quests);
 
   // Adapter: button click "🛒 Sklep" w widoku miasta → CityService.openShopForUser
   // z thread-routingiem do CityCommand (żeby wątek miał TTL i dispatch wiadomości).
@@ -181,8 +186,7 @@ export function registerGameCommands(manager: CommandManager, services: GameServ
   manager.register(inventoryCommand);
   manager.register(new StatsCommand(stats));
   manager.register(new SkillsCommand(stats));
-  manager.register(new RaceCommand(stats));
-  manager.register(new ClassCommand(stats));
+  // Race/Class slash commands celowo wyłączone — wybór tylko przez Marka.
   manager.register(cityCommand);
   manager.register(talkCommand);
   manager.register(new SpellsCommand(spells, stats));

@@ -103,6 +103,10 @@ export class BossService {
     }
 
     const player = this.stats.get(msg.author.id, displayName(msg));
+    if (player.activeExpedition) {
+      await msg.reply('🚫 Jesteś na wyprawie — bossowie niedostępni. Dokończ wyprawę najpierw.');
+      return;
+    }
     const cooldownMsg = this.cooldownReason(player);
     if (cooldownMsg) {
       await msg.reply(cooldownMsg);
@@ -127,7 +131,16 @@ export class BossService {
   async openFromInteraction(interaction: ButtonInteraction): Promise<void> {
     const userId = interaction.user.id;
     const userName = interaction.user.globalName || interaction.user.username;
-    this.stats.get(userId, userName);
+    const player = this.stats.get(userId, userName);
+    if (player.activeExpedition) {
+      await interaction
+        .update({
+          content: '🚫 Jesteś na wyprawie — bossowie niedostępni. Dokończ wyprawę najpierw.',
+          components: [],
+        })
+        .catch(() => {});
+      return;
+    }
     const bosses = sortedBosses();
     if (bosses.length === 0) {
       await interaction.update({ content: 'Brak bossów.', components: [] }).catch(() => {});
@@ -146,6 +159,15 @@ export class BossService {
     const userId = interaction.user.id;
     const userName = interaction.user.globalName || interaction.user.username;
     const player = this.stats.get(userId, userName);
+    if (player.activeExpedition) {
+      await interaction
+        .reply({
+          content: '🚫 Jesteś na wyprawie — bossowie niedostępni. Dokończ wyprawę najpierw.',
+          flags: MessageFlags.Ephemeral,
+        })
+        .catch(() => {});
+      return;
+    }
     const bosses = sortedBosses();
     if (bosses.length === 0) {
       await interaction

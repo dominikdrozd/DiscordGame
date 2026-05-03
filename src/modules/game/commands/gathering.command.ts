@@ -13,6 +13,7 @@ import { PlayerStatsService, type PlayerStats, type SkillName } from '../service
 import { rollLoot, type LootEntry } from '../services/loot.js';
 import { fmtResource, type ToolKind } from '../services/items.js';
 import { displayName } from '../../../utils.js';
+import type { QuestService } from '../services/quest.service.js';
 
 export interface GatheringConfig {
   name: string;
@@ -32,6 +33,8 @@ export abstract class GatheringCommand implements ICommand, ISlashCommand {
   readonly requiresPrompt = false;
   readonly slashDefinition: RESTPostAPIChatInputApplicationCommandsJSONBody;
 
+  protected quests?: QuestService;
+
   constructor(
     protected readonly stats: PlayerStatsService,
     protected readonly cfg: GatheringConfig,
@@ -40,6 +43,10 @@ export abstract class GatheringCommand implements ICommand, ISlashCommand {
       .setName(cfg.name)
       .setDescription(cfg.description.slice(0, 100))
       .toJSON();
+  }
+
+  bindQuests(svc: QuestService): void {
+    this.quests = svc;
   }
 
   get name() {
@@ -109,11 +116,22 @@ export abstract class GatheringCommand implements ICommand, ISlashCommand {
 
     this.stats.addResource(player, loot.itemId, loot.qty);
     const leveled = this.stats.addSkillXp(player, this.cfg.skill, this.cfg.xpPerSuccess);
+    // Quest drop hook — tylko dla gather skills (mining/fishing/woodcutting).
+    let questLines: string[] = [];
+    if (
+      this.quests &&
+      (this.cfg.skill === 'mining' ||
+        this.cfg.skill === 'fishing' ||
+        this.cfg.skill === 'woodcutting')
+    ) {
+      questLines = this.quests.onGathering(player, this.cfg.skill);
+    }
     this.stats.save();
 
     const lvlMsg = leveled
       ? ` 🎉 **${this.cfg.skill}** awansuje na poziom **${player.skills[this.cfg.skill].level}**!`
       : '';
-    return `${this.cfg.successPrefix} ${fmtResource(loot.itemId, loot.qty)} (+${this.cfg.xpPerSuccess} XP ${this.cfg.skill}).${lvlMsg}`;
+    const base = `${this.cfg.successPrefix} ${fmtResource(loot.itemId, loot.qty)} (+${this.cfg.xpPerSuccess} XP ${this.cfg.skill}).${lvlMsg}`;
+    return questLines.length > 0 ? `${base}\n${questLines.join('\n')}` : base;
   }
 }

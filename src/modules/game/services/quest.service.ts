@@ -47,6 +47,17 @@ export class QuestService {
     return listQuests().filter((q) => this.canTake(p, q).ok);
   }
 
+  /**
+   * Czy quest jest "offerable" — gracz nie wziął jeszcze i spełnia
+   * prereqs (nie jest blokowany przez chain). Używane w `visibleIf`
+   * opcji dialogowych Marka żeby pokazywać tylko aktualnie dostępne questy.
+   */
+  isOfferable(p: PlayerStats, questId: string): boolean {
+    const quest = getQuest(questId);
+    if (!quest) return false;
+    return this.canTake(p, quest).ok;
+  }
+
   active(p: PlayerStats): QuestDef[] {
     return p.quests.active.map((id) => QUESTS[id]).filter((q): q is QuestDef => !!q);
   }
@@ -85,7 +96,20 @@ export class QuestService {
     const check = this.canTake(p, quest);
     if (!check.ok) return { ok: false, line: `🚫 ${check.reason}` };
     p.quests.active.push(quest.id);
-    return { ok: true, line: `📜 Wziąłeś questa: **${quest.name}**.` };
+    let line = `📜 Wziąłeś questa: **${quest.name}**.`;
+    // Tutorialowe questy mogą mieć materialsOnTake — Marek "daje" graczowi
+    // surowce na craftowanie narzędzia, żeby gracz nie musiał grindować.
+    if (quest.materialsOnTake) {
+      const granted: string[] = [];
+      for (const [itemId, qty] of Object.entries(quest.materialsOnTake)) {
+        if (qty > 0) {
+          this.stats.addResource(p, itemId, qty);
+          granted.push(`${ITEMS[itemId]?.name ?? itemId} ×${qty}`);
+        }
+      }
+      if (granted.length) line += `\n🎒 Dostałeś: ${granted.join(', ')}.`;
+    }
+    return { ok: true, line };
   }
 
   /** Porzucenie questa — przenosi do abandoned (nie da się więcej wziąć). */
@@ -191,6 +215,63 @@ export class QuestService {
       if (!quest || quest.killBoss !== bossId) continue;
       const result = this.turnIn(p, questId);
       if (result.ok) lines.push(result.line);
+    }
+    return lines;
+  }
+
+  /**
+   * Hook po udanym mining/fishing/woodcutting (wywołany z GatheringCommand).
+   * Roluje quest dropy z `gatheringDrop` dla aktywnych questów z matching skill.
+   */
+  onGathering(p: PlayerStats, skill: 'mining' | 'fishing' | 'woodcutting'): string[] {
+    const lines: string[] = [];
+    for (const questId of p.quests.active) {
+      const quest = QUESTS[questId];
+      if (!quest?.gatheringDrop || quest.gatheringDrop.skill !== skill) continue;
+      if (Math.random() < quest.gatheringDrop.chance) {
+        this.stats.addResource(p, quest.gatheringDrop.itemId, 1);
+        const itemName = ITEMS[quest.gatheringDrop.itemId]?.name ?? quest.gatheringDrop.itemId;
+        lines.push(`📜 Quest **${quest.name}**: znalazłeś **${itemName}**!`);
+      }
+    }
+    return lines;
+  }
+
+  /**
+   * Hook po udanym SmithService.tryUpgrade. Auto-completuje questy z
+   * `triggerOnUpgrade: true`.
+   */
+  onItemUpgraded(p: PlayerStats): string[] {
+    const lines: string[] = [];
+    for (const questId of [...p.quests.active]) {
+      const quest = QUESTS[questId];
+      if (!quest?.triggerOnUpgrade) continue;
+      const result = this.turnIn(p, questId);
+      if (result.ok) lines.push(result.line);
+    }
+    return lines;
+  }
+
+  /**
+   * Hook po pojedynku PvP (DuelService). Auto-completuje questy z
+   * `triggerOnDuel: true` dla zwycięzcy i przegranego — różny komentarz
+   * via `quests.meta[questId].wonDuel`.
+   */
+  onDuelComplete(p: PlayerStats, won: boolean): string[] {
+    const lines: string[] = [];
+    for (const questId of [...p.quests.active]) {
+      const quest = QUESTS[questId];
+      if (!quest?.triggerOnDuel) continue;
+      // Zapisz outcome przed turnIn — dialog "completed" node odczyta meta.
+      if (!p.quests.meta) p.quests.meta = {};
+      p.quests.meta[questId] = { wonDuel: won };
+      const result = this.turnIn(p, questId);
+      if (result.ok) {
+        const flavor = won
+          ? `🏆 Marek się cieszy z twojego zwycięstwa.`
+          : `💪 Marek mówi: "Doświadczenie też się liczy — wstań i próbuj dalej."`;
+        lines.push(`${result.line}\n${flavor}`);
+      }
     }
     return lines;
   }

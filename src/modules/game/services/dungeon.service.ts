@@ -85,6 +85,15 @@ export class DungeonService {
       interaction.user.id,
       interaction.user.globalName || interaction.user.username,
     );
+    if (player.activeExpedition) {
+      await interaction
+        .reply({
+          content: '🚫 Jesteś na wyprawie — dungeony niedostępne. Dokończ wyprawę najpierw.',
+          flags: MessageFlags.Ephemeral,
+        })
+        .catch(() => {});
+      return;
+    }
     const remaining = this.stats.remainingCooldown(player, 'dungeon');
     if (remaining > 0) {
       await interaction
@@ -151,6 +160,10 @@ export class DungeonService {
       return;
     }
 
+    if (player.activeExpedition) {
+      await msg.reply('🚫 Jesteś na wyprawie — dungeony niedostępne. Dokończ wyprawę najpierw.');
+      return;
+    }
     const remaining = this.stats.remainingCooldown(player, 'dungeon');
     if (remaining > 0) {
       await msg.reply(`Dungeon-cooldown: jeszcze ${Math.ceil(remaining / 1000)} s.`);
