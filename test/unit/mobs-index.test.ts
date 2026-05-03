@@ -95,7 +95,23 @@ describe('mob registries', () => {
     );
   });
 
-  test('BOSS_MOBS contains expected 8 bosses', () => {
-    expect(Object.keys(BOSS_MOBS)).toHaveLength(8);
+  test('BOSS_MOBS contains expected 12 bosses (8 oryginalnych + 4 dungeon-tier)', () => {
+    expect(Object.keys(BOSS_MOBS)).toHaveLength(12);
+    expect(Object.keys(BOSS_MOBS)).toEqual(
+      expect.arrayContaining([
+        'szczur_kuchenny',
+        'goblin_kucharz',
+        'goblin_lider',
+        'jadowy_pajak',
+        'baba_jaga',
+        'ksiazna_mroku',
+        'smok_polonezowy',
+        'tytan_zelaza',
+        'latajacy_holender',
+        'leszy_rogaty',
+        'mrozowy_olbrzym',
+        'lich_wielki',
+      ]),
+    );
   });
 });

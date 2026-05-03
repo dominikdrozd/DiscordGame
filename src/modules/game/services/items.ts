@@ -154,8 +154,38 @@ export const ITEMS: Record<string, ItemTemplate> = {
     rarity: 'legendary',
   },
 
+  // ── DUNGEON GEMS (resources, drop tylko z dungeonów) ──
+  gem_ruby: {
+    id: 'gem_ruby',
+    name: 'Rubin',
+    type: 'resource',
+    rarity: 'rare',
+    description: 'Krwistoczerwony klejnot — drop z dungeonów regionu II/III.',
+  },
+  gem_sapphire: {
+    id: 'gem_sapphire',
+    name: 'Szafir',
+    type: 'resource',
+    rarity: 'epic',
+    description: 'Lazurowy klejnot — drop z dungeonów regionu III/IV.',
+  },
+  gem_emerald: {
+    id: 'gem_emerald',
+    name: 'Szmaragd',
+    type: 'resource',
+    rarity: 'epic',
+    description: 'Zielony klejnot najgłębszych pieczar — drop z dungeonów.',
+  },
+
   // ── CONSUMABLES ────────────────────────────────────
   potion_small: { id: 'potion_small', name: 'Mała Mikstura', type: 'consumable', rarity: 'common' },
+  potion_greater: {
+    id: 'potion_greater',
+    name: 'Wielka Mikstura',
+    type: 'consumable',
+    rarity: 'rare',
+    description: 'Leczy 60 HP w jednej akcji — droga, ale ratuje życie.',
+  },
 
   // ── QUEST ITEMS ────────────────────────────────────
   cykada_token: {
@@ -238,6 +268,21 @@ export const ITEMS: Record<string, ItemTemplate> = {
     rarity: 'rare',
     slot: 'weapon',
   },
+  sword_diamond: {
+    id: 'sword_diamond',
+    name: 'Diamentowy Miecz',
+    type: 'weapon',
+    rarity: 'epic',
+    slot: 'weapon',
+  },
+  sword_runicum: {
+    id: 'sword_runicum',
+    name: 'Miecz Runiczny',
+    type: 'weapon',
+    rarity: 'legendary',
+    slot: 'weapon',
+    description: 'Wykuty z runicum — broń godna mistrza, drop tylko z najgłębszych dungeonów.',
+  },
 
   // ── ARMOR TEMPLATES (craftable) ────────────────────
   armor_iron: {
@@ -260,6 +305,21 @@ export const ITEMS: Record<string, ItemTemplate> = {
     type: 'armor',
     rarity: 'rare',
     slot: 'armor',
+  },
+  armor_diamond: {
+    id: 'armor_diamond',
+    name: 'Diamentowa Zbroja',
+    type: 'armor',
+    rarity: 'epic',
+    slot: 'armor',
+  },
+  armor_runicum: {
+    id: 'armor_runicum',
+    name: 'Zbroja Runiczna',
+    type: 'armor',
+    rarity: 'legendary',
+    slot: 'armor',
+    description: 'Płyty inkrustowane runicum — drop z dungeonów top-tier.',
   },
 };
 
@@ -450,7 +510,7 @@ export function itemSellPrice(it: ItemInstance): number {
   return Math.max(1, price);
 }
 
-export const COMBAT_CONSUMABLES = new Set<string>(['potion_small']);
+export const COMBAT_CONSUMABLES = new Set<string>(['potion_small', 'potion_greater']);
 
 export function isCombatConsumable(id: string): boolean {
   return COMBAT_CONSUMABLES.has(id);

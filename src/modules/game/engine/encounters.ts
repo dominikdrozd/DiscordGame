@@ -1,7 +1,7 @@
 import type { CombatAction, Combatant } from './combat.js';
 import type { LootEntry } from '../services/loot.js';
 import { BOSS_MOBS } from '../mobs/index.js';
-import type { MobReward } from '../mobs/index.js';
+import type { MobReward, MobTier } from '../mobs/index.js';
 
 /** alias zachowany dla wstecznej zgodności z istniejącymi konsumentami nagród */
 export type BossReward = MobReward;
@@ -12,26 +12,128 @@ export interface DungeonDef {
   description: string;
   rooms: string[];
   finalReward: BossReward;
+  /**
+   * Tier wszystkich mobów w dungeonie. Każdy boss z `rooms[]` zostanie
+   * `setTier()`-iowany przed `toCombatant()`. Final room (ostatni) dostaje
+   * dodatkowo +1 do tieru (clamped do 5) — boss-fight bump.
+   */
+  baseTier: MobTier;
+  /**
+   * Minimalna liczba członków party wymagana do wejścia. Wszystkie dungeony
+   * domyślnie 2 (po decyzji "wszystkie dungeony party-only"). Można podbić
+   * dla endgame contentu.
+   */
+  minPartySize: number;
+  /** Wymagany combat lvl LIDERA party (najwyższy w grupie też się liczy). */
+  requiredCombatLevel?: number;
+}
+
+/** Tier z podbiciem dla finałowego pokoju — clamped do 1-5. */
+export function dungeonRoomTier(def: DungeonDef, roomIndex: number): MobTier {
+  const isFinal = roomIndex === def.rooms.length - 1;
+  const raw = def.baseTier + (isFinal ? 1 : 0);
+  if (raw <= 1) return 1;
+  if (raw === 2) return 2;
+  if (raw === 3) return 3;
+  if (raw === 4) return 4;
+  return 5;
 }
 
 /** rejestr bossów — re-export `BOSS_MOBS` z `mobs/`. Konsumenci używają `mob.toCombatant()`. */
 export const BOSSES = BOSS_MOBS;
 
 export const DUNGEONS: Record<string, DungeonDef> = {
+  // ── R1 / baseTier 2 — startowe dungeony party-friendly ───
   spizarnia_babci: {
     id: 'spizarnia_babci',
     name: 'Spiżarnia Babci',
     description: '3 pokoje + finałowy przeciwnik. Babcia nie wybacza.',
     rooms: ['szczur_kuchenny', 'goblin_kucharz', 'baba_jaga'],
+    baseTier: 2,
+    minPartySize: 2,
     finalReward: {
       xp: 500,
       combatXp: 300,
       lootTable: [
-        { itemId: 'ore_silver', weight: 50, qtyMin: 2, qtyMax: 3 },
-        { itemId: 'gem_diamond', weight: 20 },
+        { itemId: 'ore_silver', weight: 40, qtyMin: 2, qtyMax: 3 },
+        { itemId: 'gem_ruby', weight: 30, qtyMin: 1, qtyMax: 2 },
+        { itemId: 'gem_diamond', weight: 15 },
+        { itemId: 'potion_greater', weight: 15 },
       ],
       rolls: 3,
       dropPool: ['sword_silver', 'armor_silver'],
+      guaranteedDropChance: 1,
+    },
+  },
+  zatopiony_wrak: {
+    id: 'zatopiony_wrak',
+    name: 'Zatopiony Wrak',
+    description: 'Wrak portowego okrętu na dnie zatoki — 3 pokoje, na końcu Latający Holender.',
+    rooms: ['szczur_kuchenny', 'jadowy_pajak', 'latajacy_holender'],
+    baseTier: 2,
+    minPartySize: 2,
+    finalReward: {
+      xp: 600,
+      combatXp: 350,
+      lootTable: [
+        { itemId: 'ore_iron', weight: 30, qtyMin: 2, qtyMax: 4 },
+        { itemId: 'fish_marlin', weight: 25 },
+        { itemId: 'gem_ruby', weight: 25, qtyMin: 1, qtyMax: 2 },
+        { itemId: 'potion_greater', weight: 20 },
+      ],
+      rolls: 4,
+      dropPool: ['sword_iron', 'armor_iron', 'sword_silver'],
+      guaranteedDropChance: 1,
+    },
+  },
+
+  // ── R2 / baseTier 3 ────────────────────────────────────
+  debowe_korzenie: {
+    id: 'debowe_korzenie',
+    name: 'Dębowe Korzenie',
+    description: 'Sieć korytarzy pod świętym dębem Oakhaven — 4 pokoje, finał z Leszym Rogatym.',
+    rooms: ['goblin_lider', 'jadowy_pajak', 'baba_jaga', 'leszy_rogaty'],
+    baseTier: 3,
+    minPartySize: 2,
+    requiredCombatLevel: 16,
+    finalReward: {
+      xp: 1000,
+      combatXp: 550,
+      lootTable: [
+        { itemId: 'ore_silver', weight: 25, qtyMin: 2, qtyMax: 4 },
+        { itemId: 'ore_gold', weight: 25, qtyMin: 1, qtyMax: 2 },
+        { itemId: 'wood_heban', weight: 20, qtyMin: 1, qtyMax: 2 },
+        { itemId: 'gem_emerald', weight: 20, qtyMin: 1, qtyMax: 2 },
+        { itemId: 'gem_ruby', weight: 10, qtyMin: 1, qtyMax: 2 },
+      ],
+      rolls: 5,
+      dropPool: ['sword_silver', 'armor_silver', 'sword_mithril'],
+      guaranteedDropChance: 1,
+    },
+  },
+
+  // ── R3 / baseTier 4 ────────────────────────────────────
+  mrozna_cytadela: {
+    id: 'mrozna_cytadela',
+    name: 'Mroźna Cytadela',
+    description:
+      'Lodowy bastion na szczycie Krasnoludzkiej Twierdzy — 4 pokoje, finał z Mrozowym Olbrzymem.',
+    rooms: ['baba_jaga', 'ksiazna_mroku', 'baba_jaga', 'mrozowy_olbrzym'],
+    baseTier: 4,
+    minPartySize: 3,
+    requiredCombatLevel: 24,
+    finalReward: {
+      xp: 1800,
+      combatXp: 950,
+      lootTable: [
+        { itemId: 'ore_mithril', weight: 25, qtyMin: 2, qtyMax: 3 },
+        { itemId: 'gem_sapphire', weight: 25, qtyMin: 1, qtyMax: 2 },
+        { itemId: 'gem_diamond', weight: 20, qtyMin: 1, qtyMax: 2 },
+        { itemId: 'wood_smoczy', weight: 15, qtyMin: 1, qtyMax: 2 },
+        { itemId: 'potion_greater', weight: 15, qtyMin: 1, qtyMax: 2 },
+      ],
+      rolls: 6,
+      dropPool: ['sword_mithril', 'armor_mithril', 'sword_diamond', 'armor_diamond'],
       guaranteedDropChance: 1,
     },
   },
@@ -40,15 +142,46 @@ export const DUNGEONS: Record<string, DungeonDef> = {
     name: 'Smocza Dziupla',
     description: '4 pokoje, na końcu Smok Polonezowy. Tylko dla wytrwałych.',
     rooms: ['goblin_kucharz', 'baba_jaga', 'baba_jaga', 'smok_polonezowy'],
+    baseTier: 4,
+    minPartySize: 3,
+    requiredCombatLevel: 24,
     finalReward: {
       xp: 1500,
       combatXp: 800,
       lootTable: [
-        { itemId: 'ore_mithril', weight: 50, qtyMin: 2, qtyMax: 3 },
-        { itemId: 'gem_diamond', weight: 30, qtyMin: 1, qtyMax: 2 },
+        { itemId: 'ore_mithril', weight: 35, qtyMin: 2, qtyMax: 3 },
+        { itemId: 'gem_diamond', weight: 25, qtyMin: 1, qtyMax: 2 },
+        { itemId: 'gem_sapphire', weight: 20, qtyMin: 1, qtyMax: 2 },
+        { itemId: 'wood_smoczy', weight: 20, qtyMin: 1, qtyMax: 2 },
       ],
       rolls: 5,
-      dropPool: ['sword_mithril', 'armor_mithril'],
+      dropPool: ['sword_mithril', 'armor_mithril', 'sword_diamond'],
+      guaranteedDropChance: 1,
+    },
+  },
+
+  // ── R4 / baseTier 5 — endgame, full party 4 ────────────
+  krypta_lichow: {
+    id: 'krypta_lichow',
+    name: 'Krypta Lichów',
+    description:
+      'Ultymatywny dungeon Czarnej Cytadeli — 5 pokoi z najpotężniejszymi bossami, na końcu Lich Wielki.',
+    rooms: ['ksiazna_mroku', 'tytan_zelaza', 'smok_polonezowy', 'mrozowy_olbrzym', 'lich_wielki'],
+    baseTier: 5,
+    minPartySize: 4,
+    requiredCombatLevel: 32,
+    finalReward: {
+      xp: 4000,
+      combatXp: 2200,
+      lootTable: [
+        { itemId: 'gem_diamond', weight: 25, qtyMin: 2, qtyMax: 4 },
+        { itemId: 'gem_emerald', weight: 25, qtyMin: 1, qtyMax: 3 },
+        { itemId: 'gem_sapphire', weight: 20, qtyMin: 1, qtyMax: 3 },
+        { itemId: 'wood_swiatowe', weight: 15, qtyMin: 1, qtyMax: 2 },
+        { itemId: 'potion_greater', weight: 15, qtyMin: 2, qtyMax: 3 },
+      ],
+      rolls: 8,
+      dropPool: ['sword_diamond', 'armor_diamond', 'sword_runicum', 'armor_runicum'],
       guaranteedDropChance: 1,
     },
   },

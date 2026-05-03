@@ -62,6 +62,7 @@ export const POTION_NAMES = [
 
 export const POTIONS_START = 2;
 export const POTION_HEAL = 25;
+export const GREATER_POTION_HEAL = 60;
 export const DODGE_CHANCE = 0.15;
 export const BLOCK_CHANCE = 0.75;
 export const CRIT_CHANCE = 0.15;
@@ -199,11 +200,29 @@ export function applyPotion(p: Combatant): string {
 
 export function applyItem(p: Combatant, itemId: string): string {
   if (itemId === 'potion_small') return consumePotion(p);
+  if (itemId === 'potion_greater') return consumeGreaterPotion(p);
   if (!p.consumables) p.consumables = {};
   const have = p.consumables[itemId] ?? 0;
   if (have <= 0) return `🎒 **${p.name}** sięga po item \`${itemId}\`, ale plecak pusty.`;
   p.consumables[itemId] = have - 1;
   return `🎒 **${p.name}** używa \`${itemId}\` (efekt nieznany).`;
+}
+
+/**
+ * Wielka mikstura — mocniejszy wariant, leczy 60 HP. Tylko z plecaka
+ * (nie ma "darmowych na walkę"). Drop tylko z dungeonów.
+ */
+function consumeGreaterPotion(p: Combatant): string {
+  if (!p.consumables) p.consumables = {};
+  const have = p.consumables.potion_greater ?? 0;
+  if (have <= 0) {
+    return `🧪 **${p.name}** sięga po wielką miksturę, ale flaszka pusta.`;
+  }
+  p.consumables.potion_greater = have - 1;
+  const before = p.hp;
+  p.hp = Math.min(p.maxHp, p.hp + GREATER_POTION_HEAL);
+  const restored = p.hp - before;
+  return `🧪💎 **${p.name}** chla **Wielką Miksturę** i odzyskuje **${restored}** HP.`;
 }
 
 export interface RoundResult {

@@ -5,7 +5,8 @@ import {
   type ChatInputCommandInteraction,
 } from 'discord.js';
 import type { ICommandContext } from '../../../types/command.types.js';
-import { PlayerStatsService } from './player-stats.js';
+import { PlayerStatsService, type PlayerStats } from './player-stats.js';
+import { PartyService, type Party, MAX_PARTY } from './party.js';
 import {
   type BattleCombatant,
   type BattleState,
@@ -29,7 +30,7 @@ import {
   notifyChoiceMade,
   postBattleSummary,
 } from '../engine/battle-helpers.js';
-import { DUNGEONS } from '../engine/encounters.js';
+import { DUNGEONS, dungeonRoomTier, type DungeonDef } from '../engine/encounters.js';
 import { BOSS_MOBS } from '../mobs/index.js';
 import { buildPlayerCombatant } from '../engine/player-combatant.js';
 import { awardReward } from './reward.service.js';
@@ -40,6 +41,8 @@ interface DungeonBattleState extends BattleState {
   dungeonId: string;
   roomIndex: number;
   currentBossId: string;
+  /** Membersi party którzy weszli — używane do dystrybucji finalnych nagród. */
+  partyMemberIds: string[];
 }
 
 function hasThreadCreateLocal(
@@ -55,10 +58,49 @@ function hasThreadCreateLocal(
 
 const COOLDOWN_MS = 30 * 60_000;
 
+/**
+ * Buduje boss-combatanta z odpowiednim tierem dla danego pokoju dungeonu.
+ * Tier wyliczany przez `dungeonRoomTier(def, roomIndex)` (final room +1).
+ *
+ * UWAGA: instancja `BOSS_MOBS[id]` jest jedna globalnie i `setTier()` na niej
+ * zostaje. Dla 2 dungeonów odpalonych równolegle z tym samym bossem to
+ * problem (race condition na tier mob-a). Rozwiązanie: ustawiamy tier
+ * BEZPOŚREDNIO przed `toCombatant()` synchronicznie — combatant kopiuje
+ * staty (multiplied) w środku `toCombatant`, więc wynik jest niezależny od
+ * późniejszych zmian `mob.tier`. Mimo to dla bezpieczeństwa zwracamy w jednym
+ * synchronicznym kroku.
+ */
+function buildDungeonBoss(def: DungeonDef, roomIndex: number, suffix: string): BattleCombatant {
+  const bossId = def.rooms[roomIndex];
+  const mob = BOSS_MOBS[bossId];
+  if (!mob) throw new Error(`Unknown boss "${bossId}" in dungeon "${def.id}"`);
+  const tier = dungeonRoomTier(def, roomIndex);
+  mob.setTier(tier);
+  return {
+    ...mob.toCombatant(suffix),
+    id: `enemy:${bossId}:${suffix}`,
+    team: 1,
+    controller: 'ai',
+  };
+}
+
+function buildSuffix(): string {
+  return `${Date.now().toString(36)}_${Math.floor(Math.random() * 1e6).toString(36)}`;
+}
+
+export interface DungeonStartCheck {
+  ok: boolean;
+  reason?: string;
+  party?: Party;
+}
+
 export class DungeonService {
   private readonly states = new Map<string, DungeonBattleState>();
 
-  constructor(private readonly stats: PlayerStatsService) {}
+  constructor(
+    private readonly stats: PlayerStatsService,
+    private readonly party: PartyService,
+  ) {}
 
   /** True jeśli któryś niezakończony dungeon state ma tego gracza po team 0. */
   hasActiveFor(playerId: string): boolean {
@@ -67,6 +109,62 @@ export class DungeonService {
       if (state.combatants.some((c) => c.team === 0 && c.id === playerId && c.hp > 0)) return true;
     }
     return false;
+  }
+
+  /**
+   * Walidacja party + dungeon-specific gating. Wywoływana z slash i text
+   * command przed otwieraniem wątku.
+   *
+   * Sprawdza: gracz ma party, jest liderem, party >= minPartySize, każdy
+   * member ma combat lvl, każdy member nie ma activeExpedition / cooldown.
+   */
+  canStart(playerId: string, def: DungeonDef): DungeonStartCheck {
+    const partyEntity = this.party.getByMember(playerId);
+    if (!partyEntity) {
+      return {
+        ok: false,
+        reason: `🚫 Dungeony są **party-only**. Załóż party (\`/party create\`) i zaproś min. ${def.minPartySize - 1} ${def.minPartySize === 2 ? 'osobę' : 'osób'}.`,
+      };
+    }
+    if (partyEntity.leaderId !== playerId) {
+      return { ok: false, reason: 'Tylko **lider** party może rozpocząć dungeon.' };
+    }
+    if (partyEntity.members.length < def.minPartySize) {
+      return {
+        ok: false,
+        reason: `🚫 **${def.name}** wymaga min. ${def.minPartySize} graczy w party (masz ${partyEntity.members.length}).`,
+      };
+    }
+    const requiredLvl = def.requiredCombatLevel ?? 1;
+    for (const memberId of partyEntity.members) {
+      const member = this.stats.get(memberId);
+      if (member.skills.combat.level < requiredLvl) {
+        return {
+          ok: false,
+          reason: `🚫 **${member.name}** ma combat lvl ${member.skills.combat.level}, dungeon wymaga **${requiredLvl}**.`,
+        };
+      }
+      if (member.activeExpedition) {
+        return {
+          ok: false,
+          reason: `🚫 **${member.name}** jest na wyprawie — wszyscy członkowie muszą być wolni.`,
+        };
+      }
+      const cd = this.stats.remainingCooldown(member, 'dungeon');
+      if (cd > 0) {
+        return {
+          ok: false,
+          reason: `🚫 **${member.name}** ma dungeon-cooldown: jeszcze ${Math.ceil(cd / 1000)} s.`,
+        };
+      }
+      if (this.hasActiveFor(member.id)) {
+        return {
+          ok: false,
+          reason: `🚫 **${member.name}** jest już w innym dungeonie.`,
+        };
+      }
+    }
+    return { ok: true, party: partyEntity };
   }
 
   /** Slash `/dungeon id:<id>` — ephemeral confirm + public thread z walką. */
@@ -85,22 +183,10 @@ export class DungeonService {
       interaction.user.id,
       interaction.user.globalName || interaction.user.username,
     );
-    if (player.activeExpedition) {
+    const check = this.canStart(player.id, def);
+    if (!check.ok || !check.party) {
       await interaction
-        .reply({
-          content: '🚫 Jesteś na wyprawie — dungeony niedostępne. Dokończ wyprawę najpierw.',
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
-      return;
-    }
-    const remaining = this.stats.remainingCooldown(player, 'dungeon');
-    if (remaining > 0) {
-      await interaction
-        .reply({
-          content: `Dungeon-cooldown: jeszcze ${Math.ceil(remaining / 1000)} s.`,
-          flags: MessageFlags.Ephemeral,
-        })
+        .reply({ content: check.reason ?? 'Nie można rozpocząć.', flags: MessageFlags.Ephemeral })
         .catch(() => {});
       return;
     }
@@ -118,7 +204,7 @@ export class DungeonService {
     let thread: unknown;
     try {
       thread = await channel.threads.create({
-        name: `Dungeon: ${player.name} — ${def.name}`.slice(0, 100),
+        name: `Dungeon: ${def.name}`.slice(0, 100),
         autoArchiveDuration: 60,
         type: ChannelType.PublicThread,
       });
@@ -134,7 +220,7 @@ export class DungeonService {
         .catch(() => {});
       return;
     }
-    await this.startBattleInThread(thread, player, def);
+    await this.startBattleInThread(thread, check.party, def);
     await interaction
       .editReply({ content: `🏰 Dungeon otwarty: <#${thread.id}>` })
       .catch(() => {});
@@ -145,11 +231,14 @@ export class DungeonService {
     const player = this.stats.get(msg.author.id, displayName(msg));
 
     if (!prompt) {
-      const lines = ['🏰 **Dungeony:**'];
+      const lines = ['🏰 **Dungeony:** _(wszystkie party-only)_'];
       for (const d of Object.values(DUNGEONS)) {
-        lines.push(`• \`${d.id}\` — **${d.name}** (${d.rooms.length} pokojów) — ${d.description}`);
+        const lvlReq = d.requiredCombatLevel ? ` lvl ${d.requiredCombatLevel}+` : '';
+        lines.push(
+          `• \`${d.id}\` — **${d.name}** (${d.rooms.length} pokojów, T${d.baseTier}, party ${d.minPartySize}+${lvlReq}) — ${d.description}`,
+        );
       }
-      lines.push('', 'Użycie: `.dungeon <id>`.');
+      lines.push('', 'Użycie: `.dungeon <id>` (lider party). Max party: ' + MAX_PARTY + '.');
       await msg.reply(lines.join('\n').slice(0, 1900));
       return;
     }
@@ -160,20 +249,16 @@ export class DungeonService {
       return;
     }
 
-    if (player.activeExpedition) {
-      await msg.reply('🚫 Jesteś na wyprawie — dungeony niedostępne. Dokończ wyprawę najpierw.');
-      return;
-    }
-    const remaining = this.stats.remainingCooldown(player, 'dungeon');
-    if (remaining > 0) {
-      await msg.reply(`Dungeon-cooldown: jeszcze ${Math.ceil(remaining / 1000)} s.`);
+    const check = this.canStart(player.id, def);
+    if (!check.ok || !check.party) {
+      await msg.reply(check.reason ?? 'Nie można rozpocząć.');
       return;
     }
 
     let thread: any;
     try {
       thread = await msg.startThread({
-        name: `Dungeon: ${player.name} — ${def.name}`.slice(0, 100),
+        name: `Dungeon: ${def.name}`.slice(0, 100),
         autoArchiveDuration: 60,
       });
       if (thread?.id) registerThread(thread);
@@ -182,34 +267,27 @@ export class DungeonService {
       return;
     }
 
-    await this.startBattleInThread(thread, player, def);
+    await this.startBattleInThread(thread, check.party, def);
   }
 
-  /** Wspólny entry — wymaga pre-utworzonego wątku. */
-  async startBattleInThread(
-    thread: any,
-    player: import('./player-stats.js').PlayerStats,
-    def: import('../engine/encounters.js').DungeonDef,
-  ): Promise<void> {
-    const playerRaw = buildPlayerCombatant(this.stats, player);
-    const playerCombatant: BattleCombatant = {
-      ...playerRaw,
-      team: 0,
-      controller: 'human',
-    };
+  /**
+   * Wspólny entry — wymaga pre-utworzonego wątku i party object zwalidowanego
+   * przez `canStart`. Buduje combatants dla każdego party member, odpala
+   * pierwszy boss z dungeon-tierem.
+   */
+  async startBattleInThread(thread: any, party: Party, def: DungeonDef): Promise<void> {
+    const playerCombatants: BattleCombatant[] = party.members.map((memberId) => {
+      const player = this.stats.get(memberId);
+      const raw = buildPlayerCombatant(this.stats, player);
+      return { ...raw, team: 0, controller: 'human' };
+    });
+    const firstBoss = buildDungeonBoss(def, 0, buildSuffix());
     const firstBossId = def.rooms[0];
-    const firstBossMob = BOSS_MOBS[firstBossId];
-    const firstBoss: BattleCombatant = {
-      ...firstBossMob.toCombatant(),
-      id: `enemy:${firstBossId}`,
-      team: 1,
-      controller: 'ai',
-    };
 
     const state: DungeonBattleState = {
       id: thread.id,
       thread,
-      combatants: [playerCombatant, firstBoss],
+      combatants: [...playerCombatants, firstBoss],
       pending: new Map(),
       promptMessageIds: new Map(),
       roundNumber: 1,
@@ -217,11 +295,20 @@ export class DungeonService {
       dungeonId: def.id,
       roomIndex: 0,
       currentBossId: firstBossId,
+      partyMemberIds: [...party.members],
     };
     this.states.set(thread.id, state);
 
+    // Dodaj wszystkich party members do wątku (jeśli to private — i tak nie zaszkodzi).
+    if (thread.members && typeof thread.members.add === 'function') {
+      for (const memberId of party.members) {
+        await thread.members.add(memberId).catch(() => {});
+      }
+    }
+
+    const memberMentions = party.members.map((id) => `<@${id}>`).join(' ');
     await thread.send(
-      `🏰 **${def.name}** — wchodzisz!\n_${def.description}_\n\nPokoje: ${def.rooms.length}. Pierwszy: **${firstBossMob.name}** (${firstBoss.hp} HP).`,
+      `🏰 **${def.name}** — wchodzi party!\n${memberMentions}\n_${def.description}_\n\nPokoje: ${def.rooms.length} · baseTier T${def.baseTier} · final boss T${dungeonRoomTier(def, def.rooms.length - 1)}.\nPierwszy: **${firstBoss.name}** (${firstBoss.hp} HP).`,
     );
     await this.promptHumans(state);
   }
@@ -229,6 +316,8 @@ export class DungeonService {
   async handleInteraction(interaction: ButtonInteraction): Promise<void> {
     if (!interaction.isButton?.()) return;
     const id = interaction.customId;
+    const battleId = id.split(':')[1];
+    if (!this.states.has(battleId)) return;
     if (id.startsWith('pnl:')) return this.handlePanel(interaction);
     if (id.startsWith('bat:')) return this.handleAction(interaction);
     if (id.startsWith('tgt:')) return this.handleTarget(interaction);
@@ -296,7 +385,7 @@ export class DungeonService {
   private async handleAction(interaction: ButtonInteraction): Promise<void> {
     const [, battleId, combatantId, kind] = interaction.customId.split(':');
     const state = this.states.get(battleId);
-    if (!state) return; // nie moja walka — niech inny service obsłuży
+    if (!state) return;
     if (state.finished) {
       await ackStaleInteraction(interaction);
       return;
@@ -367,7 +456,7 @@ export class DungeonService {
     const [, battleId, combatantId, kind] = parts;
     const targetId = parts.slice(4).join(':');
     const state = this.states.get(battleId);
-    if (!state) return; // nie moja walka — niech inny service obsłuży
+    if (!state) return;
     if (state.finished) {
       await ackStaleInteraction(interaction);
       return;
@@ -386,15 +475,42 @@ export class DungeonService {
     }
     if (kind === 'atk') {
       const target = findCombatant(state, targetId);
+      const me = findCombatant(state, combatantId);
       if (!target || target.hp <= 0) {
-        await interaction.update({ content: 'Cel już padł.', components: [] }).catch(() => {});
-        return;
+        if (!me) {
+          await interaction.update({ content: 'Cel padł.', components: [] }).catch(() => {});
+          return;
+        }
+        const enemies = aliveEnemies(state, me);
+        if (enemies.length === 0) {
+          state.pending.set(combatantId, { kind: 'defend' });
+          await interaction
+            .update({ content: 'Cel padł — brak innych wrogów, idziesz w obronę.', components: [] })
+            .catch(() => {});
+          await notifyChoiceMade(state, combatantId);
+        } else if (enemies.length === 1) {
+          state.pending.set(combatantId, { kind: 'attack', targetId: enemies[0].id });
+          await interaction
+            .update({
+              content: `Cel padł — atakujesz **${enemies[0].name}**.`,
+              components: [],
+            })
+            .catch(() => {});
+          await notifyChoiceMade(state, combatantId);
+        } else {
+          const row = buildTargetRow(battleId, combatantId, 'atk', enemies);
+          await interaction
+            .update({ content: 'Cel padł — wybierz innego:', components: [row] })
+            .catch(() => {});
+          return;
+        }
+      } else {
+        state.pending.set(combatantId, { kind: 'attack', targetId });
+        await interaction
+          .update({ content: `Wybrany: **${target.name}**.`, components: [] })
+          .catch(() => {});
+        await notifyChoiceMade(state, combatantId);
       }
-      state.pending.set(combatantId, { kind: 'attack', targetId });
-      await interaction
-        .update({ content: `Wybrany cel: **${target.name}**.`, components: [] })
-        .catch(() => {});
-      await notifyChoiceMade(state, combatantId);
     } else {
       await interaction
         .update({ content: `Nieznany kind \`${kind}\`.`, components: [] })
@@ -427,21 +543,21 @@ export class DungeonService {
 
     if (result.finished) {
       const def = DUNGEONS[state.dungeonId];
-      const playerCombat = state.combatants.find((c) => c.team === 0)!;
-      const playerStats = this.stats.get(playerCombat.id, playerCombat.name);
 
-      // gracz padł lub remis
+      // Cała party padła lub remis — porażka.
       if (result.draw || result.winnerTeam === 1) {
-        this.stats.setCooldown(playerStats, 'dungeon', COOLDOWN_MS);
+        for (const memberId of state.partyMemberIds) {
+          const member = this.stats.get(memberId);
+          this.stats.setCooldown(member, 'dungeon', COOLDOWN_MS);
+        }
         syncConsumablesAfterBattle(this.stats, state);
         this.stats.save();
-        // Log walki w wątku, podsumowanie też na czat-rodzic.
         if (lines.length > 0) {
           await state.thread.send(lines.join('\n').slice(0, 1900));
         }
         await postBattleSummary(
           state.thread,
-          `🏰 **${def.name}** — porażka.\n💀 **${playerCombat.name}** pada w dungeonie. Cooldown 30 min.`,
+          `🏰 **${def.name}** — **porażka party**.\n💀 Wszyscy padają. Cooldown 30 min dla całej drużyny.`,
         );
         await closeBattleThread(
           state.thread,
@@ -451,26 +567,37 @@ export class DungeonService {
         return;
       }
 
-      // pokój zaliczony
+      // Pokój zaliczony — rewards z bossa idą do każdego żyjącego party-membera.
       const bossDef = BOSS_MOBS[state.currentBossId];
+      const aliveHumans = state.combatants.filter((c) => c.team === 0 && c.hp > 0);
+      lines.push(
+        '',
+        `✅ **Pokój ${state.roomIndex + 1}/${def.rooms.length} clear!** ${bossDef?.name ?? state.currentBossId} (T${dungeonRoomTier(def, state.roomIndex)}) pokonany.`,
+      );
       if (bossDef?.rewards) {
-        const award = awardReward(this.stats, playerStats, bossDef.rewards);
-        lines.push(
-          '',
-          `✅ **Pokój ${state.roomIndex + 1}/${def.rooms.length} clear!** ${bossDef.name} pokonany.`,
-        );
-        lines.push(...award.lines);
-      } else {
-        lines.push(
-          '',
-          `✅ **Pokój ${state.roomIndex + 1}/${def.rooms.length} clear!** ${bossDef?.name ?? state.currentBossId} pokonany.`,
-        );
+        for (const human of aliveHumans) {
+          const memberStats = this.stats.get(human.id, human.name);
+          const award = awardReward(this.stats, memberStats, bossDef.rewards);
+          lines.push(`__${human.name}__:`);
+          lines.push(...award.lines);
+        }
       }
 
       state.roomIndex += 1;
       if (state.roomIndex >= def.rooms.length) {
-        const finalAward = awardReward(this.stats, playerStats, def.finalReward);
-        this.stats.setCooldown(playerStats, 'dungeon', COOLDOWN_MS);
+        // Final reward — każdy żywy member dostaje finalReward.
+        for (const human of aliveHumans) {
+          const memberStats = this.stats.get(human.id, human.name);
+          const finalAward = awardReward(this.stats, memberStats, def.finalReward);
+          lines.push('', `🏆 **${human.name}** — finalna nagroda:`);
+          lines.push(...finalAward.lines);
+        }
+        // Cooldown dla CAŁEJ party (nie tylko ocalałych) — żeby nie było farmu
+        // przez ciągłe wskrzeszanie partnerów.
+        for (const memberId of state.partyMemberIds) {
+          const member = this.stats.get(memberId);
+          this.stats.setCooldown(member, 'dungeon', COOLDOWN_MS);
+        }
         syncConsumablesAfterBattle(this.stats, state);
         this.stats.save();
         if (lines.length > 0) {
@@ -478,29 +605,18 @@ export class DungeonService {
         }
         await postBattleSummary(
           state.thread,
-          [
-            `🏆 **${def.name} ukończony!** Zwycięża **${playerCombat.name}**.`,
-            'Finalna nagroda:',
-            ...finalAward.lines,
-          ].join('\n'),
+          `🏆 **${def.name} ukończony!** Party pokonała wszystkie ${def.rooms.length} pokoi.`,
         );
         await closeBattleThread(state.thread, '🏁 Dungeon ukończony — wątek archiwizujemy.');
         this.states.delete(state.id);
         return;
       }
 
-      const nextBossId = def.rooms[state.roomIndex];
-      const nextBossMob = BOSS_MOBS[nextBossId];
-      const nextBoss: BattleCombatant = {
-        ...nextBossMob.toCombatant(),
-        id: `enemy:${nextBossId}`,
-        team: 1,
-        controller: 'ai',
-      };
-      // resetujemy enemies — gracz zostaje z aktualnym HP
+      const nextBoss = buildDungeonBoss(def, state.roomIndex, buildSuffix());
+      // Resetujemy enemies — gracze zostają z aktualnym HP / buffami.
       state.combatants = state.combatants.filter((c) => c.team === 0);
       state.combatants.push(nextBoss);
-      state.currentBossId = nextBossId;
+      state.currentBossId = def.rooms[state.roomIndex];
       state.finished = false;
       state.winnerTeam = undefined;
       state.draw = undefined;
@@ -509,7 +625,7 @@ export class DungeonService {
         [
           ...lines,
           '',
-          `🚪 **Pokój ${state.roomIndex + 1}/${def.rooms.length}** otwarty. Wchodzi **${nextBossMob.name}** (${nextBoss.hp} HP).`,
+          `🚪 **Pokój ${state.roomIndex + 1}/${def.rooms.length}** otwarty. Wchodzi **${nextBoss.name}** (${nextBoss.hp} HP, T${dungeonRoomTier(def, state.roomIndex)}).`,
         ].join('\n'),
       );
       await this.promptHumans(state);

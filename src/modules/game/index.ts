@@ -75,7 +75,7 @@ export function registerGameCommands(manager: CommandManager, services: GameServ
   const quests = new QuestService(stats);
   const duels = new DuelService(stats, party, quests);
   const bosses = new BossService(stats, quests);
-  const dungeons = new DungeonService(stats);
+  const dungeons = new DungeonService(stats, party);
   const crafting = new CraftService(stats);
   const inventory = new InventoryService(stats);
   const inventoryCommand = new InventoryCommand(inventory);

@@ -8,6 +8,10 @@ import { BabaYaga } from './baba-yaga.mob.js';
 import { DarkDuchess } from './dark-duchess.mob.js';
 import { PolonezDragon } from './polonez-dragon.mob.js';
 import { IronTitan } from './iron-titan.mob.js';
+import { FlyingDutchman } from './flying-dutchman.mob.js';
+import { HornedLeszy } from './horned-leszy.mob.js';
+import { FrostGiant } from './frost-giant.mob.js';
+import { GreatLich } from './great-lich.mob.js';
 // Ambush mobs
 import { ScrapGoblin } from './scrap-goblin.mob.js';
 import { ThiefMerchant } from './thief-merchant.mob.js';
@@ -33,6 +37,10 @@ export const BOSS_MOBS: Record<string, Mob> = {
   ksiazna_mroku: new DarkDuchess(),
   smok_polonezowy: new PolonezDragon(),
   tytan_zelaza: new IronTitan(),
+  latajacy_holender: new FlyingDutchman(),
+  leszy_rogaty: new HornedLeszy(),
+  mrozowy_olbrzym: new FrostGiant(),
+  lich_wielki: new GreatLich(),
 };
 
 type MobConstructor = new () => Mob;
