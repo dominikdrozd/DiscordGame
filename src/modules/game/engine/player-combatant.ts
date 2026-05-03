@@ -1,4 +1,5 @@
 import { type Combatant } from './combat.js';
+import type { BattleCombatant } from './battle-state.js';
 import type { PlayerStats } from '../services/player-stats.js';
 import type { PlayerStatsService } from '../services/player-stats.js';
 import { isCombatConsumable } from '../services/items.js';
@@ -47,6 +48,22 @@ export function buildPlayerCombatant(
     skillCooldowns: {},
     buffs: [],
     spellPower: stats.spellPower(p),
+  };
+}
+
+/**
+ * Convenience wrapper: `buildPlayerCombatant` + team/controller='human'
+ * w jednym kroku. Wcześniej ten pattern powtarzał się ~8 razy w services.
+ */
+export function buildHumanCombatant(
+  stats: PlayerStatsService,
+  player: PlayerStats,
+  team = 0,
+): BattleCombatant {
+  return {
+    ...buildPlayerCombatant(stats, player),
+    team,
+    controller: 'human',
   };
 }
 

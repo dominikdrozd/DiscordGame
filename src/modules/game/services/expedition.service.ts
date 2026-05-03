@@ -5,7 +5,7 @@ import {
 } from 'discord.js';
 import type { ICommandContext } from '../../../types/command.types.js';
 import { PlayerStatsService, type PlayerStats } from './player-stats.js';
-import { PartyService, type Party } from './party.js';
+import { PartyService } from './party.js';
 import {
   EXPEDITIONS,
   REGION_LVL_REQ,
@@ -712,6 +712,5 @@ export class ExpeditionService {
     await msg.reply(
       `🗺️ **${def.name}** rozpoczęta ${tag} — wraca za ${Math.round(def.durationMs / 60_000)} min. Wpisz \`.expedition\` żeby zobaczyć log walk.`,
     );
-    void this.party as unknown as Party | undefined;
   }
 }

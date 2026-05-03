@@ -36,6 +36,7 @@ import { buildPlayerCombatant } from '../engine/player-combatant.js';
 import { awardReward } from './reward.service.js';
 import { buildPanelOpenerRow, buildTargetRow } from '../ui/battle-buttons.js';
 import { displayName, errMsg } from '../../../utils.js';
+import { hasThreadCreate } from '../engine/discord-helpers.js';
 
 interface DungeonBattleState extends BattleState {
   dungeonId: string;
@@ -43,17 +44,6 @@ interface DungeonBattleState extends BattleState {
   currentBossId: string;
   /** Membersi party którzy weszli — używane do dystrybucji finalnych nagród. */
   partyMemberIds: string[];
-}
-
-function hasThreadCreateLocal(
-  c: unknown,
-): c is { threads: { create: (opts: unknown) => Promise<unknown> } } {
-  if (!c || typeof c !== 'object') return false;
-  if (!('threads' in c)) return false;
-  const t = c.threads;
-  if (!t || typeof t !== 'object') return false;
-  if (!('create' in t)) return false;
-  return typeof t.create === 'function';
 }
 
 const COOLDOWN_MS = 30 * 60_000;
@@ -191,7 +181,7 @@ export class DungeonService {
       return;
     }
     const channel: unknown = interaction.channel;
-    if (!hasThreadCreateLocal(channel)) {
+    if (!hasThreadCreate(channel)) {
       await interaction
         .reply({
           content: 'Ten kanał nie wspiera wątków — użyj `.dungeon <id>` w innym kanale.',

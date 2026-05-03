@@ -44,16 +44,7 @@ interface BossBattleState extends BattleState {
   bossId: string;
 }
 
-function hasPublicThreadCreate(
-  c: unknown,
-): c is { threads: { create: (opts: unknown) => Promise<unknown> } } {
-  if (!c || typeof c !== 'object') return false;
-  if (!('threads' in c)) return false;
-  const t = c.threads;
-  if (!t || typeof t !== 'object') return false;
-  if (!('create' in t)) return false;
-  return typeof t.create === 'function';
-}
+import { hasThreadCreate } from '../engine/discord-helpers.js';
 
 interface BrowserState {
   userId: string;
@@ -365,7 +356,7 @@ export class BossService {
       return;
     }
     const channel: unknown = interaction.channel;
-    if (!hasPublicThreadCreate(channel)) {
+    if (!hasThreadCreate(channel)) {
       await interaction
         .reply({
           content: 'Nie mogę otworzyć wątku w tym kanale — użyj `.boss ' + def.id + '`.',

@@ -51,16 +51,7 @@ export interface GameServices {
   expeditions: ExpeditionService;
 }
 
-function hasThreadCreate(
-  c: unknown,
-): c is { threads: { create: (opts: unknown) => Promise<unknown> } } {
-  if (!c || typeof c !== 'object') return false;
-  if (!('threads' in c)) return false;
-  const t = c.threads;
-  if (!t || typeof t !== 'object') return false;
-  if (!('create' in t)) return false;
-  return typeof t.create === 'function';
-}
+import { hasThreadCreate } from './engine/discord-helpers.js';
 
 export function createGameServices(): GameServices {
   const stats = new PlayerStatsService();

@@ -16,7 +16,14 @@ import {
 } from './battle-state.js';
 import { resolveBattleRound } from './combat-battle.js';
 import { chooseAiAction } from './ai.js';
-import { buildPlayerCombatant } from './player-combatant.js';
+import { buildHumanCombatant } from './player-combatant.js';
+import {
+  hasSendable,
+  hasThreadCreate,
+  disableMessageComponents,
+  sendMentionBatches,
+} from './discord-helpers.js';
+import { nextSlotAfter } from './scheduling.js';
 import { awardReward } from '../services/reward.service.js';
 import {
   openItemPicker,
@@ -69,30 +76,6 @@ interface WorldBossBattleState extends BattleState {
   bossId: string;
 }
 
-function hasSendable(c: unknown): c is { send: (payload: unknown) => Promise<unknown> } {
-  if (!c || typeof c !== 'object') return false;
-  if (!('send' in c)) return false;
-  return typeof (c as { send: unknown }).send === 'function';
-}
-
-/**
- * Zwraca timestamp najbliższego slotu z `SPAWN_HOURS` po `now` (lokalny TZ).
- * Jeśli wszystkie sloty na dziś już przeszły — przewija na pierwszy slot
- * jutra.
- */
-function nextSpawnSlot(now: number): number {
-  const d = new Date(now);
-  for (const h of SPAWN_HOURS) {
-    const candidate = new Date(d);
-    candidate.setHours(h, 0, 0, 0);
-    if (candidate.getTime() > now) return candidate.getTime();
-  }
-  // Wszystkie dzisiejsze sloty minęły → pierwszy jutrzejszy.
-  const tomorrow = new Date(d);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  tomorrow.setHours(SPAWN_HOURS[0], 0, 0, 0);
-  return tomorrow.getTime();
-}
 
 function buildAnnounceRow(channelId: string): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -146,7 +129,7 @@ export class WorldBossService {
 
   start(): void {
     if (this.timer) return;
-    this.nextSpawnAt = nextSpawnSlot(Date.now());
+    this.nextSpawnAt = nextSlotAfter(Date.now(), SPAWN_HOURS);
     this.timer = setInterval(() => {
       this.tick().catch((e) => console.error('[world-boss] tick fail:', errMsg(e)));
     }, TICK_MS);
@@ -175,7 +158,7 @@ export class WorldBossService {
       await this.tryStartFight(evt);
     }
     if (now >= this.nextSpawnAt) {
-      this.nextSpawnAt = nextSpawnSlot(now);
+      this.nextSpawnAt = nextSlotAfter(now, SPAWN_HOURS);
       await this.spawnAnnouncement();
     }
   }
@@ -197,8 +180,7 @@ export class WorldBossService {
       return;
     }
 
-    const allPlayers = this.stats.list();
-    const mentions = allPlayers.map((p) => `<@${p.id}>`);
+    const mentions = this.stats.list().map((p) => `<@${p.id}>`);
     const MENTION_BATCH = 50;
 
     const registrationEndsAt = Date.now() + REGISTRATION_WINDOW_MS;
@@ -218,11 +200,7 @@ export class WorldBossService {
         components: [buildAnnounceRow(channelId)],
       })
       .catch(() => null);
-    for (let i = MENTION_BATCH; i < mentions.length; i += MENTION_BATCH) {
-      await channel
-        .send({ content: mentions.slice(i, i + MENTION_BATCH).join(' ').slice(0, 1900) })
-        .catch(() => {});
-    }
+    await sendMentionBatches(channel, mentions, MENTION_BATCH, MENTION_BATCH);
 
     const announceMsgId =
       sent && typeof sent === 'object' && 'id' in sent && typeof sent.id === 'string'
@@ -258,22 +236,22 @@ export class WorldBossService {
       players.reduce((sum, p) => sum + p.skills.combat.level, 0) / players.length;
     const tier = tierForAvgLvl(avgLvl);
     const boss = pickRandomBoss();
+    // Atomic: setTier + toCombatant w jednym synchronicznym kroku, przed
+    // jakimkolwiek await — zapobiega race condition gdyby drugi event
+    // wystartował na tym samym shared `BOSS_MOBS[id]` instance.
     boss.setTier(tier);
+    const bossCombatantRaw = boss.toCombatant(`wb_${Date.now().toString(36)}`);
+    const bossName = boss.name;
 
-    // Otwórz publiczny wątek na walkę.
-    if (!('threads' in channel) || typeof (channel as { threads?: unknown }).threads !== 'object') {
-      await channel.send('Nie mogę otworzyć wątku na world boss — kanał nie wspiera wątków.').catch(() => {});
+    if (!hasThreadCreate(channel)) {
+      await channel
+        .send('Nie mogę otworzyć wątku na world boss — kanał nie wspiera wątków.')
+        .catch(() => {});
       return;
     }
-    const threadsApi = (channel as { threads: { create?: (opts: unknown) => Promise<unknown> } })
-      .threads;
-    if (!threadsApi.create) {
-      await channel.send('Nie mogę otworzyć wątku — brak API.').catch(() => {});
-      return;
-    }
-    const thread = await threadsApi
+    const thread = await channel.threads
       .create({
-        name: `🌋 World Boss: ${boss.name}`.slice(0, 100),
+        name: `🌋 World Boss: ${bossName}`.slice(0, 100),
         autoArchiveDuration: 60,
       })
       .catch(() => null);
@@ -284,14 +262,11 @@ export class WorldBossService {
     }
     const tid = (thread as { id: string }).id;
 
-    // Build combatants.
-    const playerCombatants: BattleCombatant[] = players.map((p) => ({
-      ...buildPlayerCombatant(this.stats, p),
-      team: 0,
-      controller: 'human',
-    }));
+    const playerCombatants: BattleCombatant[] = players.map((p) =>
+      buildHumanCombatant(this.stats, p, 0),
+    );
     const bossCombatant: BattleCombatant = {
-      ...boss.toCombatant(`wb_${Date.now().toString(36)}`),
+      ...bossCombatantRaw,
       team: 1,
       controller: 'ai',
     };
@@ -329,15 +304,7 @@ export class WorldBossService {
 
   private async disableAnnounceButton(evt: WorldBossEvent): Promise<void> {
     if (!evt.announceMsgId) return;
-    const channel = await this.client.channels.fetch(evt.channelId).catch(() => null);
-    if (!channel || !('messages' in channel)) return;
-    const msgs = (channel as { messages?: { fetch?: (id: string) => Promise<unknown> } }).messages;
-    if (!msgs?.fetch) return;
-    const msg = await msgs.fetch(evt.announceMsgId).catch(() => null);
-    if (!msg || typeof msg !== 'object' || !('edit' in msg)) return;
-    const edit = (msg as { edit?: (payload: unknown) => Promise<unknown> }).edit;
-    if (!edit) return;
-    await edit.call(msg, { components: [] }).catch(() => {});
+    await disableMessageComponents(this.client, evt.channelId, evt.announceMsgId);
   }
 
   async handleInteraction(interaction: ButtonInteraction): Promise<void> {

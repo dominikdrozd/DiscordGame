@@ -9,14 +9,22 @@ import { PlayerStatsService } from '../services/player-stats.js';
 import { PartyService } from '../services/party.js';
 import { ExpeditionService } from '../services/expedition.service.js';
 import {
-  type BattleCombatant,
   type BattleState,
   aliveEnemies,
   findCombatant,
   humansAlive,
 } from './battle-state.js';
 import { resolveBattleRound } from './combat-battle.js';
-import { buildPlayerCombatant } from './player-combatant.js';
+import { buildHumanCombatant } from './player-combatant.js';
+import {
+  type SendableThread,
+  hasSendable,
+  hasThreadCreate,
+  isSendableThread,
+  disableMessageComponents,
+  sendMentionBatches,
+} from './discord-helpers.js';
+import { nextSlotAfter } from './scheduling.js';
 import {
   openItemPicker,
   recordItemPick,
@@ -71,37 +79,6 @@ interface ArenaTournament {
   currentBattle?: BattleState;
 }
 
-interface SendableThread {
-  id: string;
-  send: (payload: unknown) => Promise<{ id: string } | unknown>;
-  setArchived?: (state: boolean) => Promise<unknown>;
-  messages: { fetch: (id: string) => Promise<{ edit: (payload: unknown) => Promise<unknown> } | null> };
-}
-
-function hasSendable(c: unknown): c is { send: (payload: unknown) => Promise<unknown> } {
-  if (!c || typeof c !== 'object') return false;
-  if (!('send' in c)) return false;
-  return typeof (c as { send: unknown }).send === 'function';
-}
-
-function isSendableThread(t: unknown): t is SendableThread {
-  if (!t || typeof t !== 'object') return false;
-  if (!('id' in t) || typeof (t as { id: unknown }).id !== 'string') return false;
-  if (!('send' in t) || typeof (t as { send: unknown }).send !== 'function') return false;
-  return true;
-}
-
-/** Najbliższy timestamp ARENA_HOUR:ARENA_MINUTE lokalnie po `now`. */
-function nextArenaSlot(now: number): number {
-  const d = new Date(now);
-  const today = new Date(d);
-  today.setHours(ARENA_HOUR, ARENA_MINUTE, 0, 0);
-  if (today.getTime() > now) return today.getTime();
-  const tomorrow = new Date(d);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  tomorrow.setHours(ARENA_HOUR, ARENA_MINUTE, 0, 0);
-  return tomorrow.getTime();
-}
 
 function buildAnnounceRow(): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -149,8 +126,6 @@ export class ArenaService {
   /** Pojedynczy globalny turniej — `null` gdy nieaktywny. */
   private tournament: ArenaTournament | null = null;
   private nextSpawnAt: number = 0;
-  /** Zapobiega podwójnemu spawnowaniu w tej samej dobie. */
-  private lastSpawnDay: string = '';
 
   constructor(
     private readonly client: Client,
@@ -161,7 +136,7 @@ export class ArenaService {
 
   start(): void {
     if (this.timer) return;
-    this.nextSpawnAt = nextArenaSlot(Date.now());
+    this.nextSpawnAt = nextSlotAfter(Date.now(), [ARENA_HOUR], ARENA_MINUTE);
     this.timer = setInterval(() => {
       this.tick().catch((e) => console.error('[arena] tick fail:', errMsg(e)));
     }, TICK_MS);
@@ -189,13 +164,11 @@ export class ArenaService {
         console.error('[arena] tryStartTournament threw:', errMsg(e));
       }
     }
+    // Po spawnAnnouncement nextSpawnAt advances do jutra → tick nie odpali
+    // ponownie tego samego dnia.
     if (now >= this.nextSpawnAt) {
-      this.nextSpawnAt = nextArenaSlot(now);
-      const dayKey = new Date(now).toISOString().slice(0, 10);
-      if (this.lastSpawnDay !== dayKey) {
-        this.lastSpawnDay = dayKey;
-        await this.spawnAnnouncement();
-      }
+      this.nextSpawnAt = nextSlotAfter(now, [ARENA_HOUR], ARENA_MINUTE);
+      await this.spawnAnnouncement();
     }
   }
 
@@ -215,8 +188,7 @@ export class ArenaService {
       return;
     }
 
-    const allPlayers = this.stats.list();
-    const mentions = allPlayers.map((p) => `<@${p.id}>`);
+    const mentions = this.stats.list().map((p) => `<@${p.id}>`);
     const MENTION_BATCH = 50;
 
     const registrationEndsAt = Date.now() + REGISTRATION_WINDOW_MS;
@@ -244,11 +216,7 @@ export class ArenaService {
         ? (sent as { id: string }).id
         : undefined;
 
-    for (let i = MENTION_BATCH; i < mentions.length; i += MENTION_BATCH) {
-      await channel
-        .send({ content: mentions.slice(i, i + MENTION_BATCH).join(' ').slice(0, 1900) })
-        .catch(() => {});
-    }
+    await sendMentionBatches(channel, mentions, MENTION_BATCH, MENTION_BATCH);
 
     this.pendingEvent = {
       channelId,
@@ -454,16 +422,8 @@ export class ArenaService {
     const [aId, bId] = t.pairs[t.currentMatchIdx];
     const a = this.stats.get(aId);
     const b = this.stats.get(bId);
-    const ca: BattleCombatant = {
-      ...buildPlayerCombatant(this.stats, a),
-      team: 0,
-      controller: 'human',
-    };
-    const cb: BattleCombatant = {
-      ...buildPlayerCombatant(this.stats, b),
-      team: 1,
-      controller: 'human',
-    };
+    const ca = buildHumanCombatant(this.stats, a, 0);
+    const cb = buildHumanCombatant(this.stats, b, 1);
     const battleId = `arena_${Date.now().toString(36)}_${t.currentMatchIdx}`;
     const state: BattleState = {
       id: battleId,
@@ -659,7 +619,7 @@ export class ArenaService {
 
     for (const [, msgId] of state.promptMessageIds) {
       try {
-        const m = await t.thread.messages.fetch(msgId).catch(() => null);
+        const m = await t.thread.messages?.fetch(msgId).catch(() => null);
         if (m)
           await m.edit({ components: [buildPanelOpenerRow(state.id, true)] }).catch(() => {});
       } catch {}
@@ -762,14 +722,6 @@ export class ArenaService {
 
   private async disableAnnounceButton(evt: ArenaEvent): Promise<void> {
     if (!evt.announceMsgId) return;
-    const channel = await this.client.channels.fetch(evt.channelId).catch(() => null);
-    if (!channel || !('messages' in channel)) return;
-    const msgs = (channel as { messages?: { fetch?: (id: string) => Promise<unknown> } }).messages;
-    if (!msgs?.fetch) return;
-    const msg = await msgs.fetch(evt.announceMsgId).catch(() => null);
-    if (!msg || typeof msg !== 'object' || !('edit' in msg)) return;
-    const edit = (msg as { edit?: (payload: unknown) => Promise<unknown> }).edit;
-    if (!edit) return;
-    await edit.call(msg, { components: [] }).catch(() => {});
+    await disableMessageComponents(this.client, evt.channelId, evt.announceMsgId);
   }
 }
