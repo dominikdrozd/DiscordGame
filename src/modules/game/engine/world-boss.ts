@@ -32,6 +32,7 @@ import {
 } from './battle-helpers.js';
 import { buildPanelOpenerRow } from '../ui/battle-buttons.js';
 import { rollItemInstance } from '../services/items.js';
+import { awardGemDrops } from '../services/gem-effects.js';
 import { errMsg } from '../../../utils.js';
 
 /** Co ile sprawdzamy czy nadeszła zaplanowana pora. */
@@ -397,17 +398,22 @@ export class WorldBossService {
       for (const human of aliveHumans) {
         const memberStats = this.stats.get(human.id, human.name);
         if (boss?.rewards) {
-          const award = awardReward(this.stats, memberStats, boss.rewards);
+          const award = awardReward(this.stats, memberStats, boss.rewards, {
+            socketable: true,
+            worldBoss: true,
+          });
           lines.push(`__${human.name}__:`);
           lines.push(...award.lines);
         }
-        // Bonus lege/epicki item — niezależny roll per gracz.
+        // Bonus lege/epicki item — world boss ma najwyższą szansę na legendary.
         const bonusId = BONUS_DROP_POOL[Math.floor(Math.random() * BONUS_DROP_POOL.length)];
-        const bonus = rollItemInstance(bonusId);
+        const bonus = rollItemInstance(bonusId, { socketable: true, worldBoss: true });
         if (bonus) {
           this.stats.addItem(memberStats, bonus);
           lines.push(`🎁 **Bonus world-boss:** ${bonus.name} \`${bonus.uid}\``);
         }
+        const gemLines = awardGemDrops(this.stats, memberStats, boss?.tier ?? 5);
+        for (const line of gemLines) lines.push(line);
       }
       syncConsumablesAfterBattle(this.stats, state);
       this.stats.save();

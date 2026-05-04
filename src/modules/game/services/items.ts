@@ -3,6 +3,21 @@ export type ItemType = 'resource' | 'consumable' | 'weapon' | 'armor' | 'tool';
 export type ItemSlot = 'weapon' | 'armor' | 'tool';
 export type ToolKind = 'pickaxe' | 'rod' | 'axe';
 export type PrimaryKey = 'str' | 'agi' | 'wit' | 'int';
+export type GemElement = 'fire' | 'ice' | 'poison';
+export type GemSize = 'small' | 'medium' | 'large' | 'huge';
+
+/**
+ * Max liczba slotów na gemy wg rarity itemu. Item dropowany jako socketable
+ * (z dungeon/boss/expedition) rolluje przy identyfikacji `gemSlots ∈ [1, MAX]`.
+ * Common/crafted items nie dostają slotów.
+ */
+export const MAX_GEM_SLOTS_BY_RARITY: Record<Rarity, number> = {
+  common: 0,
+  uncommon: 1,
+  rare: 2,
+  epic: 3,
+  legendary: 4,
+};
 
 export interface ItemStats {
   attack?: number;
@@ -72,7 +87,36 @@ export interface ItemInstance {
    * Crafted items i T1 (common) zawsze `true`.
    */
   identified?: boolean;
+  /**
+   * Item level z dropu ekspedycji — `expeditionMaxLvl(tier) × tier`. Decyduje
+   * o required combat lvl (max z upgrades.length i itemLevel) i o mnożniku
+   * statów (sqrt scaling). Crafted/quest items zostawiają puste (=0).
+   */
+  itemLevel?: number;
+  /**
+   * True dla weapon/armor/tool z dungeon/boss/expedition drop. Crafted (smith,
+   * sklep) i quest rewards = false. Tylko socketable items dostają sloty
+   * przy identyfikacji.
+   */
+  socketable?: boolean;
+  /**
+   * Liczba slotów na gemy — rolowana przy identyfikacji [1, MAX_GEM_SLOTS_BY_RARITY[rarity]].
+   * Tylko dla socketable. Pre-ID = undefined.
+   */
+  gemSlots?: number;
+  /**
+   * Sloty na gemy: array długości `gemSlots`. `null` = pusty slot, string = id gemu.
+   * Stałe positions: gem zostaje w swoim slocie aż go wyjmiesz.
+   */
+  gems?: (string | null)[];
 }
+
+/** ID rezerw używanych jako materiały do wkładania gemów u Enchantera. */
+export const ENCHANTER_MATERIAL_IDS = {
+  ruby: 'gem_ruby',
+  sapphire: 'gem_sapphire',
+  emerald: 'gem_emerald',
+} as const;
 
 export const RARITY_EMOJI: Record<Rarity, string> = {
   common: '⚪',
@@ -192,6 +236,95 @@ export const ITEMS: Record<string, ItemTemplate> = {
     name: 'Drewno z Drzewa Świata',
     type: 'resource',
     rarity: 'legendary',
+  },
+
+  // ── ENCHANTING GEMS (3 elementy × 4 rozmiary = 12 typów) ──
+  // Włożone w broń → bonus dmg + proc DoT/slow. W pancerz → defensywne
+  // (HP/def/regen). W narzędzie → primary stats (STR/AGI/INT).
+  // Drop od T2+ ekspedycji/dungeonów/bossów. Rarity rośnie z size.
+  gem_fire_small: {
+    id: 'gem_fire_small',
+    name: 'Mały Rubinowy Gem (ognia)',
+    type: 'resource',
+    rarity: 'common',
+    description: 'Mały kamień ognia — w broni proc podpalenia, w pancerzu +HP, w narzędziu +STR.',
+  },
+  gem_fire_medium: {
+    id: 'gem_fire_medium',
+    name: 'Średni Rubinowy Gem (ognia)',
+    type: 'resource',
+    rarity: 'uncommon',
+    description: 'Średni kamień ognia — silniejsze efekty wszędzie.',
+  },
+  gem_fire_large: {
+    id: 'gem_fire_large',
+    name: 'Duży Rubinowy Gem (ognia)',
+    type: 'resource',
+    rarity: 'rare',
+    description: 'Duży kamień ognia — endgame zasilanie buildów ofensywnych/HP.',
+  },
+  gem_fire_huge: {
+    id: 'gem_fire_huge',
+    name: 'Ogromny Rubinowy Gem (ognia)',
+    type: 'resource',
+    rarity: 'epic',
+    description: 'Ogromny kamień ognia — najwyższa moc, drop z najwyższych tierów.',
+  },
+  gem_ice_small: {
+    id: 'gem_ice_small',
+    name: 'Mały Szafirowy Gem (lodu)',
+    type: 'resource',
+    rarity: 'common',
+    description: 'Mały kamień lodu — w broni proc spowolnienia, w pancerzu +obrona, w narzędziu +AGI.',
+  },
+  gem_ice_medium: {
+    id: 'gem_ice_medium',
+    name: 'Średni Szafirowy Gem (lodu)',
+    type: 'resource',
+    rarity: 'uncommon',
+    description: 'Średni kamień lodu.',
+  },
+  gem_ice_large: {
+    id: 'gem_ice_large',
+    name: 'Duży Szafirowy Gem (lodu)',
+    type: 'resource',
+    rarity: 'rare',
+    description: 'Duży kamień lodu.',
+  },
+  gem_ice_huge: {
+    id: 'gem_ice_huge',
+    name: 'Ogromny Szafirowy Gem (lodu)',
+    type: 'resource',
+    rarity: 'epic',
+    description: 'Ogromny kamień lodu — najwyższa moc CC i obrony.',
+  },
+  gem_poison_small: {
+    id: 'gem_poison_small',
+    name: 'Mały Szmaragdowy Gem (trucizny)',
+    type: 'resource',
+    rarity: 'common',
+    description: 'Mały kamień trucizny — w broni proc zatrucia, w pancerzu HP regen, w narzędziu +INT.',
+  },
+  gem_poison_medium: {
+    id: 'gem_poison_medium',
+    name: 'Średni Szmaragdowy Gem (trucizny)',
+    type: 'resource',
+    rarity: 'uncommon',
+    description: 'Średni kamień trucizny.',
+  },
+  gem_poison_large: {
+    id: 'gem_poison_large',
+    name: 'Duży Szmaragdowy Gem (trucizny)',
+    type: 'resource',
+    rarity: 'rare',
+    description: 'Duży kamień trucizny.',
+  },
+  gem_poison_huge: {
+    id: 'gem_poison_huge',
+    name: 'Ogromny Szmaragdowy Gem (trucizny)',
+    type: 'resource',
+    rarity: 'epic',
+    description: 'Ogromny kamień trucizny — DoT spec endgame.',
   },
 
   // ── DUNGEON GEMS (resources, drop tylko z dungeonów) ──
@@ -515,7 +648,48 @@ export function rollRarity(luck = 0): Rarity {
   return 'common';
 }
 
-function randIntInclusive(min: number, max: number): number {
+/** Bazowa szansa na legendary — sync z RARITY_ROLL[legendary].chance. T5 source = ta wartość. */
+const BASE_LEGENDARY_CHANCE = 0.02;
+/** World-boss boost — najwyższa szansa, 5× base. */
+const WORLD_BOSS_LEGENDARY_CHANCE = 0.10;
+/** Mnożnik per niższy tier: T5=1.0, T4=0.9, T3=0.81, T2=0.729, T1=0.6561 (~1.31%). */
+const TIER_LEGENDARY_DECAY = 0.9;
+/** Floor dla common chance po odjęciu legendary delta — żeby world boss nie wyzerował commonsów. */
+const MIN_COMMON_CHANCE = 0.05;
+
+/**
+ * Roll rarity z uwzględnieniem źródła. World boss: ~10% legendary. Tier-based
+ * scaling: T5 = base, każdy niższy tier × `TIER_LEGENDARY_DECAY`. Delta od base
+ * legendary odejmowany z `common` żeby suma chance = 1 (clamp `MIN_COMMON_CHANCE`).
+ */
+function rollRarityScaled(opts: { tier?: number; worldBoss?: boolean }): Rarity {
+  let legendaryChance: number;
+  if (opts.worldBoss) {
+    legendaryChance = WORLD_BOSS_LEGENDARY_CHANCE;
+  } else if (opts.tier !== undefined) {
+    const tiersBelow5 = Math.max(0, 5 - opts.tier);
+    legendaryChance = BASE_LEGENDARY_CHANCE * Math.pow(TIER_LEGENDARY_DECAY, tiersBelow5);
+  } else {
+    return rollRarity();
+  }
+  const delta = legendaryChance - BASE_LEGENDARY_CHANCE;
+  const r = Math.random();
+  let acc = 0;
+  for (const entry of RARITY_ROLL) {
+    const chance =
+      entry.rarity === 'legendary'
+        ? legendaryChance
+        : entry.rarity === 'common'
+          ? Math.max(MIN_COMMON_CHANCE, entry.chance - delta)
+          : entry.chance;
+    acc += chance;
+    if (r < acc) return entry.rarity;
+  }
+  return 'common';
+}
+
+/** Random integer in [min, max] inclusive. Re-exportowane bo gem-effects/identification używają. */
+export function randIntInclusive(min: number, max: number): number {
   return min + Math.floor(Math.random() * (max - min + 1));
 }
 
@@ -559,18 +733,79 @@ function newUid(): string {
   return `${Date.now().toString(36)}_${uidCounter.toString(36)}_${Math.floor(Math.random() * 1e6).toString(36)}`;
 }
 
-export function rollItemInstance(baseId: string, forcedRarity?: Rarity): ItemInstance | null {
+/**
+ * Mnożnik statów z item levelu — sqrt scaling, żeby T5 endgame nie był
+ * 4× silniejszy niż T1. Lvl 7: 1.26×, lvl 30: 1.55×, lvl 200: 2.41×.
+ * Aplikowany TYLKO na rolled stats (nie baseStats z templatu) — żeby base
+ * identity itemu (np. dagger crit) zostało stałe a roll-y skalowały się
+ * z poziomu dropu.
+ */
+function itemLevelStatMult(itemLevel: number): number {
+  if (itemLevel <= 0) return 1;
+  return 1 + Math.sqrt(itemLevel) * 0.1;
+}
+
+export interface RollItemOptions {
+  forcedRarity?: Rarity;
+  /** Item level z dropu ekspedycji — sqrt mnoznik statów + req combat lvl. */
+  itemLevel?: number;
+  /** Drop z dungeon/boss/expedition → przy ID rolluje sloty na gemy. */
+  socketable?: boolean;
+  /**
+   * Tier źródła dropu (1-5). T5 = bazowa szansa na legendary (2%), każdy
+   * niższy tier × 0.9 (T4: 1.8%, T1: ~1.3%). Bez wpływu gdy `worldBoss=true`.
+   */
+  tier?: number;
+  /** World-boss drop — najwyższa szansa na legendary (~10%). Override tier. */
+  worldBoss?: boolean;
+}
+
+export function rollItemInstance(
+  baseId: string,
+  forcedRarityOrOpts?: Rarity | RollItemOptions,
+  legacyItemLevel?: number,
+  legacySocketable?: boolean,
+): ItemInstance | null {
+  const opts: RollItemOptions =
+    typeof forcedRarityOrOpts === 'object' && forcedRarityOrOpts !== null
+      ? forcedRarityOrOpts
+      : {
+          forcedRarity: forcedRarityOrOpts,
+          itemLevel: legacyItemLevel,
+          socketable: legacySocketable,
+        };
   const tpl = ITEMS[baseId];
   if (!tpl) return null;
   if (tpl.type === 'resource' || tpl.type === 'consumable') return null;
-  const rarity = forcedRarity ?? rollRarity();
+  const rarity =
+    opts.forcedRarity ??
+    (opts.worldBoss || opts.tier !== undefined
+      ? rollRarityScaled({ tier: opts.tier, worldBoss: opts.worldBoss })
+      : rollRarity());
   const stats = rollStats(tpl, rarity);
   const primary = rollPrimaryStats(tpl, rarity);
+  const lvl = opts.itemLevel ?? 0;
+  if (lvl > 0) {
+    const mult = itemLevelStatMult(lvl);
+    for (const k of STAT_KEYS) {
+      const v = stats[k];
+      if (v !== undefined) stats[k] = Math.round(v * mult);
+    }
+    if (primary) {
+      for (const k of PRIMARY_KEYS) {
+        const v = primary[k];
+        if (v !== undefined) primary[k] = Math.round(v * mult);
+      }
+    }
+  }
   const prefix = RARITY_PREFIX[rarity];
   const name = prefix ? `${prefix} ${tpl.name}` : tpl.name;
   // Diablo-style: drop-y > common przychodzą NIE-zidentyfikowane.
   // Tools (kilof/wędka/siekiera) zawsze zidentyfikowane (nie ma rarity).
   const identified = rarity === 'common' || tpl.type === 'tool';
+  // Socketable: tylko dla weapon/armor/tool z drop sources (dungeon/boss/expedition).
+  // Common rarity nigdy nie ma slotów (MAX_GEM_SLOTS_BY_RARITY[common]=0).
+  const canSocket = !!opts.socketable && MAX_GEM_SLOTS_BY_RARITY[rarity] > 0;
   return {
     uid: newUid(),
     baseId,
@@ -582,6 +817,8 @@ export function rollItemInstance(baseId: string, forcedRarity?: Rarity): ItemIns
     toolTier: tpl.toolTier,
     primary,
     identified,
+    itemLevel: lvl > 0 ? lvl : undefined,
+    socketable: canSocket ? true : undefined,
   };
 }
 
@@ -622,12 +859,13 @@ export function itemUpgradeLevel(it: ItemInstance): number {
 }
 
 /**
- * Wymagany combat lvl do założenia/używania itemu = liczba upgradów.
- * Base item bez upgradów = lvl 0 wymagany (każdy gracz może założyć).
- * Każdy upgrade +1 dorzuca +1 wymaganego combat lvl.
+ * Wymagany combat lvl do założenia/używania itemu — max z (liczba upgradów,
+ * itemLevel z dropu ekspedycji). Base item bez upgradów i bez dropu = 0
+ * (każdy może założyć). Każdy upgrade +1 → +1 wymaganego lvl. Drop z T5
+ * ekspedycji może mieć itemLevel do 200 → wysokie req lvl, aspirational.
  */
 export function itemRequiredLevel(it: ItemInstance): number {
-  return itemUpgradeLevel(it);
+  return Math.max(itemUpgradeLevel(it), it.itemLevel ?? 0);
 }
 
 /** Suma bazowych statów + wszystkich upgradów. Source-of-truth dla effective stats. */
@@ -675,19 +913,43 @@ function upgradeStatRange(rarity: Rarity): [number, number] {
   }
 }
 
+/** Format gem slot row np. "💎💎⚪⚪" — wypełnione vs puste sloty. */
+function fmtSocketRow(it: ItemInstance): string {
+  if (!it.gemSlots || it.gemSlots <= 0) return '';
+  const filled = (it.gems ?? []).filter((g): g is string => !!g).length;
+  const empty = it.gemSlots - filled;
+  return ` ${'💎'.repeat(filled)}${'⚪'.repeat(empty)}`;
+}
+
+/** Lista wstawionych gemów — np. "[Mały Rubinowy, Duży Szafirowy]". Empty → ''. */
+function fmtGemList(it: ItemInstance): string {
+  const filled = (it.gems ?? []).filter((g): g is string => !!g);
+  if (filled.length === 0) return '';
+  const names = filled
+    .map((id) => ITEMS[id]?.name?.replace(/^(Mały|Średni|Duży|Ogromny)\s+/, (m) => m.trim()) ?? id)
+    .join(', ');
+  return ` _[${names}]_`;
+}
+
 export function fmtInstance(it: ItemInstance): string {
   const lvl = itemUpgradeLevel(it);
   const upgradeTag = lvl > 0 ? ` **[+${lvl}]**` : '';
+  const ilvlTag = it.itemLevel && it.itemLevel > 0 ? ` _ilvl ${it.itemLevel}_` : '';
+  const socketTag = fmtSocketRow(it);
+  const gemTag = fmtGemList(it);
   // Diablo-style: nie-zidentyfikowane pokazują tylko name + rarity + req lvl.
   if (it.identified === false) {
     const reqLvl = itemRequiredLevel(it);
     const reqTag = reqLvl > 0 ? ` (req lvl ${reqLvl})` : '';
-    return `${RARITY_EMOJI[it.rarity]} **${it.name}**${upgradeTag} _❓ Niezidentyfikowany_${reqTag}`;
+    const socketableTag = it.socketable ? ' 💎' : '';
+    return `${RARITY_EMOJI[it.rarity]} **${it.name}**${upgradeTag}${ilvlTag}${socketableTag} _❓ Niezidentyfikowany_${reqTag}`;
   }
   const primaryStr = fmtPrimary(it.primary);
   const statsStr = fmtStats(appliedItemStats(it));
   const combined = primaryStr ? `${statsStr}, ${primaryStr}` : statsStr;
-  return `${RARITY_EMOJI[it.rarity]} **${it.name}**${upgradeTag} (${combined})`;
+  const reqLvl = itemRequiredLevel(it);
+  const reqTag = reqLvl > 0 ? ` _(req lvl ${reqLvl})_` : '';
+  return `${RARITY_EMOJI[it.rarity]} **${it.name}**${upgradeTag}${ilvlTag}${socketTag} (${combined})${reqTag}${gemTag}`;
 }
 
 export function fmtResource(id: string, qty: number): string {

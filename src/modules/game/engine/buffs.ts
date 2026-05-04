@@ -19,17 +19,39 @@ export interface Buff {
   ttl: number;
   amount?: number;
   casterId?: string;
+  /**
+   * Co ile rund tickować (dla DoT/HoT). Domyślnie 1 (każda runda). Armor
+   * green/poison gem ma `period: 2` — regen co 2 tury.
+   */
+  period?: number;
+  /**
+   * Wewnętrzny licznik rund od ostatniego ticka. Inkrementowany w
+   * `applyBuffsAtRoundEnd`; gdy `phase >= period` → tick + reset.
+   */
+  phase?: number;
+}
+
+/** True jeśli buff powinien tickować w tej rundzie (period rounds counter). */
+function shouldTick(b: Buff): boolean {
+  const period = b.period ?? 1;
+  if (period <= 1) return true;
+  b.phase = (b.phase ?? 0) + 1;
+  if (b.phase >= period) {
+    b.phase = 0;
+    return true;
+  }
+  return false;
 }
 
 export function applyBuffsAtRoundEnd(c: Combatant): string[] {
   if (!c.buffs || c.buffs.length === 0) return [];
   const lines: string[] = [];
   for (const b of c.buffs) {
-    if (b.kind === 'dot' && b.amount && c.hp > 0) {
+    if (b.kind === 'dot' && b.amount && c.hp > 0 && shouldTick(b)) {
       c.hp = Math.max(0, c.hp - b.amount);
       lines.push(`☠️ **${c.name}** traci **${b.amount}** HP od **${b.source}**.`);
     }
-    if (b.kind === 'hot' && b.amount && c.hp > 0) {
+    if (b.kind === 'hot' && b.amount && c.hp > 0 && shouldTick(b)) {
       const before = c.hp;
       c.hp = Math.min(c.maxHp, c.hp + b.amount);
       const restored = c.hp - before;

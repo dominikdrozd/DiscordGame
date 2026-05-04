@@ -12,12 +12,42 @@ function buildAmbushOpts(def: ExpeditionDef | undefined, combatLvl: number): Ran
   if (def?.ambushMobIds && def.ambushMobIds.length > 0) {
     opts.allowedIds = [...def.ambushMobIds];
   }
-  if (def?.ambushTiers && def.ambushTiers.length > 0) {
-    opts.allowedTiers = [...def.ambushTiers];
-  } else {
-    opts.tier = ambushTierForLevel(combatLvl);
-  }
+  // Mob trzymamy na bazowym tierze (1) — `applyExpeditionTier` aplikuje
+  // mnożnik liniowy `expedition.tier` na hp/dmg/def/primary. Bez ekspedycji
+  // (np. testy bez def) wracamy do level-based fallback z TIER_MULTIPLIERS.
+  if (!def) opts.tier = ambushTierForLevel(combatLvl);
   return opts;
+}
+
+/**
+ * Skaluje staty ambush moba przez tier ekspedycji (×1 dla T1, ×5 dla T5).
+ * Liniowo, niezależnie od `TIER_MULTIPLIERS` — żeby T1 wyprawy były tutorial
+ * easy a T5 były genuine endgame challenge. Dotyczy hp/maxHp/dmg/def/primary.
+ * Generic <T extends Combatant> żeby zachować ewentualne dodatkowe pola
+ * (np. id z `Combatant & { id }` zwracane przez `mob.toCombatant`).
+ */
+function applyExpeditionTier<T extends Combatant>(c: T, tier: number): T {
+  if (tier <= 1) return c;
+  const hp = Math.round(c.hp * tier);
+  const out: T = {
+    ...c,
+    hp,
+    maxHp: hp,
+    damageBonus: Math.round(c.damageBonus * tier),
+  };
+  if (c.defenseBonus !== undefined) {
+    out.defenseBonus = Math.round(c.defenseBonus * tier);
+  }
+  if (c.primary) {
+    out.primary = {
+      str: Math.round(c.primary.str * tier),
+      agi: Math.round(c.primary.agi * tier),
+      wit: Math.round(c.primary.wit * tier),
+      int: Math.round(c.primary.int * tier),
+    };
+    out.spellPower = out.primary.int * 2;
+  }
+  return out;
 }
 import {
   type BattleCombatant,
@@ -26,6 +56,7 @@ import {
   findCombatant,
   humansAlive,
 } from './battle-state.js';
+import type { Combatant } from './combat.js';
 import { resolveBattleRound } from './combat-battle.js';
 import { chooseAiAction } from './ai.js';
 import { buildPlayerCombatant } from './player-combatant.js';
@@ -292,12 +323,14 @@ export class AmbushService {
     const mobCount = Math.min(4, members.length);
     const maxCombatLvl = Math.max(...members.map((m) => m.skills.combat.level));
     const expDef = EXPEDITIONS[members[0].activeExpedition!.destination];
+    const expTier = expDef?.tier ?? 1;
     const mobCombatants: BattleCombatant[] = [];
     for (let i = 0; i < mobCount; i++) {
       const mob = randomAmbushMob(buildAmbushOpts(expDef, maxCombatLvl));
       const raw = mob.toCombatant(`${Date.now()}_${i + 1}`);
+      const scaled = applyExpeditionTier(raw, expTier);
       mobCombatants.push({
-        ...raw,
+        ...scaled,
         team: 1,
         controller: 'ai',
       });
@@ -366,9 +399,11 @@ export class AmbushService {
       controller: 'human',
     };
     const expDef = EXPEDITIONS[exp.destination];
+    const expTier = expDef?.tier ?? 1;
     const mob = randomAmbushMob(buildAmbushOpts(expDef, player.skills.combat.level));
+    const scaled = applyExpeditionTier(mob.toCombatant(`${Date.now()}`), expTier);
     const mobCombatant: BattleCombatant = {
-      ...mob.toCombatant(`${Date.now()}`),
+      ...scaled,
       team: 1,
       controller: 'ai',
     };

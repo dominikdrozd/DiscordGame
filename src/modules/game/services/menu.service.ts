@@ -10,7 +10,8 @@ import type { ICommandContext } from '../../../types/command.types.js';
 import { PlayerStatsService, type PlayerStats } from './player-stats.js';
 import { PartyService } from './party.js';
 import { CITIES, getCity, listCities, type City } from '../cities/index.js';
-import { DUNGEONS, EXPEDITIONS, REGION_LVL_REQ } from '../engine/encounters.js';
+import { DUNGEONS, EXPEDITIONS, REGION_LVL_REQ, dungeonRoomTier } from '../engine/encounters.js';
+import { fmtGemDropChances } from './gem-effects.js';
 import { CLASSES, findSubclass, findSubclass2, listClasses, fmtPrimary } from '../classes/index.js';
 import { RACES, listRaces, fmtRaceStats } from '../races/index.js';
 import { fmtStats } from './items.js';
@@ -25,6 +26,7 @@ import { BossService } from './boss.service.js';
 import { SpellsService } from './spells.service.js';
 import { SmithService } from './smith.service.js';
 import { IdentificationService } from './identification.service.js';
+import { EnchanterService } from './enchanter.service.js';
 import { QuestCommand } from '../commands/quest.command.js';
 
 export interface MenuGatherers {
@@ -82,6 +84,7 @@ export class MenuService {
     private readonly spells: SpellsService,
     private readonly smith: SmithService,
     private readonly identification: IdentificationService,
+    private readonly enchanter: EnchanterService,
     private readonly questCommand: QuestCommand,
   ) {}
 
@@ -166,6 +169,10 @@ export class MenuService {
     if (action === 'cityscribe') {
       const cityId = parts[2];
       return this.identification.openFromInteraction(interaction, cityId);
+    }
+    if (action === 'cityenchanter') {
+      const cityId = parts[2];
+      return this.enchanter.openFromInteraction(interaction, cityId);
     }
     if (action === 'quests') {
       await interaction
@@ -282,8 +289,8 @@ export class MenuService {
       `🧬 Rasa: **${raceName}** · ⚔️ Klasa: **${classDisplay}**`,
       `📈 PvP L${p.level} · combat L${p.skills.combat.level} · 💰 ${p.gold} zł · 🏆 ${p.wins}W/${p.losses}L · 🎯 niewydane punkty: ${p.unspentPoints}`,
       '',
-      '**Primary:**',
-      `STR ${p.primary.str} · AGI ${p.primary.agi} · WIT ${p.primary.wit} · INT ${p.primary.int}`,
+      '**Primary _(total = baza + itemy)_:**',
+      this.fmtPrimaryBreakdown(p),
       '',
       '**Stats bojowe (z ekwipunkiem):**',
       `HP: **${this.stats.effectiveMaxHp(p)}** · Dmg: **+${this.stats.effectiveDamageBonus(p)}** · Def: **+${this.stats.effectiveDefenseBonus(p)}** · Crit: **${this.stats.effectiveCritPercent(p).toFixed(1)}%** · ⚡ Spd: **${this.stats.effectiveSpeed(p)}** · SP: **${this.stats.spellPower(p)}**`,
@@ -300,8 +307,12 @@ export class MenuService {
   private renderSkills(p: PlayerStats): string {
     const xpForNext = (lvl: number): number => Math.floor(100 * Math.pow(lvl, 1.5));
     return [
-      `✨ **Skille zawodowe ${p.name}**`,
+      `✨ **Profil ${p.name} — skille i atrybuty**`,
       '',
+      '**Primary _(total = baza + itemy)_:**',
+      this.fmtPrimaryBreakdown(p),
+      '',
+      '**Skille zawodowe:**',
       `⛏️ Mining L${p.skills.mining.level} (${p.skills.mining.xp}/${xpForNext(p.skills.mining.level)} XP)`,
       `🎣 Fishing L${p.skills.fishing.level} (${p.skills.fishing.xp}/${xpForNext(p.skills.fishing.level)} XP)`,
       `🪓 Woodcutting L${p.skills.woodcutting.level} (${p.skills.woodcutting.xp}/${xpForNext(p.skills.woodcutting.level)} XP)`,
@@ -311,6 +322,27 @@ export class MenuService {
       `🎯 Niewydane punkty primary: **${p.unspentPoints}**`,
       '_Punkty primary rozdzielisz przez `.skills add <str|agi|wit|int> <ile>`._',
     ].join('\n');
+  }
+
+  /**
+   * Format primary stats z breakdown: `STR 50 (baza 20, itemy +30)` per stat.
+   * Total z `effectivePrimary` (baza + itemy z założonego eq), baza z `p.primary`,
+   * itemy = total - baza. Pomija "(baza X, itemy Y)" gdy itemy=0 (clean look).
+   */
+  private fmtPrimaryBreakdown(p: PlayerStats): string {
+    const total = this.stats.effectivePrimary(p);
+    const fmt = (label: string, t: number, base: number): string => {
+      const items = t - base;
+      if (items === 0) return `**${label} ${t}**`;
+      const sign = items > 0 ? '+' : '';
+      return `**${label} ${t}** _(baza ${base}, itemy ${sign}${items})_`;
+    };
+    return [
+      fmt('STR', total.str, p.primary.str),
+      fmt('AGI', total.agi, p.primary.agi),
+      fmt('WIT', total.wit, p.primary.wit),
+      fmt('INT', total.int, p.primary.int),
+    ].join(' · ');
   }
 
   private renderRace(p: PlayerStats): string {
@@ -525,12 +557,14 @@ export class MenuService {
     const sorted = Object.values(DUNGEONS).sort((a, b) => a.baseTier - b.baseTier);
     for (const d of sorted) {
       const lvlReq = d.requiredCombatLevel ? ` · lvl ${d.requiredCombatLevel}+` : '';
+      const finalTier = dungeonRoomTier(d, d.rooms.length - 1);
       lines.push(
-        `• \`${d.id}\` — **${d.name}** · ${d.rooms.length} pokoi · T${d.baseTier} (final T${Math.min(d.baseTier + 1, 5)})${lvlReq} · party ${d.minPartySize}+`,
+        `• \`${d.id}\` — **${d.name}** · ${d.rooms.length} pokoi · T${d.baseTier} (final T${finalTier})${lvlReq} · party ${d.minPartySize}+`,
       );
       lines.push(`  _${d.description}_`);
+      lines.push(`  💎 Final boss: ${fmtGemDropChances(finalTier)}`);
     }
-    lines.push('', 'Użycie: `.dungeon <id>` (lider party).');
+    lines.push('', 'Użycie: `.dungeon <id>` (lider party). Każdy pokój rzuca na gemy niezależnie.');
     return lines.join('\n').slice(0, 1900);
   }
 }

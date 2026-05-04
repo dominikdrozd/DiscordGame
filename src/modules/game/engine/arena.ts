@@ -326,6 +326,26 @@ export class ArenaService {
       return;
     }
 
+    // Filtr: gracz mógł zaczać ekspedycję po zarejestrowaniu (np. party leader
+    // wystartował go przez party-expedition w trakcie 5-min okna). Wykluczamy
+    // wszystkich z aktywną wyprawą — handleJoin blokuje wstęp ale nie usuwa,
+    // więc participants może mieć "zatęchłych" graczy.
+    const droppedOnExpedition: string[] = [];
+    for (const id of [...evt.participants]) {
+      const p = this.stats.get(id);
+      if (p.activeExpedition) {
+        evt.participants.delete(id);
+        droppedOnExpedition.push(id);
+      }
+    }
+    if (droppedOnExpedition.length > 0) {
+      await channel
+        .send(
+          `⚠️ Wykluczeni z areny (są na wyprawie): ${droppedOnExpedition.map((id) => `<@${id}>`).join(', ')}`,
+        )
+        .catch(() => {});
+    }
+
     if (evt.participants.size < MIN_PARTICIPANTS) {
       await channel
         .send(

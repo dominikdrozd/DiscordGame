@@ -11,10 +11,12 @@ import {
   REGION_LVL_REQ,
   expeditionLvlBracket,
   expeditionMinLvl,
+  expeditionMaxLvl,
   type ExpeditionDef,
 } from '../engine/encounters.js';
 import { rollLootMany } from './loot.js';
 import { rollItemInstance, fmtInstance, ITEMS } from './items.js';
+import { awardGemDrops, fmtGemDropChances } from './gem-effects.js';
 import { displayName } from '../../../utils.js';
 import { AMBUSH_MOB_CLASSES_BY_ID } from '../mobs/index.js';
 import {
@@ -235,6 +237,9 @@ export class ExpeditionService {
       const chance = Math.round((exp.guaranteedDropChance ?? 0) * 100);
       lines.push(`• 🎁 Rzadki drop (${chance}% szans): ${drops}`);
     }
+    if (exp.tier >= 2) {
+      lines.push(`• 💎 Gemy (T${exp.tier}, niezależne rolle): ${fmtGemDropChances(exp.tier)}`);
+    }
     lines.push('', '**Możliwe ambushy:**');
     const ambushIds = exp.ambushMobIds ?? Object.keys(AMBUSH_MOB_CLASSES_BY_ID);
     if (ambushIds.length === 0) {
@@ -247,9 +252,7 @@ export class ExpeditionService {
         lines.push(`• ${sample.name} (T${sample.tier}, ${sample.hp} HP base)`);
       }
     }
-    if (exp.ambushTiers && exp.ambushTiers.length) {
-      lines.push(`_Tiery ambush: ${exp.ambushTiers.join(', ')}_`);
-    }
+    lines.push(`_Mob ambush ×${exp.tier} (skalowanie tieru ekspedycji)._`);
 
     const partyEntity = this.party.getByMember(player.id);
     if (partyEntity) {
@@ -639,12 +642,16 @@ export class ExpeditionService {
     let dropLine = '';
     if (def.dropPool && def.dropPool.length && Math.random() < (def.guaranteedDropChance ?? 0)) {
       const baseId = def.dropPool[Math.floor(Math.random() * def.dropPool.length)];
-      const item = rollItemInstance(baseId);
+      const lvlCap = expeditionMaxLvl(def.tier) * def.tier;
+      const itemLevel = 1 + Math.floor(Math.random() * lvlCap);
+      const item = rollItemInstance(baseId, { itemLevel, socketable: true, tier: def.tier });
       if (item) {
         this.stats.addItem(player, item);
-        dropLine = `\nZnaleziono: ${fmtInstance(item)} \`${item.uid}\``;
+        dropLine = `\nZnaleziono: ${fmtInstance(item)} \`${item.uid}\` _(item lvl ${itemLevel})_`;
       }
     }
+    const gemLines = awardGemDrops(this.stats, player, def.tier);
+    if (gemLines.length > 0) dropLine += `\nGemy: ${gemLines.join(', ')}`;
     const questDropLines = this.quests?.onExpeditionClaim(player) ?? [];
     if (questDropLines.length > 0) dropLine += `\n${questDropLines.join('\n')}`;
     this.stats.save();

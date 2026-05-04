@@ -26,6 +26,7 @@ import { awardReward } from './reward.service.js';
 import { buildPanelOpenerRow } from '../ui/battle-buttons.js';
 import { buildBossBrowseRows } from '../ui/boss-buttons.js';
 import { ITEMS } from './items.js';
+import { awardGemDrops, fmtGemDropChances } from './gem-effects.js';
 import { SKILLS } from '../skills/index.js';
 import { QuestService } from './quest.service.js';
 import { type Mob } from '../mobs/index.js';
@@ -45,6 +46,12 @@ interface BrowserState {
 }
 
 const COOLDOWN_MS = 5 * 60_000;
+/** Boss mnożnik ×3.5 — zgodnie z dungeon. /boss to też raid-tier walka. */
+const BOSS_MULT = 3.5;
+
+function scaleStat(v: number | undefined, mult: number): number | undefined {
+  return v === undefined ? undefined : Math.round(v * mult);
+}
 
 function sortedBosses(): Mob[] {
   return Object.values(BOSS_MOBS).sort((a, b) => {
@@ -66,11 +73,13 @@ export class BossService {
     const { msg, prompt, registerThread } = ctx;
 
     if (!prompt) {
-      const lines = ['👹 **Bossowie:**'];
+      const lines = [`👹 **Bossowie** _(raid-tier ×${BOSS_MULT}):_`];
       for (const b of sortedBosses()) {
         const c = b.toCombatant();
+        const hp = Math.round(c.hp * BOSS_MULT);
+        const dmg = Math.round(c.damageBonus * BOSS_MULT);
         lines.push(
-          `• \`${b.id}\` (T${b.tier}) — **${b.name}** (${c.hp} HP, +${c.damageBonus} dmg) — ${b.description}`,
+          `• \`${b.id}\` (T${b.tier}) — **${b.name}** (${hp} HP, +${dmg} dmg) — ${b.description}`,
         );
       }
       lines.push('', 'Użycie: `.boss <id>` lub `.menu` → 👹 Bossowie (interaktywny browser).');
@@ -178,12 +187,16 @@ export class BossService {
 
   private renderBossDetails(def: Mob, player: PlayerStats): string {
     const c = def.toCombatant();
+    const hp = Math.round(c.hp * BOSS_MULT);
+    const dmg = Math.round(c.damageBonus * BOSS_MULT);
+    const defBonus =
+      c.defenseBonus !== undefined ? Math.round(c.defenseBonus * BOSS_MULT) : undefined;
     const lines: string[] = [
-      `👹 **${def.name}** (Tier ${def.tier})`,
+      `👹 **${def.name}** (Tier ${def.tier}) — _raid-tier ×${BOSS_MULT}_`,
       `_${def.description}_`,
       '',
-      `🩸 HP: **${c.hp}** · ⚔️ Dmg: **+${c.damageBonus}**` +
-        (c.defenseBonus !== undefined ? ` · 🛡️ Def: **+${c.defenseBonus}**` : '') +
+      `🩸 HP: **${hp}** · ⚔️ Dmg: **+${dmg}**` +
+        (defBonus !== undefined ? ` · 🛡️ Def: **+${defBonus}**` : '') +
         (c.critBonus !== undefined ? ` · 💥 Crit: **${(c.critBonus * 100).toFixed(0)}%**` : '') +
         (c.potionsLeft > 0 ? ` · 🧪 Potki: **${c.potionsLeft}**` : ''),
     ];
@@ -191,8 +204,12 @@ export class BossService {
       lines.push(`✨ Skille: ${def.skills.join(', ')}`);
     }
     if (def.rewards) {
-      lines.push('', '**Nagrody:**');
-      lines.push(`• +${def.rewards.xp} XP PvP` + (def.rewards.combatXp ? `, +${def.rewards.combatXp} XP combat` : ''));
+      const scaledXp = Math.round(def.rewards.xp * BOSS_MULT);
+      const scaledCombatXp = def.rewards.combatXp
+        ? Math.round(def.rewards.combatXp * BOSS_MULT)
+        : 0;
+      lines.push('', '**Nagrody (skalowane):**');
+      lines.push(`• +${scaledXp} XP PvP` + (scaledCombatXp ? `, +${scaledCombatXp} XP combat` : ''));
       if (def.rewards.lootTable && def.rewards.lootTable.length > 0) {
         const drops = def.rewards.lootTable
           .map((entry) => {
@@ -221,6 +238,9 @@ export class BossService {
           .join(', ');
         lines.push(`• 📜 Księgi super-spelli: ${books}`);
       }
+    }
+    if (def.tier >= 2) {
+      lines.push(`• 💎 Gemy (T${def.tier}, niezależne rolle): ${fmtGemDropChances(def.tier)}`);
     }
     const cdLeft = this.stats.remainingCooldown(player, 'boss');
     if (cdLeft > 0) {
@@ -251,9 +271,14 @@ export class BossService {
       controller: 'human',
     };
     const bossRaw = def.toCombatant();
+    const scaledHp = Math.round(bossRaw.hp * BOSS_MULT);
     const bossCombatant: BattleCombatant = {
       ...bossRaw,
       id: `enemy:${def.id}`,
+      hp: scaledHp,
+      maxHp: scaledHp,
+      damageBonus: scaleStat(bossRaw.damageBonus, BOSS_MULT) ?? 0,
+      defenseBonus: scaleStat(bossRaw.defenseBonus, BOSS_MULT),
       team: 1,
       controller: 'ai',
     };
@@ -448,13 +473,25 @@ export class BossService {
           `Boss \`${state.bossId}\` nie ma zdefiniowanych nagród — bug.`,
         );
       } else {
-        const award = awardReward(this.stats, player, def.rewards);
+        const bossMob = BOSS_MOBS[state.bossId];
+        const tier = bossMob?.tier ?? 3;
+        const scaledRewards = {
+          ...def.rewards,
+          xp: Math.round(def.rewards.xp * BOSS_MULT),
+          combatXp:
+            def.rewards.combatXp !== undefined
+              ? Math.round(def.rewards.combatXp * BOSS_MULT)
+              : undefined,
+        };
+        const award = awardReward(this.stats, player, scaledRewards, { socketable: true, tier });
         const questLines = this.quests?.onBossKilled(player, state.bossId) ?? [];
+        const gemLines = awardGemDrops(this.stats, player, tier);
         await postBattleSummary(
           state.thread,
           [
             `🏆 **${def.name}** pokonany! Zwycięża **${playerCombatant.name}** (${playerCombatant.hp}/${playerCombatant.maxHp} HP).`,
             ...award.lines,
+            ...(gemLines.length ? [`Gemy: ${gemLines.join(', ')}`] : []),
             ...questLines,
           ].join('\n'),
         );

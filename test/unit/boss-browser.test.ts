@@ -125,7 +125,7 @@ describe('BossService.openFromInteraction', () => {
     const u = lastUpdate(btn);
     expect(u?.content).toMatch(/Tier 1/);
     expect(u?.content).toMatch(/HP:|Dmg:/);
-    expect(u?.content).toContain('Nagrody:');
+    expect(u?.content).toContain('Nagrody');
     expect(u?.components?.length).toBe(2); // browse row + back-to-menu
   });
 

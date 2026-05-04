@@ -3,6 +3,8 @@ import type { BattleCombatant } from './battle-state.js';
 import type { PlayerStats } from '../services/player-stats.js';
 import type { PlayerStatsService } from '../services/player-stats.js';
 import { isCombatConsumable } from '../services/items.js';
+import { gemWeaponEffect, type WeaponGemEffect } from '../services/gem-effects.js';
+import type { Buff } from './buffs.js';
 
 function snapshotConsumables(p: PlayerStats): Record<string, number> {
   const out: Record<string, number> = {};
@@ -10,6 +12,42 @@ function snapshotConsumables(p: PlayerStats): Record<string, number> {
     if (isCombatConsumable(id) && qty > 0) out[id] = qty;
   }
   return out;
+}
+
+/**
+ * Wyciąga gemy z założonej (i zidentyfikowanej) broni do listy effects.
+ * Pusta lista gdy brak broni / brak gemów / niezidentyfikowana.
+ */
+function snapshotWeaponGems(stats: PlayerStatsService, p: PlayerStats): WeaponGemEffect[] {
+  const w = stats.equippedItem(p, 'weapon');
+  if (!w || w.identified === false || !w.gems || w.gems.length === 0) return [];
+  const out: WeaponGemEffect[] = [];
+  for (const id of w.gems) {
+    if (!id) continue;
+    const eff = gemWeaponEffect(id);
+    if (eff) out.push(eff);
+  }
+  return out;
+}
+
+/**
+ * Buduje startowe buffy dla armor green gemów — HoT z period=2 (regen co 2 tury).
+ * Suma `armorGemHotAmount` z player-stats. ttl: 999 = "perpetual" w czasie walki.
+ */
+function buildArmorRegenBuffs(stats: PlayerStatsService, p: PlayerStats): Buff[] {
+  const amount = stats.armorGemHotAmount(p);
+  if (amount <= 0) return [];
+  return [
+    {
+      id: 'armor_regen',
+      kind: 'hot',
+      source: 'Regeneracja Pancerza',
+      ttl: 999,
+      amount,
+      period: 2,
+      phase: 0,
+    },
+  ];
 }
 
 export function buildPlayerCombatant(
@@ -37,7 +75,7 @@ export function buildPlayerCombatant(
     defenseBonus,
     critBonus,
     speed,
-    primary: { ...p.primary },
+    primary: stats.effectivePrimary(p),
     defending: false,
     // Gracze NIE dostają darmowych potek — używają tylko tych z plecaka.
     // `potionsLeft` zostawiamy dla AI/bossów (mob.toCombatant ustawia własne).
@@ -46,8 +84,9 @@ export function buildPlayerCombatant(
     consumablesStart: { ...consumables },
     skills,
     skillCooldowns: {},
-    buffs: [],
+    buffs: buildArmorRegenBuffs(stats, p),
     spellPower: stats.spellPower(p),
+    weaponGems: snapshotWeaponGems(stats, p),
   };
 }
 

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { ItemInstance, ItemSlot, ToolKind } from './items.js';
 import { appliedItemStats, itemRequiredLevel } from './items.js';
+import { gemArmorEffect, gemToolEffect } from './gem-effects.js';
 import { CLASSES } from '../classes/index.js';
 
 export type SkillName = 'mining' | 'fishing' | 'woodcutting' | 'crafting' | 'combat';
@@ -275,9 +276,8 @@ export class PlayerStatsService {
 
   /**
    * Łączny primary stat (str/agi/wit/int) — base z PlayerStats + sumy z
-   * założonego (i ZIDENTYFIKOWANEGO) ekwipunku. SoT dla wszystkich formuł
-   * effective. Nie-zidentyfikowane przedmioty nie powinny być equip-owane,
-   * ale defensywnie ignorujemy ich primary tutaj.
+   * założonego (i ZIDENTYFIKOWANEGO) ekwipunku + gemy w narzędziu (fire→STR,
+   * ice→AGI, poison→INT). SoT dla wszystkich formuł effective.
    */
   effectivePrimary(p: PlayerStats): PrimaryStats {
     const out: PrimaryStats = {
@@ -296,7 +296,42 @@ export class PlayerStatsService {
       if (ip.wit) out.wit += ip.wit;
       if (ip.int) out.int += ip.int;
     }
+    // Tool gems → primary stats (fire/red→STR, ice/blue→AGI, poison/green→INT).
+    const tool = this.equippedItem(p, 'tool');
+    if (tool && tool.identified !== false && tool.gems) {
+      for (const id of tool.gems) {
+        if (!id) continue;
+        const eff = gemToolEffect(id);
+        if (eff) out[eff.primary] += eff.amount;
+      }
+    }
     return out;
+  }
+
+  /** Suma `prop` z efektów armor gemów. Zwraca 0 gdy brak pancerza/gemów. */
+  private sumArmorGem(p: PlayerStats, prop: 'hp' | 'defense' | 'hotAmount'): number {
+    const a = this.equippedItem(p, 'armor');
+    if (!a || a.identified === false || !a.gems) return 0;
+    let total = 0;
+    for (const id of a.gems) {
+      if (!id) continue;
+      const eff = gemArmorEffect(id);
+      const v = eff?.[prop];
+      if (v) total += v;
+    }
+    return total;
+  }
+
+  armorGemHpBonus(p: PlayerStats): number {
+    return this.sumArmorGem(p, 'hp');
+  }
+
+  armorGemDefenseBonus(p: PlayerStats): number {
+    return this.sumArmorGem(p, 'defense');
+  }
+
+  armorGemHotAmount(p: PlayerStats): number {
+    return this.sumArmorGem(p, 'hotAmount');
   }
 
   hpFor(p: PlayerStats): number {
@@ -354,7 +389,7 @@ export class PlayerStatsService {
     return PlayerStatsService.BASE_CRIT_PCT + this.critBonus(p) + this.critBonusFromEquipment(p);
   }
 
-  /** Pełen max HP — base + primary + attribute + ekwipunek (z upgradami). */
+  /** Pełen max HP — base + primary + attribute + ekwipunek (z upgradami) + armor red gemy. */
   effectiveMaxHp(p: PlayerStats): number {
     const w = this.equippedItem(p, 'weapon');
     const a = this.equippedItem(p, 'armor');
@@ -363,7 +398,8 @@ export class PlayerStatsService {
       this.hpFor(p) +
       (w ? appliedItemStats(w).hp ?? 0 : 0) +
       (a ? appliedItemStats(a).hp ?? 0 : 0) +
-      (t ? appliedItemStats(t).hp ?? 0 : 0)
+      (t ? appliedItemStats(t).hp ?? 0 : 0) +
+      this.armorGemHpBonus(p)
     );
   }
 
@@ -380,10 +416,14 @@ export class PlayerStatsService {
     );
   }
 
-  /** Pełen defense bonus — primary/attribute + ekwipunek (głównie armor, z upgradami). */
+  /** Pełen defense bonus — primary/attribute + ekwipunek (głównie armor) + armor blue gemy. */
   effectiveDefenseBonus(p: PlayerStats): number {
     const a = this.equippedItem(p, 'armor');
-    return this.defenseBonus(p) + (a ? appliedItemStats(a).defense ?? 0 : 0);
+    return (
+      this.defenseBonus(p) +
+      (a ? appliedItemStats(a).defense ?? 0 : 0) +
+      this.armorGemDefenseBonus(p)
+    );
   }
 
   /**

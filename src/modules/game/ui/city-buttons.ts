@@ -67,6 +67,10 @@ export function buildCityViewRows(
       .setCustomId(`menu:cityscribe:${cityId}:${userId}`)
       .setLabel('🔍 Skryba')
       .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`menu:cityenchanter:${cityId}:${userId}`)
+      .setLabel('💎 Enchanter')
+      .setStyle(ButtonStyle.Success),
   );
   const rows: ActionRowBuilder<ButtonBuilder>[] = [actionRow];
 

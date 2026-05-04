@@ -21,8 +21,9 @@ import {
   postBattleSummary,
   routeBattleInteraction,
 } from '../engine/battle-helpers.js';
-import { DUNGEONS, dungeonRoomTier, type DungeonDef } from '../engine/encounters.js';
+import { DUNGEONS, dungeonRoomTier, type DungeonDef, type BossReward } from '../engine/encounters.js';
 import { BOSS_MOBS } from '../mobs/index.js';
+import { awardGemDrops, fmtGemDropChances } from './gem-effects.js';
 import { buildPlayerCombatant } from '../engine/player-combatant.js';
 import { awardReward } from './reward.service.js';
 import { buildPanelOpenerRow } from '../ui/battle-buttons.js';
@@ -40,8 +41,23 @@ interface DungeonBattleState extends BattleState {
 const COOLDOWN_MS = 30 * 60_000;
 
 /**
+ * Mnożnik dla dungeonowych bossów (HP/dmg/def + nagrody). Dungeon-only —
+ * world boss / forced final guardian / arena nie skalują się tym.
+ * 3.5 = środek przedziału 3-4× (decyzja balansu — bossowie mają być
+ * znaczącym wyzwaniem partyjnym, nie soloable).
+ */
+const DUNGEON_BOSS_MULT = 3.5;
+
+function scaleStat(v: number | undefined, mult: number): number | undefined {
+  return v === undefined ? undefined : Math.round(v * mult);
+}
+
+/**
  * Buduje boss-combatanta z odpowiednim tierem dla danego pokoju dungeonu.
  * Tier wyliczany przez `dungeonRoomTier(def, roomIndex)` (final room +1).
+ * Po `toCombatant()` aplikujemy `DUNGEON_BOSS_MULT` do hp/dmg/def — TIER
+ * MULTIPLIERS skalują z bazą moba, ten dodatkowy mnożnik daje bossom
+ * dungeona wagę "boss raid" zamiast "ambush mob".
  *
  * UWAGA: instancja `BOSS_MOBS[id]` jest jedna globalnie i `setTier()` na niej
  * zostaje. Dla 2 dungeonów odpalonych równolegle z tym samym bossem to
@@ -57,13 +73,32 @@ function buildDungeonBoss(def: DungeonDef, roomIndex: number, suffix: string): B
   if (!mob) throw new Error(`Unknown boss "${bossId}" in dungeon "${def.id}"`);
   const tier = dungeonRoomTier(def, roomIndex);
   mob.setTier(tier);
+  const base = mob.toCombatant(suffix);
+  const hp = Math.round(base.hp * DUNGEON_BOSS_MULT);
   return {
-    ...mob.toCombatant(suffix),
+    ...base,
     id: `enemy:${bossId}:${suffix}`,
+    hp,
+    maxHp: hp,
+    damageBonus: scaleStat(base.damageBonus, DUNGEON_BOSS_MULT) ?? 0,
+    defenseBonus: scaleStat(base.defenseBonus, DUNGEON_BOSS_MULT),
     team: 1,
     controller: 'ai',
   };
 }
+
+/** XP/combatXp scale × `DUNGEON_BOSS_MULT`; loot/dropPool/bookDrops bez zmian. */
+function scaleDungeonReward(reward: BossReward): BossReward {
+  return {
+    ...reward,
+    xp: Math.round(reward.xp * DUNGEON_BOSS_MULT),
+    combatXp:
+      reward.combatXp !== undefined
+        ? Math.round(reward.combatXp * DUNGEON_BOSS_MULT)
+        : undefined,
+  };
+}
+
 
 function buildSuffix(): string {
   return `${Date.now().toString(36)}_${Math.floor(Math.random() * 1e6).toString(36)}`;
@@ -212,12 +247,14 @@ export class DungeonService {
     const player = this.stats.get(msg.author.id, displayName(msg));
 
     if (!prompt) {
-      const lines = ['🏰 **Dungeony:** _(wszystkie party-only)_'];
+      const lines = ['🏰 **Dungeony:** _(wszystkie party-only, każdy pokój rzuca na gemy)_'];
       for (const d of Object.values(DUNGEONS)) {
         const lvlReq = d.requiredCombatLevel ? ` lvl ${d.requiredCombatLevel}+` : '';
+        const finalTier = dungeonRoomTier(d, d.rooms.length - 1);
         lines.push(
-          `• \`${d.id}\` — **${d.name}** (${d.rooms.length} pokojów, T${d.baseTier}, party ${d.minPartySize}+${lvlReq}) — ${d.description}`,
+          `• \`${d.id}\` — **${d.name}** (${d.rooms.length} pokojów, T${d.baseTier}, finał T${finalTier}, party ${d.minPartySize}+${lvlReq}) — ${d.description}`,
         );
+        lines.push(`  💎 Final boss: ${fmtGemDropChances(finalTier)}`);
       }
       lines.push('', 'Użycie: `.dungeon <id>` (lider party). Max party: ' + MAX_PARTY + '.');
       await msg.reply(lines.join('\n').slice(0, 1900));
@@ -358,22 +395,35 @@ export class DungeonService {
         `✅ **Pokój ${state.roomIndex + 1}/${def.rooms.length} clear!** ${bossDef?.name ?? state.currentBossId} (T${dungeonRoomTier(def, state.roomIndex)}) pokonany.`,
       );
       if (bossDef?.rewards) {
+        const scaledBossReward = scaleDungeonReward(bossDef.rewards);
+        const roomTier = dungeonRoomTier(def, state.roomIndex);
         for (const human of aliveHumans) {
           const memberStats = this.stats.get(human.id, human.name);
-          const award = awardReward(this.stats, memberStats, bossDef.rewards);
+          const award = awardReward(this.stats, memberStats, scaledBossReward, {
+            socketable: true,
+            tier: roomTier,
+          });
           lines.push(`__${human.name}__:`);
           lines.push(...award.lines);
+          const gemLines = awardGemDrops(this.stats, memberStats, roomTier);
+          if (gemLines.length) lines.push(...gemLines);
         }
       }
 
       state.roomIndex += 1;
       if (state.roomIndex >= def.rooms.length) {
-        // Final reward — każdy żywy member dostaje finalReward.
+        const scaledFinal = scaleDungeonReward(def.finalReward);
+        const finalTier = dungeonRoomTier(def, def.rooms.length - 1);
         for (const human of aliveHumans) {
           const memberStats = this.stats.get(human.id, human.name);
-          const finalAward = awardReward(this.stats, memberStats, def.finalReward);
+          const finalAward = awardReward(this.stats, memberStats, scaledFinal, {
+            socketable: true,
+            tier: finalTier,
+          });
           lines.push('', `🏆 **${human.name}** — finalna nagroda:`);
           lines.push(...finalAward.lines);
+          const gemLines = awardGemDrops(this.stats, memberStats, finalTier);
+          if (gemLines.length) lines.push(...gemLines);
         }
         // Cooldown dla CAŁEJ party (nie tylko ocalałych) — żeby nie było farmu
         // przez ciągłe wskrzeszanie partnerów.

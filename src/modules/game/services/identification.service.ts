@@ -7,7 +7,9 @@ import {
 import { PlayerStatsService, type PlayerStats } from './player-stats.js';
 import {
   IDENTIFY_COSTS,
+  MAX_GEM_SLOTS_BY_RARITY,
   RARITY_EMOJI,
+  randIntInclusive,
   type ItemInstance,
   type Rarity,
 } from './items.js';
@@ -52,6 +54,15 @@ export class IdentificationService {
     }
     this.stats.removeGold(player, cost);
     item.identified = true;
+    // Socketable items dostają sloty na gemy [1, MAX_BY_RARITY] — odsłaniane
+    // dopiero przy ID (gracz wcześniej widzi tylko 💎 indicator).
+    if (item.socketable && item.gemSlots === undefined) {
+      const max = MAX_GEM_SLOTS_BY_RARITY[item.rarity];
+      if (max > 0) {
+        item.gemSlots = randIntInclusive(1, max);
+        item.gems = new Array(item.gemSlots).fill(null);
+      }
+    }
     this.stats.save();
     return { ok: true, item, costGold: cost };
   }

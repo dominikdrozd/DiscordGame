@@ -260,8 +260,6 @@ export interface ExpeditionDef {
   guaranteedDropChance?: number;
   /** id mobów które mogą zaatakować w tej ekspedycji (subset AMBUSH). Brak → wszystkie. */
   ambushMobIds?: string[];
-  /** tiery z których ambush losuje. Brak → tier wyliczony z poziomu gracza. */
-  ambushTiers?: (1 | 2 | 3 | 4 | 5)[];
 }
 
 export const REGION_NAMES: Record<1 | 2 | 3 | 4, string> = {
@@ -294,6 +292,17 @@ export function expeditionLvlBracket(tier: 1 | 2 | 3 | 4 | 5): string {
 /** Minimalny combat lvl wymagany do ekspedycji o danym tierze. */
 export function expeditionMinLvl(tier: 1 | 2 | 3 | 4 | 5): number {
   return Math.max(1, (tier - 1) * 8);
+}
+
+/**
+ * Maksymalny "własny" lvl ekspedycji (top of bracket). Mnożony przez
+ * `tier` daje cap dla itemLevel dropu z dropPool — T1 może upuścić item
+ * lvl ≤ 7, T5 ≤ 200 (40 × 5). Items o wyższym lvl mają wyższe req combat
+ * lvl i lekko podbite staty (sqrt scaling w `rollItemInstance`).
+ */
+export function expeditionMaxLvl(tier: 1 | 2 | 3 | 4 | 5): number {
+  const maxes: Record<1 | 2 | 3 | 4 | 5, number> = { 1: 7, 2: 15, 3: 23, 4: 31, 5: 40 };
+  return maxes[tier];
 }
 
 /**

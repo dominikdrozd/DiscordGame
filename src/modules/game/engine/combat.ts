@@ -5,8 +5,11 @@ import {
   getLifestealPercent,
   getEvasionPercent,
   getCritAmp,
+  addBuff,
 } from './buffs.js';
 import type { PrimaryStats } from '../services/player-stats.js';
+import type { WeaponGemEffect } from '../services/gem-effects.js';
+import type { GemElement } from '../services/items.js';
 
 export const ATTACK_NAMES = [
   'Cios Zatrutego Pieroga',
@@ -106,6 +109,12 @@ export interface Combatant {
   primary?: PrimaryStats;
   /** flavor lines używane jako nazwa ataku (zamiast globalnego ATTACK_NAMES) */
   attackLines?: string[];
+  /**
+   * Snapshot effects gemów wstawionych w broń. Każdy element listy = jeden gem
+   * (per-gem niezależny proc roll → 4 fire smalls = 4×4% = ~16% burn). Bonus
+   * dmg sumuje się i dolatuje do każdego attaku (przed redukcją obrony).
+   */
+  weaponGems?: WeaponGemEffect[];
 }
 
 export function pick<T>(arr: T[]): T {
@@ -123,13 +132,64 @@ function applyLifesteal(attacker: Combatant, dmgDealt: number): string {
   return restored > 0 ? ` 🩸 (+${restored} HP lifesteal)` : '';
 }
 
+/** Suma bonus dmg ze wszystkich gemów w broni (każdy gem dorzuca flat dmg per hit). */
+function sumGemBonusDmg(c: Combatant): number {
+  if (!c.weaponGems || c.weaponGems.length === 0) return 0;
+  return c.weaponGems.reduce((s, g) => s + g.bonusDmg, 0);
+}
+
+/**
+ * Roluje proc każdego gemu osobno. Tick (DoT amount / slow speed reduction)
+ * skalowany liczbą gemów tego elementu na broni — 4 fire gemy → burn 4×4
+ * = 16 dmg/tick (ttl bez zmian, nadal 3 rundy). Jeśli proc się sumuje, to
+ * też dmg z wszystkich gemów ma się sumować.
+ */
+function applyGemProcs(attacker: Combatant, defender: Combatant): string {
+  if (!attacker.weaponGems || attacker.weaponGems.length === 0) return '';
+  // Single-pass: build counts/sample + roll proc razem.
+  const counts: Partial<Record<GemElement, number>> = {};
+  const sample: Partial<Record<GemElement, WeaponGemEffect>> = {};
+  const procced: Partial<Record<GemElement, boolean>> = {};
+  for (const g of attacker.weaponGems) {
+    counts[g.element] = (counts[g.element] ?? 0) + 1;
+    sample[g.element] = g;
+    if (Math.random() < g.procChance) procced[g.element] = true;
+  }
+  const lines: string[] = [];
+  for (const element of ['fire', 'ice', 'poison'] as const) {
+    if (!procced[element]) continue;
+    const s = sample[element];
+    const count = counts[element];
+    if (!s || !count) continue;
+    const stackedAmount = s.buff.amount * count;
+    addBuff(defender, {
+      id: s.buff.id,
+      kind: s.buff.kind,
+      source: count > 1 ? `${s.buff.source} ×${count}` : s.buff.source,
+      ttl: s.buff.ttl,
+      amount: stackedAmount,
+    });
+    if (element === 'fire') lines.push(`🔥 **${defender.name}** zostaje podpalony (${stackedAmount}/tick)!`);
+    else if (element === 'ice') lines.push(`❄️ **${defender.name}** zostaje spowolniony (-${stackedAmount} spd)!`);
+    else lines.push(`🧪 **${defender.name}** zostaje zatruty (${stackedAmount}/tick)!`);
+  }
+  if (lines.length === 0) return '';
+  return ' ' + lines.join(' ');
+}
+
 export function applyAttack(attacker: Combatant, defender: Combatant): string {
   const attackName = pick(attacker.attackLines ?? ATTACK_NAMES);
   const dodgeChance = DODGE_CHANCE + getEvasionPercent(defender) / 100;
   if (Math.random() < dodgeChance) {
     return `**${attacker.name}** ładuje **${attackName}**, ale **${defender.name}** odpala **${pick(DODGE_NAMES)}** i unika!`;
   }
-  let baseDmg = 10 + Math.floor(Math.random() * 21) + attacker.damageBonus + getDamageAmp(attacker);
+  const gemBonus = sumGemBonusDmg(attacker);
+  let baseDmg =
+    10 +
+    Math.floor(Math.random() * 21) +
+    attacker.damageBonus +
+    getDamageAmp(attacker) +
+    gemBonus;
   const totalDef = (defender.defenseBonus ?? 0) + getDefenseAmp(defender);
   if (totalDef > 0) {
     baseDmg = Math.max(1, baseDmg - totalDef);
@@ -148,7 +208,8 @@ export function applyAttack(attacker: Combatant, defender: Combatant): string {
     defender.hp = Math.max(0, defender.hp - dmg);
     const lifestealNote = applyLifesteal(attacker, dmg);
     const shieldNote = shield.absorbed > 0 ? ` (tarcza pochłonęła ${shield.absorbed})` : '';
-    return `⚔️ **${attacker.name}** przebija **${attackName}** przez gardę **${defender.name}** i robi **${dmg}** dmg${critTag}${shieldNote}${lifestealNote} (obrona nieskuteczna).`;
+    const procNote = dmg > 0 ? applyGemProcs(attacker, defender) : '';
+    return `⚔️ **${attacker.name}** przebija **${attackName}** przez gardę **${defender.name}** i robi **${dmg}** dmg${critTag}${shieldNote}${lifestealNote} (obrona nieskuteczna).${procNote}`;
   }
   const shieldOpen = consumeShield(defender, dmg);
   dmg = shieldOpen.remaining;
@@ -156,7 +217,8 @@ export function applyAttack(attacker: Combatant, defender: Combatant): string {
   const lifestealNote = applyLifesteal(attacker, dmg);
   const shieldOpenNote =
     shieldOpen.absorbed > 0 ? ` (tarcza pochłonęła ${shieldOpen.absorbed})` : '';
-  return `⚔️ **${attacker.name}** odpala **${attackName}** i robi **${dmg}** dmg.${critTag}${shieldOpenNote}${lifestealNote}`;
+  const procNote = dmg > 0 ? applyGemProcs(attacker, defender) : '';
+  return `⚔️ **${attacker.name}** odpala **${attackName}** i robi **${dmg}** dmg.${critTag}${shieldOpenNote}${lifestealNote}${procNote}`;
 }
 
 export function applyDefend(p: Combatant): string {

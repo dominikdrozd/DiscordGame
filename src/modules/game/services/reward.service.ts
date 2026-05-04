@@ -8,6 +8,7 @@ export function awardReward(
   stats: PlayerStatsService,
   player: ReturnType<PlayerStatsService['get']>,
   reward: BossReward,
+  opts: { socketable?: boolean; tier?: number; worldBoss?: boolean } = {},
 ): { lines: string[]; combatLeveled: boolean; pvpLeveled: boolean } {
   const lines: string[] = [];
   if (reward.xp) {
@@ -33,7 +34,11 @@ export function awardReward(
     const chance = reward.guaranteedDropChance ?? 0;
     if (Math.random() < chance) {
       const baseId = reward.dropPool[Math.floor(Math.random() * reward.dropPool.length)];
-      const item = rollItemInstance(baseId);
+      const item = rollItemInstance(baseId, {
+        socketable: opts.socketable,
+        tier: opts.tier,
+        worldBoss: opts.worldBoss,
+      });
       if (item) {
         stats.addItem(player, item);
         lines.push(`Drop: ${fmtInstance(item)} \`${item.uid}\``);

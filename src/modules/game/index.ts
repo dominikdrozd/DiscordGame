@@ -43,6 +43,7 @@ import { SpellsCommand } from './commands/spells.command.js';
 import { SmithService } from './services/smith.service.js';
 import { SmithCommand } from './commands/smith.command.js';
 import { IdentificationService } from './services/identification.service.js';
+import { EnchanterService } from './services/enchanter.service.js';
 import { QuestService } from './services/quest.service.js';
 import { QuestCommand } from './commands/quest.command.js';
 
@@ -51,6 +52,7 @@ export interface GameServices {
   party: PartyService;
   expeditions: ExpeditionService;
   identification: IdentificationService;
+  enchanter: EnchanterService;
 }
 
 import { hasThreadCreate } from './engine/discord-helpers.js';
@@ -61,7 +63,8 @@ export function createGameServices(): GameServices {
   const quests = new QuestService(stats);
   const expeditions = new ExpeditionService(stats, party, quests);
   const identification = new IdentificationService(stats);
-  return { stats, party, expeditions, identification };
+  const enchanter = new EnchanterService(stats);
+  return { stats, party, expeditions, identification, enchanter };
 }
 
 export function registerGameCommands(manager: CommandManager, services: GameServices): void {
@@ -167,6 +170,7 @@ export function registerGameCommands(manager: CommandManager, services: GameServ
     spells,
     smith,
     identification,
+    services.enchanter,
     questCommand,
   );
 
