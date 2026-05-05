@@ -190,34 +190,117 @@ function ensureDefaults(p: any, id: string, name: string): PlayerStats {
 }
 
 export class PlayerStatsService {
-  private readonly file: string;
+  /** Legacy monolithic file path — używany tylko do jednorazowej migracji. */
+  private readonly legacyFile: string;
+  /** Katalog z `<userId>.json` per gracz — source of truth od migracji. */
+  private readonly dir: string;
   private readonly stats: Map<string, PlayerStats> = new Map();
+  /**
+   * Hash ostatnio zapisanej wersji per gracz — pozwala pominąć fs write
+   * gdy stan się nie zmienił. Główna optymalizacja: `save()` jest wołane
+   * po wielu mutacjach, ale typowo tylko 1-2 graczy się zmienia.
+   */
+  private readonly lastSavedJson: Map<string, string> = new Map();
 
-  constructor(file = path.resolve('data/players.json')) {
-    this.file = file;
+  constructor(legacyFile = path.resolve('data/players.json')) {
+    this.legacyFile = legacyFile;
+    // Dir = legacyFile bez `.json` suffix → unikalny per file (tests izolują się
+    // tmp-fileami, więc każdy test ma swój dir; produkcja: `data/players/`).
+    this.dir = legacyFile.endsWith('.json')
+      ? legacyFile.slice(0, -'.json'.length)
+      : `${legacyFile}_players`;
     this.load();
   }
 
   private load(): void {
+    this.migrateLegacy();
+    if (!fs.existsSync(this.dir)) return;
+    let entries: string[];
     try {
-      const raw = fs.readFileSync(this.file, 'utf8');
-      const parsed: unknown = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return;
-      for (const s of parsed) {
-        if (!s || typeof s !== 'object' || !('id' in s) || typeof s.id !== 'string') continue;
-        const id = s.id;
-        const name = 'name' in s && typeof s.name === 'string' ? s.name : id;
-        this.stats.set(id, ensureDefaults(s, id, name));
-      }
+      entries = fs.readdirSync(this.dir);
     } catch {
-      // missing/invalid file is fine
+      return;
+    }
+    for (const fname of entries) {
+      if (!fname.endsWith('.json')) continue;
+      try {
+        const raw = fs.readFileSync(path.join(this.dir, fname), 'utf8');
+        const parsed: unknown = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object' || !('id' in parsed)) continue;
+        const idVal = (parsed as { id: unknown }).id;
+        if (typeof idVal !== 'string') continue;
+        const nameVal =
+          'name' in parsed && typeof (parsed as { name: unknown }).name === 'string'
+            ? (parsed as { name: string }).name
+            : idVal;
+        this.stats.set(idVal, ensureDefaults(parsed, idVal, nameVal));
+        this.lastSavedJson.set(idVal, raw);
+      } catch {
+        // skip corrupt single-player file
+      }
     }
   }
 
+  /**
+   * Jednorazowa migracja `data/players.json` → `data/players/<id>.json`.
+   * Po sukcesie usuwa stary plik. Idempotent: po migracji `legacyFile` nie
+   * istnieje, więc skip. Conflict-safe: nie nadpisuje istniejących per-player
+   * plików (gdyby user już ręcznie utworzył).
+   */
+  private migrateLegacy(): void {
+    if (!fs.existsSync(this.legacyFile)) return;
+    try {
+      const raw = fs.readFileSync(this.legacyFile, 'utf8');
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        console.warn('[player-stats] players.json nie jest tablicą — pomijam migrację.');
+        return;
+      }
+      fs.mkdirSync(this.dir, { recursive: true });
+      let migrated = 0;
+      let skipped = 0;
+      for (const s of parsed) {
+        if (!s || typeof s !== 'object' || !('id' in s) || typeof s.id !== 'string') continue;
+        const file = path.join(this.dir, `${s.id}.json`);
+        if (fs.existsSync(file)) {
+          skipped += 1;
+          continue;
+        }
+        fs.writeFileSync(file, JSON.stringify(s), 'utf8');
+        migrated += 1;
+      }
+      fs.unlinkSync(this.legacyFile);
+      console.log(
+        `[player-stats] migracja: ${migrated} graczy zapisanych do ${this.dir}/ (${skipped} pominiętych — już istniały). players.json usunięty.`,
+      );
+    } catch (e) {
+      console.error(
+        '[player-stats] legacy migration failed (players.json zachowany):',
+        e instanceof Error ? e.message : String(e),
+      );
+    }
+  }
+
+  /**
+   * Zapisuje TYLKO graczy, których serializowany JSON się zmienił od ostatniego
+   * `save()`. Stringify wszystkich (~tani), ale write tylko dirty (drogi).
+   * Bez indent (null, 0) — szybsze serializowanie i mniejsze pliki.
+   */
   save(): void {
-    const dir = path.dirname(this.file);
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(this.file, JSON.stringify([...this.stats.values()], null, 2), 'utf8');
+    fs.mkdirSync(this.dir, { recursive: true });
+    for (const [id, p] of this.stats.entries()) {
+      const json = JSON.stringify(p);
+      if (this.lastSavedJson.get(id) === json) continue;
+      try {
+        fs.writeFileSync(path.join(this.dir, `${id}.json`), json, 'utf8');
+        this.lastSavedJson.set(id, json);
+      } catch (e) {
+        console.error(
+          `[player-stats] save fail for ${id}:`,
+          e instanceof Error ? e.message : String(e),
+        );
+      }
+    }
   }
 
   get(id: string, name?: string): PlayerStats {

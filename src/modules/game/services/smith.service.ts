@@ -113,12 +113,12 @@ export class SmithService {
     const action = parts[1];
     const userId = parts[2];
     if (interaction.user.id !== userId) {
-      await interaction.reply({ content: 'To nie twój kowal.', ephemeral: true }).catch(() => {});
+      await interaction.reply({ content: 'To nie twój kowal.', flags: MessageFlags.Ephemeral }).catch(() => {});
       return;
     }
     const state = this.browsers.get(userId);
     if (!state) {
-      await interaction.reply({ content: 'Sesja kowala wygasła — otwórz ponownie.', ephemeral: true }).catch(() => {});
+      await interaction.reply({ content: 'Sesja kowala wygasła — otwórz ponownie.', flags: MessageFlags.Ephemeral }).catch(() => {});
       return;
     }
     const player = this.stats.get(userId);

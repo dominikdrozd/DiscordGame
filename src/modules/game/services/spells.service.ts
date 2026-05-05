@@ -146,7 +146,7 @@ export class SpellsService {
     const action = parts[1];
     const userId = parts[2];
     if (interaction.user.id !== userId) {
-      await interaction.reply({ content: 'To nie twój browser.', ephemeral: true }).catch(() => {});
+      await interaction.reply({ content: 'To nie twój browser.', flags: MessageFlags.Ephemeral }).catch(() => {});
       return;
     }
     let state = this.browsers.get(userId);

@@ -396,7 +396,7 @@ export class PartyCommand extends BaseCommand implements ISlashCommand {
       const result = this.party.accept(partyId, interaction.user.id);
       if (!result.ok) {
         await interaction
-          .reply({ content: result.reason ?? 'Nie udało się dołączyć.', ephemeral: true })
+          .reply({ content: result.reason ?? 'Nie udało się dołączyć.', flags: MessageFlags.Ephemeral })
           .catch(() => {});
         return;
       }

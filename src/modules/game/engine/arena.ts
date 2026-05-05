@@ -4,6 +4,7 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  MessageFlags,
 } from 'discord.js';
 import { PlayerStatsService } from '../services/player-stats.js';
 import { PartyService } from '../services/party.js';
@@ -236,7 +237,7 @@ export class ArenaService {
       await interaction
         .reply({
           content: 'Rejestracja zamknięta — następna arena jutro o 18:10.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         })
         .catch(() => {});
       return;
@@ -251,20 +252,20 @@ export class ArenaService {
         .reply({
           content:
             '🚫 Jesteś na wyprawie — kliknij **Anuluj wyprawę** żeby się wypisać i dołączyć do areny.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         })
         .catch(() => {});
       return;
     }
     if (evt.participants.has(userId)) {
       await interaction
-        .reply({ content: '✅ Już zapisany — czekaj na start.', ephemeral: true })
+        .reply({ content: '✅ Już zapisany — czekaj na start.', flags: MessageFlags.Ephemeral })
         .catch(() => {});
       return;
     }
     if (evt.participants.size >= MAX_PARTICIPANTS) {
       await interaction
-        .reply({ content: `Slot pełny (max ${MAX_PARTICIPANTS}).`, ephemeral: true })
+        .reply({ content: `Slot pełny (max ${MAX_PARTICIPANTS}).`, flags: MessageFlags.Ephemeral })
         .catch(() => {});
       return;
     }
@@ -272,7 +273,7 @@ export class ArenaService {
     await interaction
       .reply({
         content: `🏟️ Dołączasz! Zapisanych: ${evt.participants.size}/${MAX_PARTICIPANTS}.`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       })
       .catch(() => {});
   }
@@ -282,7 +283,7 @@ export class ArenaService {
     const player = this.stats.get(userId, interaction.user.globalName ?? interaction.user.username);
     if (!player.activeExpedition) {
       await interaction
-        .reply({ content: 'Nie jesteś na żadnej wyprawie.', ephemeral: true })
+        .reply({ content: 'Nie jesteś na żadnej wyprawie.', flags: MessageFlags.Ephemeral })
         .catch(() => {});
       return;
     }
@@ -293,7 +294,7 @@ export class ArenaService {
         await interaction
           .reply({
             content: `🚫 Tylko **lider party** (<@${partyEntity.leaderId}>) może anulować wyprawę party.`,
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           })
           .catch(() => {});
         return;
@@ -307,7 +308,7 @@ export class ArenaService {
       await interaction
         .reply({
           content: `✅ Wyprawa party anulowana (${members.length} graczy zwolnionych).`,
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         })
         .catch(() => {});
       return;
@@ -315,7 +316,7 @@ export class ArenaService {
     player.activeExpedition = null;
     this.stats.save();
     await interaction
-      .reply({ content: '✅ Twoja solo-wyprawa anulowana.', ephemeral: true })
+      .reply({ content: '✅ Twoja solo-wyprawa anulowana.', flags: MessageFlags.Ephemeral })
       .catch(() => {});
   }
 

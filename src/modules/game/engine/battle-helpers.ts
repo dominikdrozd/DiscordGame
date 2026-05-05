@@ -1,4 +1,4 @@
-import { type ButtonInteraction } from 'discord.js';
+import { MessageFlags, type ButtonInteraction } from 'discord.js';
 import type { BattleCombatant, BattleState } from './battle-state.js';
 import { findCombatant, aliveAllies, aliveEnemies } from './battle-state.js';
 import { consumablesUsed } from './player-combatant.js';
@@ -20,7 +20,7 @@ import { getSkill, isOnCooldown } from '../skills/index.js';
  */
 export async function ackStaleInteraction(interaction: ButtonInteraction): Promise<void> {
   await interaction
-    .reply({ content: 'Walka już się zakończyła lub jest nieaktywna.', ephemeral: true })
+    .reply({ content: 'Walka już się zakończyła lub jest nieaktywna.', flags: MessageFlags.Ephemeral })
     .catch(() => {});
 }
 
@@ -144,12 +144,12 @@ export async function openItemPicker(
   const row = buildItemPickerRow(battleId, combatantId, consumables, combatant.potionsLeft);
   if (!row) {
     await interaction
-      .reply({ content: 'Brak itemów do użycia w combat.', ephemeral: true })
+      .reply({ content: 'Brak itemów do użycia w combat.', flags: MessageFlags.Ephemeral })
       .catch(() => {});
     return;
   }
   await interaction
-    .reply({ content: 'Wybierz item:', ephemeral: true, components: [row] })
+    .reply({ content: 'Wybierz item:', flags: MessageFlags.Ephemeral, components: [row] })
     .catch(() => {});
 }
 
@@ -221,12 +221,12 @@ export async function openSkillPicker(
   const row = buildSkillPickerRow(battleId, combatantId, combatant);
   if (!row) {
     await interaction
-      .reply({ content: 'Brak skilli — wybierz klasę przez `.class pick <id>`.', ephemeral: true })
+      .reply({ content: 'Brak skilli — wybierz klasę przez `.class pick <id>`.', flags: MessageFlags.Ephemeral })
       .catch(() => {});
     return;
   }
   await interaction
-    .reply({ content: 'Wybierz skill:', ephemeral: true, components: [row] })
+    .reply({ content: 'Wybierz skill:', flags: MessageFlags.Ephemeral, components: [row] })
     .catch(() => {});
 }
 
@@ -394,19 +394,19 @@ export async function handlePanelOpen(
   const me = findCombatant(state, interaction.user.id);
   if (!me || me.controller !== 'human') {
     await interaction
-      .reply({ content: 'Nie bierzesz udziału w tej walce.', ephemeral: true })
+      .reply({ content: 'Nie bierzesz udziału w tej walce.', flags: MessageFlags.Ephemeral })
       .catch(() => {});
     return;
   }
   if (me.hp <= 0) {
     await interaction
-      .reply({ content: 'Już nie żyjesz w tej walce.', ephemeral: true })
+      .reply({ content: 'Już nie żyjesz w tej walce.', flags: MessageFlags.Ephemeral })
       .catch(() => {});
     return;
   }
   if (state.pending.has(me.id)) {
     await interaction
-      .reply({ content: 'Już wybrałeś akcję — czekamy na pozostałych.', ephemeral: true })
+      .reply({ content: 'Już wybrałeś akcję — czekamy na pozostałych.', flags: MessageFlags.Ephemeral })
       .catch(() => {});
     return;
   }
@@ -414,7 +414,7 @@ export async function handlePanelOpen(
   await interaction
     .reply({
       content: `🎮 Runda ${state.roundNumber} (${me.hp}/${me.maxHp} HP) — wybierz akcję:`,
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
       components: [buildActionRow(state.id, me.id, false, hasSkills)],
     })
     .catch(() => {});
@@ -548,7 +548,7 @@ export async function handleBattleAction(
     await interaction
       .reply({
         content: options.notMineMessage ?? 'To nie twój przycisk.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       })
       .catch(() => {});
     return;
@@ -558,19 +558,19 @@ export async function handleBattleAction(
     await interaction
       .reply({
         content: options.alreadyDeadMessage ?? 'Już nie żyjesz w tej walce.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       })
       .catch(() => {});
     return;
   }
   if (state.pending.has(combatantId)) {
-    await interaction.reply({ content: 'Już wybrałeś akcję.', ephemeral: true }).catch(() => {});
+    await interaction.reply({ content: 'Już wybrałeś akcję.', flags: MessageFlags.Ephemeral }).catch(() => {});
     return;
   }
 
   if (kind === 'def') {
     state.pending.set(combatantId, { kind: 'defend' });
-    await interaction.reply({ content: 'Wybrałeś: **Obrona**.', ephemeral: true }).catch(() => {});
+    await interaction.reply({ content: 'Wybrałeś: **Obrona**.', flags: MessageFlags.Ephemeral }).catch(() => {});
     if (options.onChoiceRecorded) await options.onChoiceRecorded(combatantId);
     return;
   }
@@ -586,26 +586,26 @@ export async function handleBattleAction(
     const enemies = aliveEnemies(state, me);
     if (enemies.length === 0) {
       await interaction
-        .reply({ content: 'Brak żywych przeciwników.', ephemeral: true })
+        .reply({ content: 'Brak żywych przeciwników.', flags: MessageFlags.Ephemeral })
         .catch(() => {});
       return;
     }
     if (enemies.length === 1) {
       state.pending.set(combatantId, { kind: 'attack', targetId: enemies[0].id });
       await interaction
-        .reply({ content: `Atak na **${enemies[0].name}**.`, ephemeral: true })
+        .reply({ content: `Atak na **${enemies[0].name}**.`, flags: MessageFlags.Ephemeral })
         .catch(() => {});
       if (options.onChoiceRecorded) await options.onChoiceRecorded(combatantId);
       return;
     }
     const row = buildTargetRow(battleId, combatantId, 'atk', enemies);
     await interaction
-      .reply({ content: 'Wybierz cel:', ephemeral: true, components: [row] })
+      .reply({ content: 'Wybierz cel:', flags: MessageFlags.Ephemeral, components: [row] })
       .catch(() => {});
     return;
   }
   await interaction
-    .reply({ content: `Nieznana akcja \`${kind}\`.`, ephemeral: true })
+    .reply({ content: `Nieznana akcja \`${kind}\`.`, flags: MessageFlags.Ephemeral })
     .catch(() => {});
 }
 
@@ -626,7 +626,7 @@ export async function handleBattleTarget(
     await interaction
       .reply({
         content: options.notMineMessage ?? 'To nie twój wybór celu.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       })
       .catch(() => {});
     return;

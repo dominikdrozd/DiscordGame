@@ -120,7 +120,7 @@ export class EnchanterService {
     const userId = parts[2];
     if (interaction.user.id !== userId) {
       await interaction
-        .reply({ content: 'To nie twój enchanter.', ephemeral: true })
+        .reply({ content: 'To nie twój enchanter.', flags: MessageFlags.Ephemeral })
         .catch(() => {});
       return;
     }
@@ -129,7 +129,7 @@ export class EnchanterService {
       await interaction
         .reply({
           content: 'Sesja enchantera wygasła — otwórz ponownie z menu miasta.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         })
         .catch(() => {});
       return;

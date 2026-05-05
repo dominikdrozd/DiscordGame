@@ -46,7 +46,7 @@ export class CraftService {
     const arg = parts[3];
 
     if (interaction.user.id !== userId) {
-      await interaction.reply({ content: 'To nie twój browser.', ephemeral: true }).catch(() => {});
+      await interaction.reply({ content: 'To nie twój browser.', flags: MessageFlags.Ephemeral }).catch(() => {});
       return;
     }
 
@@ -195,7 +195,7 @@ export class CraftService {
       await interaction
         .reply({
           content: 'Browser zamknięty — wpisz `.craft` żeby otworzyć.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         })
         .catch(() => {});
       return;
@@ -221,7 +221,7 @@ export class CraftService {
   private async handleCreate(interaction: ButtonInteraction, userId: string): Promise<void> {
     const state = this.browsers.get(userId);
     if (!state) {
-      await interaction.reply({ content: 'Browser zamknięty.', ephemeral: true }).catch(() => {});
+      await interaction.reply({ content: 'Browser zamknięty.', flags: MessageFlags.Ephemeral }).catch(() => {});
       return;
     }
     const recipes = sortedRecipes();
@@ -230,14 +230,14 @@ export class CraftService {
     const reasons = this.craftBlockReasons(recipe, player);
     if (reasons.length > 0) {
       await interaction
-        .reply({ content: `Nie mogę: ${reasons.join(', ')}.`, ephemeral: true })
+        .reply({ content: `Nie mogę: ${reasons.join(', ')}.`, flags: MessageFlags.Ephemeral })
         .catch(() => {});
       return;
     }
     const result = this.executeCraft(recipe, player);
     if (!result.ok) {
       await interaction
-        .reply({ content: result.message ?? 'Bug w crafcie.', ephemeral: true })
+        .reply({ content: result.message ?? 'Bug w crafcie.', flags: MessageFlags.Ephemeral })
         .catch(() => {});
       return;
     }

@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import { InventoryService } from '../../src/modules/game/services/inventory.service.js';
 import { PlayerStatsService } from '../../src/modules/game/services/player-stats.js';
 import { rollItemInstance } from '../../src/modules/game/services/items.js';
@@ -52,6 +53,20 @@ function makeChannel(thread: FakeThread): FakeChannel {
   };
 }
 
+interface FakeMsgCtx {
+  author: { id: string; globalName?: string; username: string };
+  channel: { id: string };
+  reply: jest.Mock;
+}
+
+function makeMsg(authorId: string, threadId: string): FakeMsgCtx {
+  return {
+    author: { id: authorId, username: 'tester', globalName: 'Tester' },
+    channel: { id: threadId },
+    reply: jest.fn().mockResolvedValue({}),
+  };
+}
+
 interface FakeBtnInteraction {
   isButton: () => boolean;
   customId: string;
@@ -76,8 +91,9 @@ function makeBtn(customId: string, userId = 'p1'): FakeBtnInteraction {
   };
 }
 
-describe('InventoryService — thread-based plecak', () => {
+describe('InventoryService — single-message + text commands', () => {
   let file: string;
+  let dir: string;
   let stats: PlayerStatsService;
   let service: InventoryService;
   let registerThread: jest.Mock;
@@ -85,6 +101,7 @@ describe('InventoryService — thread-based plecak', () => {
 
   beforeEach(() => {
     file = tmpPlayerFile();
+    dir = file.replace(/\.json$/, '');
     stats = new PlayerStatsService(file);
     service = new InventoryService(stats);
     registerThread = jest.fn();
@@ -93,9 +110,10 @@ describe('InventoryService — thread-based plecak', () => {
 
   afterEach(() => {
     if (fs.existsSync(file)) fs.rmSync(file, { force: true });
+    if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  test('openInventoryForUser tworzy wątek + summary + per-item messages', async () => {
+  test('openInventoryForUser tworzy wątek + jedno listing message + close button', async () => {
     const player = stats.get('p1', 'Tester');
     const sword = rollItemInstance('sword_iron', 'common');
     const armor = rollItemInstance('armor_iron', 'common');
@@ -116,102 +134,114 @@ describe('InventoryService — thread-based plecak', () => {
     expect(channel.threads.create).toHaveBeenCalledTimes(1);
     expect(thread.members.add).toHaveBeenCalledWith('p1');
     expect(registerThread).toHaveBeenCalledWith(thread);
-    // Summary + 2 items + close = 4 sends
-    expect(thread.send).toHaveBeenCalledTimes(4);
+    // Single listing message — text commands replace per-item buttons
+    expect(thread.send).toHaveBeenCalledTimes(1);
+    const sendCall = thread.send.mock.calls[0][0];
+    expect(sendCall.content).toContain('Plecak Tester');
+    expect(sendCall.content).toContain('Żelazny Miecz');
+    expect(sendCall.content).toContain('Żelazna Zbroja');
   });
 
-  test('odrzuca drugie otwarcie plecaka dla tego samego usera', async () => {
+  test('drugie otwarcie czyści stary state w pamięci i otwiera świeży', async () => {
     stats.get('p1', 'Tester');
     const thread = makeThread();
-    const channel = makeChannel(thread);
     await service.openInventoryForUser({
       userId: 'p1',
       userName: 'Tester',
-      channel,
+      channel: makeChannel(thread),
       registerThread,
       reply,
     });
-    reply.mockClear();
+    const thread2 = makeThread('t2');
     await service.openInventoryForUser({
       userId: 'p1',
       userName: 'Tester',
-      channel: makeChannel(makeThread('t2')),
+      channel: makeChannel(thread2),
       registerThread,
       reply,
     });
-    expect(reply).toHaveBeenCalledWith(expect.stringContaining('już otwarty plecak'));
+    // Świeży wątek powinien dostać listing
+    expect(thread2.send).toHaveBeenCalled();
+    // NIE wołamy delete na starym wątku (TTL go sprzątnie)
+    expect(thread.delete).not.toHaveBeenCalled();
   });
 
-  test('toggle equip/unequip via button updateuje wiadomość', async () => {
+  test('equip N text command zakłada item', async () => {
     const player = stats.get('p1', 'Tester');
     const sword = rollItemInstance('sword_iron', 'common');
     if (!sword) throw new Error('roll failed');
     stats.addItem(player, sword);
     const thread = makeThread();
-    const channel = makeChannel(thread);
     await service.openInventoryForUser({
       userId: 'p1',
       userName: 'Tester',
-      channel,
+      channel: makeChannel(thread),
       registerThread,
       reply,
     });
 
     expect(player.equipped.weapon).toBeUndefined();
-    const btn = makeBtn(`inv:toggle:${sword.uid}:p1`);
-    await service.handleInteraction(btn as never);
+    const msg = makeMsg('p1', thread.id);
+    await service.show({
+      msg: msg as never,
+      prompt: 'equip 1',
+      client: {} as never,
+      registerThread,
+      forgetThread: jest.fn(),
+    });
     expect(player.equipped.weapon).toBe(sword.uid);
-    expect(btn.update).toHaveBeenCalledTimes(1);
+    expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('Założono'));
   });
 
-  test('toggle drugiego itemu w tym samym slocie zdejmuje pierwszy', async () => {
+  test('unequip <slot> zdejmuje item', async () => {
     const player = stats.get('p1', 'Tester');
-    const sword1 = rollItemInstance('sword_iron', 'common');
-    const sword2 = rollItemInstance('sword_silver', 'common');
-    if (!sword1 || !sword2) throw new Error('roll failed');
-    stats.addItem(player, sword1);
-    stats.addItem(player, sword2);
-    stats.equip(player, sword1.uid);
+    const sword = rollItemInstance('sword_iron', 'common');
+    if (!sword) throw new Error('roll failed');
+    stats.addItem(player, sword);
+    stats.equip(player, sword.uid);
 
     const thread = makeThread();
-    const channel = makeChannel(thread);
     await service.openInventoryForUser({
       userId: 'p1',
       userName: 'Tester',
-      channel,
+      channel: makeChannel(thread),
       registerThread,
       reply,
     });
 
-    const btn = makeBtn(`inv:toggle:${sword2.uid}:p1`);
-    await service.handleInteraction(btn as never);
-    expect(player.equipped.weapon).toBe(sword2.uid);
-    // poprzednio equippet sword1 — message powinien się odświeżyć
-    expect(thread.messages.fetch).toHaveBeenCalled();
+    const msg = makeMsg('p1', thread.id);
+    await service.show({
+      msg: msg as never,
+      prompt: 'unequip weapon',
+      client: {} as never,
+      registerThread,
+      forgetThread: jest.fn(),
+    });
+    expect(player.equipped.weapon).toBeUndefined();
+    expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('Zdjęto'));
   });
 
-  test('close zamyka plecak i pozwala otworzyć nowy', async () => {
+  test('close text command zamyka plecak i pozwala otworzyć nowy', async () => {
     stats.get('p1', 'Tester');
     const thread = makeThread();
-    const channel = makeChannel(thread);
     await service.openInventoryForUser({
       userId: 'p1',
       userName: 'Tester',
-      channel,
+      channel: makeChannel(thread),
       registerThread,
       reply,
     });
 
-    const close = makeBtn('inv:close:p1');
-    await service.handleInteraction(close as never);
-    expect(close.update).toHaveBeenCalledWith(
-      expect.objectContaining({ content: expect.stringContaining('Plecak zamknięty') }),
-    );
-    // User-initiated close → wątek usunięty od razu (bez archiwizacji + delay)
+    const msg = makeMsg('p1', thread.id);
+    await service.show({
+      msg: msg as never,
+      prompt: 'close',
+      client: {} as never,
+      registerThread,
+      forgetThread: jest.fn(),
+    });
     expect(thread.delete).toHaveBeenCalledTimes(1);
-    expect(thread.setArchived).not.toHaveBeenCalled();
 
-    // Po close — drugie otwarcie powinno działać
     reply.mockClear();
     const thread2 = makeThread('t2');
     await service.openInventoryForUser({
@@ -225,7 +255,7 @@ describe('InventoryService — thread-based plecak', () => {
     expect(thread2.send).toHaveBeenCalled();
   });
 
-  test('sell usuwa item z plecaka i dodaje złoto', async () => {
+  test('sell N usuwa item i dodaje złoto', async () => {
     const player = stats.get('p1', 'Tester');
     const initialGold = player.gold;
     const sword = rollItemInstance('sword_iron', 'common');
@@ -235,23 +265,26 @@ describe('InventoryService — thread-based plecak', () => {
     stats.addItem(player, sword);
 
     const thread = makeThread();
-    const channel = makeChannel(thread);
     await service.openInventoryForUser({
       userId: 'p1',
       userName: 'Tester',
-      channel,
+      channel: makeChannel(thread),
       registerThread,
       reply,
     });
 
-    const sellBtn = makeBtn(`inv:sell:${sword.uid}:p1`);
-    await service.handleInteraction(sellBtn as never);
+    const msg = makeMsg('p1', thread.id);
+    await service.show({
+      msg: msg as never,
+      prompt: 'sell 1',
+      client: {} as never,
+      registerThread,
+      forgetThread: jest.fn(),
+    });
 
     expect(player.inventory.items.find((it) => it.uid === sword.uid)).toBeUndefined();
-    expect(player.gold).toBe(initialGold + 15); // common 10 + 5 atk × 1
-    expect(sellBtn.update).toHaveBeenCalledWith(
-      expect.objectContaining({ content: expect.stringContaining('Sprzedano') }),
-    );
+    expect(player.gold).toBe(initialGold + 15);
+    expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('Sprzedano'));
   });
 
   test('sell odmawia gdy item założony — wymaga unequip', async () => {
@@ -263,46 +296,98 @@ describe('InventoryService — thread-based plecak', () => {
     stats.equip(player, sword.uid);
 
     const thread = makeThread();
-    const channel = makeChannel(thread);
     await service.openInventoryForUser({
       userId: 'p1',
       userName: 'Tester',
-      channel,
+      channel: makeChannel(thread),
       registerThread,
       reply,
     });
 
-    const sellBtn = makeBtn(`inv:sell:${sword.uid}:p1`);
-    await service.handleInteraction(sellBtn as never);
+    const msg = makeMsg('p1', thread.id);
+    await service.show({
+      msg: msg as never,
+      prompt: 'sell 1',
+      client: {} as never,
+      registerThread,
+      forgetThread: jest.fn(),
+    });
 
     expect(player.inventory.items.find((it) => it.uid === sword.uid)).toBeDefined();
     expect(player.gold).toBe(initialGold);
-    expect(sellBtn.reply).toHaveBeenCalledWith(
-      expect.objectContaining({ content: expect.stringContaining('zdejmij') }),
-    );
+    expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('Pominięte'));
   });
 
-  test('rejects toggle od innego usera', async () => {
+  test('cross-user — obcy nie może wydawać komend w cudzym wątku', async () => {
     stats.get('p1', 'Tester');
     const thread = makeThread();
-    const channel = makeChannel(thread);
     await service.openInventoryForUser({
       userId: 'p1',
       userName: 'Tester',
-      channel,
+      channel: makeChannel(thread),
       registerThread,
       reply,
     });
-    const intruder = makeBtn('inv:toggle:abc:p1', 'p2');
-    await service.handleInteraction(intruder as never);
-    expect(intruder.reply).toHaveBeenCalledWith(
-      expect.objectContaining({ content: expect.stringContaining('To nie twój plecak') }),
+
+    const intruderMsg = makeMsg('p2', thread.id);
+    await service.show({
+      msg: intruderMsg as never,
+      prompt: 'sell 1',
+      client: {} as never,
+      registerThread,
+      forgetThread: jest.fn(),
+    });
+    expect(intruderMsg.reply).toHaveBeenCalledWith(
+      expect.stringContaining('To plecak'),
     );
+  });
+
+  test('use jako komenda nie istnieje — daje hint o niezrozumianej komendzie', async () => {
+    const player = stats.get('p1', 'Tester');
+    player.inventory.resources['potion_small'] = 3;
+    const thread = makeThread();
+    await service.openInventoryForUser({
+      userId: 'p1',
+      userName: 'Tester',
+      channel: makeChannel(thread),
+      registerThread,
+      reply,
+    });
+
+    const msg = makeMsg('p1', thread.id);
+    await service.show({
+      msg: msg as never,
+      prompt: 'use potion_small',
+      client: {} as never,
+      registerThread,
+      forgetThread: jest.fn(),
+    });
+    expect(player.inventory.resources['potion_small']).toBe(3);
+    expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('Nieznana komenda'));
+  });
+
+  test('close button (legacy) zamyka plecak', async () => {
+    stats.get('p1', 'Tester');
+    const thread = makeThread();
+    await service.openInventoryForUser({
+      userId: 'p1',
+      userName: 'Tester',
+      channel: makeChannel(thread),
+      registerThread,
+      reply,
+    });
+
+    const close = makeBtn('inv:close:p1');
+    await service.handleInteraction(close as never);
+    expect(close.update).toHaveBeenCalledWith(
+      expect.objectContaining({ content: expect.stringContaining('zamknięty') }),
+    );
+    expect(thread.delete).toHaveBeenCalledTimes(1);
   });
 
   test('handleInteraction po zamknięciu — info o stale', async () => {
     stats.get('p1', 'Tester');
-    const btn = makeBtn('inv:toggle:abc:p1');
+    const btn = makeBtn('inv:close:p1');
     await service.handleInteraction(btn as never);
     expect(btn.reply).toHaveBeenCalledWith(
       expect.objectContaining({ content: expect.stringContaining('zamknięty') }),

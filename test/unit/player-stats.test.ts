@@ -1,18 +1,22 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import { PlayerStatsService } from '../../src/modules/game/services/player-stats.js';
 import { tmpPlayerFile } from '../helpers/factories.js';
 
 describe('PlayerStatsService', () => {
   let file: string;
+  let dir: string;
   let svc: PlayerStatsService;
 
   beforeEach(() => {
     file = tmpPlayerFile();
+    dir = file.replace(/\.json$/, '');
     svc = new PlayerStatsService(file);
   });
 
   afterEach(() => {
     if (fs.existsSync(file)) fs.rmSync(file, { force: true });
+    if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
   });
 
   describe('xpForNextLevel', () => {
@@ -70,8 +74,9 @@ describe('PlayerStatsService', () => {
       expect(result.loser.xp).toBe(10);
       // 50 base, equal level → 0 bonus
       expect(result.winner.skills.combat.xp).toBe(50);
-      // file persisted
-      expect(fs.existsSync(file)).toBe(true);
+      // per-player files persisted (winner + loser)
+      expect(fs.existsSync(path.join(dir, 'w1.json'))).toBe(true);
+      expect(fs.existsSync(path.join(dir, 'l1.json'))).toBe(true);
     });
 
     test('grants level bonus xp when loser higher level', () => {

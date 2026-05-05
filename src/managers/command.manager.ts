@@ -4,6 +4,7 @@ import type {
   Client,
   RESTPostAPIChatInputApplicationCommandsJSONBody,
 } from 'discord.js';
+import { MessageFlags } from 'discord.js';
 import type { ICommand } from '../types/command.types.js';
 import { hasSlashCommand } from '../types/command.types.js';
 import { errMsg } from '../utils.js';
@@ -36,10 +37,29 @@ export class CommandManager {
   async dispatch(client: Client, msg: any): Promise<void> {
     if (msg.author?.bot) return;
 
-    const inOurThread = msg.channel?.isThread?.() && msg.channel.ownerId === client.user?.id;
+    const channelId = msg.channel?.id;
+    const isThread = !!msg.channel?.isThread?.();
+    const isRegisteredThread = isThread && channelId && this.threadInfo.has(channelId);
 
-    if (inOurThread && this.threadInfo.has(msg.channel.id)) {
-      this.scheduleThreadDelete(msg.channel.id);
+    // Orphan thread (po restartcie bota) — nazwa wskazuje rolę, ale state
+    // in-memory zniknął. Powiadom usera + sprzątnij wątek żeby nie zaśmiecał.
+    if (isThread && !isRegisteredThread && msg.channel?.name) {
+      const name = String(msg.channel.name);
+      if (name.startsWith('Plecak:') || name.startsWith('Sklep:') || name.startsWith('Smith:')) {
+        await msg
+          .reply(
+            '⚠️ Ten wątek osierocony po restarcie bota — wpisz `.inv` / `.menu` żeby otworzyć nowy. Stary zaraz znika.',
+          )
+          .catch(() => {});
+        if (typeof msg.channel.delete === 'function') {
+          msg.channel.delete('Orphaned thread po restarcie bota').catch(() => {});
+        }
+        return;
+      }
+    }
+
+    if (isRegisteredThread) {
+      this.scheduleThreadDelete(channelId);
     }
 
     const cmdByPrefix = this.commands.find((c) => c.matches(msg.content));
@@ -54,11 +74,13 @@ export class CommandManager {
         await msg.reply(`Użycie: \`${cmd.prefix.trim()} <pytanie>\``);
         return;
       }
-    } else if (inOurThread) {
-      const info = this.threadInfo.get(msg.channel.id);
+    } else if (isRegisteredThread) {
+      const info = this.threadInfo.get(channelId);
       if (!info) return;
       cmd = info.command;
-      prompt = cmd.extractPrompt(msg.content);
+      // Pełna treść jako prompt — `extractPrompt` ślepo ucinałby N znaków
+      // od początku zniekształcając tekst (`sell 6 7` → `6 7` przy prefixie `.inv`).
+      prompt = msg.content.trim();
       if (!prompt) return;
     } else {
       return;
@@ -78,12 +100,31 @@ export class CommandManager {
   }
 
   async handleInteraction(interaction: unknown): Promise<void> {
+    const lagLog = process.env.LAG_LOG !== '0';
+    const threshold = parseInt(process.env.LAG_LOG_THRESHOLD_MS || '200', 10);
+    const slow: Array<{ name: string; ms: number }> = [];
     for (const cmd of this.commands) {
       if (!hasInteractionHandler(cmd)) continue;
+      const t0 = lagLog ? Date.now() : 0;
       try {
         await cmd.handleInteraction(interaction);
       } catch (e) {
         console.error(`[manager] handleInteraction ${cmd.name}:`, errMsg(e));
+      }
+      if (lagLog) {
+        const ms = Date.now() - t0;
+        if (ms >= 50) slow.push({ name: cmd.name, ms });
+      }
+    }
+    if (lagLog && slow.length > 0) {
+      const total = slow.reduce((s, x) => s + x.ms, 0);
+      if (total >= threshold) {
+        const breakdown = slow.map((s) => `${s.name}=${s.ms}ms`).join(' ');
+        const customId =
+          interaction && typeof interaction === 'object' && 'customId' in interaction
+            ? String((interaction as { customId: unknown }).customId)
+            : '?';
+        console.warn(`[lag-mgr] btn "${customId}" cmds: ${breakdown}`);
       }
     }
   }
@@ -105,7 +146,7 @@ export class CommandManager {
         console.error(`[manager] dispatchSlash ${cmd.name}:`, errMsg(e));
         if (!interaction.replied && !interaction.deferred) {
           await interaction
-            .reply({ content: `Błąd: ${errMsg(e)}`, ephemeral: true })
+            .reply({ content: `Błąd: ${errMsg(e)}`, flags: MessageFlags.Ephemeral })
             .catch(() => {});
         }
       }

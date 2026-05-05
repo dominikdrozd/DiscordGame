@@ -56,7 +56,7 @@ export class DialogService {
   async startFromInteraction(interaction: ButtonInteraction, npcId: string): Promise<void> {
     const npc = getNpc(npcId);
     if (!npc) {
-      await interaction.reply({ content: `Nie znam NPC \`${npcId}\`.`, ephemeral: true }).catch(() => {});
+      await interaction.reply({ content: `Nie znam NPC \`${npcId}\`.`, flags: MessageFlags.Ephemeral }).catch(() => {});
       return;
     }
     const player = this.stats.get(
@@ -66,7 +66,7 @@ export class DialogService {
     const node = npc.dialog.getNode(npc.dialog.startNodeId);
     if (!node) {
       await interaction
-        .reply({ content: `Dialog \`${npc.id}\` nie ma startNode.`, ephemeral: true })
+        .reply({ content: `Dialog \`${npc.id}\` nie ma startNode.`, flags: MessageFlags.Ephemeral })
         .catch(() => {});
       return;
     }
@@ -130,14 +130,14 @@ export class DialogService {
     if (action !== 'opt') return;
     if (interaction.user.id !== userId) {
       await interaction
-        .reply({ content: 'To nie twoja rozmowa.', ephemeral: true })
+        .reply({ content: 'To nie twoja rozmowa.', flags: MessageFlags.Ephemeral })
         .catch(() => {});
       return;
     }
     const npc = getNpc(npcId);
     if (!npc) {
       await interaction
-        .reply({ content: 'Ten NPC już cię nie pamięta (bot się zrestartował?).', ephemeral: true })
+        .reply({ content: 'Ten NPC już cię nie pamięta (bot się zrestartował?).', flags: MessageFlags.Ephemeral })
         .catch(() => {});
       return;
     }
@@ -149,7 +149,7 @@ export class DialogService {
     const sourceNode = npc.dialog.getNode(currentNodeId);
     if (!sourceNode) {
       await interaction
-        .reply({ content: `Nieznany węzeł rozmowy \`${currentNodeId}\`.`, ephemeral: true })
+        .reply({ content: `Nieznany węzeł rozmowy \`${currentNodeId}\`.`, flags: MessageFlags.Ephemeral })
         .catch(() => {});
       return;
     }
@@ -181,7 +181,7 @@ export class DialogService {
     const targetNode = npc.dialog.getNode(opt.goto);
     if (!targetNode) {
       await interaction
-        .reply({ content: `Nieznany węzeł rozmowy \`${opt.goto}\`.`, ephemeral: true })
+        .reply({ content: `Nieznany węzeł rozmowy \`${opt.goto}\`.`, flags: MessageFlags.Ephemeral })
         .catch(() => {});
       return;
     }

@@ -1,4 +1,4 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, type ButtonInteraction } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, type ButtonInteraction } from 'discord.js';
 import type { ICommand, ICommandContext } from '../types/command.types.js';
 import type { CommandManager } from '../managers/command.manager.js';
 
@@ -39,7 +39,7 @@ export class HelpCommand implements ICommand {
       await interaction.update(view);
     } catch {
       await interaction
-        .reply({ content: 'Nie udało się przełączyć strony.', ephemeral: true })
+        .reply({ content: 'Nie udało się przełączyć strony.', flags: MessageFlags.Ephemeral })
         .catch(() => {});
     }
   }

@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, Events, REST, Routes } from 'discord.js';
+import { Client, GatewayIntentBits, Events, MessageFlags, REST, Routes } from 'discord.js';
 import 'dotenv/config';
 import { CommandManager } from './managers/command.manager.js';
 import { errMsg } from './utils.js';
@@ -85,8 +85,32 @@ client.once(Events.ClientReady, (c) => {
   void registerSlashCommands(c.user.id);
 });
 
+/**
+ * Lag diagnostic — logguje stage timing dla interaction handlerów. Ustaw
+ * `LAG_LOG_THRESHOLD_MS` (env, default 200ms) żeby zmienić próg. Globalnie
+ * wyłącz `LAG_LOG=0`. Pokazuje który service najwięcej czasu zjada.
+ */
+const LAG_LOG = process.env.LAG_LOG !== '0';
+const LAG_THRESHOLD_MS = parseInt(process.env.LAG_LOG_THRESHOLD_MS || '200', 10);
+
+async function timed<T>(stage: string, fn: () => Promise<T>): Promise<{ result: T; ms: number }> {
+  const t0 = Date.now();
+  const result = await fn();
+  return { result, ms: Date.now() - t0 };
+}
+
 client.on(Events.MessageCreate, async (msg) => {
+  if (!LAG_LOG) {
+    await manager.dispatch(client, msg);
+    return;
+  }
+  const t0 = Date.now();
   await manager.dispatch(client, msg);
+  const total = Date.now() - t0;
+  if (total >= LAG_THRESHOLD_MS) {
+    const cmd = msg.content?.split(/\s+/)[0]?.slice(0, 30) ?? '?';
+    console.warn(`[lag] message "${cmd}" took ${total}ms (ws ping ${client.ws.ping}ms)`);
+  }
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
@@ -95,35 +119,70 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return;
   }
   if (interaction.isChatInputCommand()) {
+    if (!LAG_LOG) {
+      await manager.dispatchSlash(interaction);
+      return;
+    }
+    const t0 = Date.now();
     await manager.dispatchSlash(interaction);
+    const total = Date.now() - t0;
+    if (total >= LAG_THRESHOLD_MS) {
+      console.warn(
+        `[lag] /${interaction.commandName} took ${total}ms (ws ping ${client.ws.ping}ms)`,
+      );
+    }
     return;
   }
-  await manager.handleInteraction(interaction);
+
+  const customId = interaction.isButton() ? interaction.customId : '?';
+  const stages: Array<{ name: string; ms: number }> = [];
+  const tStart = Date.now();
+
+  const mgr = await timed('manager', () => manager.handleInteraction(interaction));
+  stages.push({ name: 'manager', ms: mgr.ms });
+
   if (ambushService && interaction.isButton()) {
-    await ambushService.handleInteraction(interaction);
+    const r = await timed('ambush', () => ambushService!.handleInteraction(interaction));
+    stages.push({ name: 'ambush', ms: r.ms });
   }
   if (worldBossService && interaction.isButton()) {
-    await worldBossService.handleInteraction(interaction);
+    const r = await timed('worldBoss', () => worldBossService!.handleInteraction(interaction));
+    stages.push({ name: 'worldBoss', ms: r.ms });
   }
   if (arenaService && interaction.isButton()) {
-    await arenaService.handleInteraction(interaction);
+    const r = await timed('arena', () => arenaService!.handleInteraction(interaction));
+    stages.push({ name: 'arena', ms: r.ms });
   }
   if (interaction.isButton() && interaction.customId.startsWith('idfy:')) {
-    await gameServices.identification.handleInteraction(interaction);
+    const r = await timed('idfy', () =>
+      gameServices.identification.handleInteraction(interaction),
+    );
+    stages.push({ name: 'idfy', ms: r.ms });
   }
   if (interaction.isButton() && interaction.customId.startsWith('ench:')) {
-    await gameServices.enchanter.handleInteraction(interaction);
+    const r = await timed('ench', () => gameServices.enchanter.handleInteraction(interaction));
+    stages.push({ name: 'ench', ms: r.ms });
   }
-  // Fallback ack — gdy żaden service nie obsłużył (np. bot się zrestartował
-  // i state in-memory zniknął), Discord pokaże "This interaction failed"
-  // jeśli nie potwierdzimy.
   if (interaction.isButton() && !interaction.replied && !interaction.deferred) {
     await interaction
       .reply({
         content: '⚠️ Ta walka już nie istnieje (bot mógł się zrestartować). Otwórz ją ponownie.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       })
       .catch(() => {});
+  }
+
+  if (LAG_LOG) {
+    const total = Date.now() - tStart;
+    if (total >= LAG_THRESHOLD_MS) {
+      const breakdown = stages
+        .filter((s) => s.ms >= 5)
+        .map((s) => `${s.name}=${s.ms}ms`)
+        .join(' ');
+      console.warn(
+        `[lag] btn "${customId}" total=${total}ms (ws ${client.ws.ping}ms) ${breakdown}`,
+      );
+    }
   }
 });
 

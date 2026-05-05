@@ -19,7 +19,16 @@ export class InventoryCommand extends BaseCommand implements ISlashCommand {
     .setDescription('Otwórz plecak w prywatnym wątku')
     .toJSON();
 
-  constructor(private readonly inventory: InventoryService) {
+  constructor(
+    private readonly inventory: InventoryService,
+    /**
+     * Register-thread closure podawane przez `registerGameCommands` —
+     * w slash path (executeSlash) brak ctx.registerThread, więc dispatch
+     * orphan-detection wywaliłby świeżo utworzony wątek przy pierwszej
+     * wiadomości. Wstrzykujemy `manager.registerThreadFor(thread, this)`.
+     */
+    private readonly registerThreadFn?: (thread: unknown) => void,
+  ) {
     super();
   }
 
@@ -45,7 +54,8 @@ export class InventoryCommand extends BaseCommand implements ISlashCommand {
       userId: interaction.user.id,
       userName: interaction.user.globalName || interaction.user.username,
       channel,
-      registerThread: () => {
+      registerThread: (thread) => {
+        if (this.registerThreadFn) this.registerThreadFn(thread);
         openSucceeded = true;
       },
       reply: async (content: string): Promise<unknown> => {

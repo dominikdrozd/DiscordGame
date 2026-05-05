@@ -1,4 +1,4 @@
-import { ChannelType, type ButtonInteraction } from 'discord.js';
+import { ChannelType, MessageFlags, type ButtonInteraction } from 'discord.js';
 import type { ICommandContext } from '../../../types/command.types.js';
 import { PlayerStatsService, type PlayerStats } from './player-stats.js';
 import { CITIES, getCity, listCities, type City, type Merchant } from '../cities/index.js';
@@ -113,7 +113,7 @@ export class CityService {
     const arg = parts[5];
 
     if (interaction.user.id !== userId) {
-      await interaction.reply({ content: 'To nie twój sklep.', ephemeral: true }).catch(() => {});
+      await interaction.reply({ content: 'To nie twój sklep.', flags: MessageFlags.Ephemeral }).catch(() => {});
       return;
     }
     const state = this.shops.get(shopKey(cityId, userId));
@@ -121,7 +121,7 @@ export class CityService {
       await interaction
         .reply({
           content: 'Sklep już zamknięty — otwórz go ponownie `.city shop <id>`.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         })
         .catch(() => {});
       return;
@@ -418,7 +418,7 @@ export class CityService {
   ): Promise<void> {
     const item = itemId ? this.findItem(state, itemId) : undefined;
     if (!item) {
-      await interaction.reply({ content: 'Nieznany item.', ephemeral: true }).catch(() => {});
+      await interaction.reply({ content: 'Nieznany item.', flags: MessageFlags.Ephemeral }).catch(() => {});
       return;
     }
     const qty = Math.max(1, parseInt(qtyArg ?? '1', 10) || 1);
@@ -428,7 +428,7 @@ export class CityService {
       await interaction
         .reply({
           content: `Brakuje złota — masz ${player.gold}, potrzebujesz ${totalCost} (×${qty}).`,
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         })
         .catch(() => {});
       return;
@@ -447,14 +447,14 @@ export class CityService {
   ): Promise<void> {
     const item = itemId ? this.findItem(state, itemId) : undefined;
     if (!item) {
-      await interaction.reply({ content: 'Nieznany item.', ephemeral: true }).catch(() => {});
+      await interaction.reply({ content: 'Nieznany item.', flags: MessageFlags.Ephemeral }).catch(() => {});
       return;
     }
     const player = this.stats.get(state.userId);
     const have = player.inventory.resources[item.itemId] ?? 0;
     if (have <= 0) {
       await interaction
-        .reply({ content: 'Nie masz tego itemu w plecaku.', ephemeral: true })
+        .reply({ content: 'Nie masz tego itemu w plecaku.', flags: MessageFlags.Ephemeral })
         .catch(() => {});
       return;
     }
@@ -470,7 +470,7 @@ export class CityService {
   ): Promise<void> {
     const item = itemId ? this.findItem(state, itemId) : undefined;
     if (!item) {
-      await interaction.reply({ content: 'Nieznany item.', ephemeral: true }).catch(() => {});
+      await interaction.reply({ content: 'Nieznany item.', flags: MessageFlags.Ephemeral }).catch(() => {});
       return;
     }
     const qty = Math.max(1, parseInt(qtyArg ?? '1', 10) || 1);

@@ -121,7 +121,7 @@ export class QuestCommand extends BaseCommand implements ISlashCommand {
     const userId = parts[2];
     if (button.user.id !== userId) {
       await button
-        .reply({ content: 'To nie twój widok questów.', ephemeral: true })
+        .reply({ content: 'To nie twój widok questów.', flags: MessageFlags.Ephemeral })
         .catch(() => {});
       return;
     }

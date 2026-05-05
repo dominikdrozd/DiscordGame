@@ -4,6 +4,7 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  MessageFlags,
 } from 'discord.js';
 import { PlayerStatsService } from '../services/player-stats.js';
 import { BOSS_MOBS, type Mob, type MobTier } from '../mobs/index.js';
@@ -319,7 +320,7 @@ export class WorldBossService {
       await interaction
         .reply({
           content: 'Rejestracja zamknięta — następny world boss za niedługo.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         })
         .catch(() => {});
       return;
@@ -327,13 +328,13 @@ export class WorldBossService {
     const userId = interaction.user.id;
     if (evt.participants.has(userId)) {
       await interaction
-        .reply({ content: '✅ Już jesteś zapisany.', ephemeral: true })
+        .reply({ content: '✅ Już jesteś zapisany.', flags: MessageFlags.Ephemeral })
         .catch(() => {});
       return;
     }
     if (evt.participants.size >= MAX_PARTICIPANTS) {
       await interaction
-        .reply({ content: `Slot pełny (max ${MAX_PARTICIPANTS}).`, ephemeral: true })
+        .reply({ content: `Slot pełny (max ${MAX_PARTICIPANTS}).`, flags: MessageFlags.Ephemeral })
         .catch(() => {});
       return;
     }
@@ -343,7 +344,7 @@ export class WorldBossService {
     await interaction
       .reply({
         content: `⚔️ Dołączasz! Aktualnie zapisanych: ${evt.participants.size}/${MAX_PARTICIPANTS}.`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       })
       .catch(() => {});
 

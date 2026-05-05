@@ -124,7 +124,7 @@ export class MenuService {
     const userId = parts[parts.length - 1];
 
     if (interaction.user.id !== userId) {
-      await interaction.reply({ content: 'To nie twoje menu.', ephemeral: true }).catch(() => {});
+      await interaction.reply({ content: 'To nie twoje menu.', flags: MessageFlags.Ephemeral }).catch(() => {});
       return;
     }
     const player = this.stats.get(userId, interaction.user.globalName || interaction.user.username);

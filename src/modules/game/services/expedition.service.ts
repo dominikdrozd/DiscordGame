@@ -91,7 +91,7 @@ export class ExpeditionService {
     const arg = parts[3];
 
     if (interaction.user.id !== userId) {
-      await interaction.reply({ content: 'To nie twój browser.', ephemeral: true }).catch(() => {});
+      await interaction.reply({ content: 'To nie twój browser.', flags: MessageFlags.Ephemeral }).catch(() => {});
       return;
     }
     const player = this.stats.get(userId);
@@ -400,7 +400,7 @@ export class ExpeditionService {
       await interaction
         .reply({
           content: 'Browser zamknięty — wpisz `.expedition` żeby otworzyć.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         })
         .catch(() => {});
       return;
@@ -425,7 +425,7 @@ export class ExpeditionService {
   private async handleEnter(interaction: ButtonInteraction, userId: string): Promise<void> {
     const state = this.browsers.get(userId);
     if (!state) {
-      await interaction.reply({ content: 'Browser zamknięty.', ephemeral: true }).catch(() => {});
+      await interaction.reply({ content: 'Browser zamknięty.', flags: MessageFlags.Ephemeral }).catch(() => {});
       return;
     }
     const sorted = sortedExpeditions();
@@ -434,7 +434,7 @@ export class ExpeditionService {
     const result = this.tryStartExpedition(player, exp, state.channelId);
     if (!result.ok) {
       await interaction
-        .reply({ content: result.reason ?? 'Nie udało się.', ephemeral: true })
+        .reply({ content: result.reason ?? 'Nie udało się.', flags: MessageFlags.Ephemeral })
         .catch(() => {});
       return;
     }
@@ -471,7 +471,7 @@ export class ExpeditionService {
   private async handleClaim(interaction: ButtonInteraction, player: PlayerStats): Promise<void> {
     if (!player.activeExpedition) {
       await interaction
-        .reply({ content: 'Nie masz wyprawy do odebrania.', ephemeral: true })
+        .reply({ content: 'Nie masz wyprawy do odebrania.', flags: MessageFlags.Ephemeral })
         .catch(() => {});
       return;
     }
@@ -479,14 +479,14 @@ export class ExpeditionService {
       await interaction
         .reply({
           content: '⚔️ Wyprawa zatrzymana — dokończ ambush najpierw.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         })
         .catch(() => {});
       return;
     }
     if (player.activeExpedition.endsAt > Date.now()) {
       await interaction
-        .reply({ content: 'Wyprawa jeszcze trwa.', ephemeral: true })
+        .reply({ content: 'Wyprawa jeszcze trwa.', flags: MessageFlags.Ephemeral })
         .catch(() => {});
       return;
     }
@@ -501,7 +501,7 @@ export class ExpeditionService {
           .reply({
             content:
               '⚔️ **Strażnik regionu zastępuje ci drogę!** Pokonaj go w wątku ambushu, potem kliknij **🎁 Zbierz** ponownie.',
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           })
           .catch(() => {});
         return;
@@ -526,21 +526,21 @@ export class ExpeditionService {
   ): Promise<void> {
     if (!this.ambushService) {
       await interaction
-        .reply({ content: 'Brak aktywnej walki (ambush service unbound).', ephemeral: true })
+        .reply({ content: 'Brak aktywnej walki (ambush service unbound).', flags: MessageFlags.Ephemeral })
         .catch(() => {});
       return;
     }
     const result = await this.ambushService.resumeForPlayer(player.id);
     if (!result.ok) {
       await interaction
-        .reply({ content: 'Nie masz aktywnej walki — być może już się skończyła.', ephemeral: true })
+        .reply({ content: 'Nie masz aktywnej walki — być może już się skończyła.', flags: MessageFlags.Ephemeral })
         .catch(() => {});
       return;
     }
     await interaction
       .reply({
         content: `⚔️ Panel akcji odświeżony w <#${result.threadId}>. Idź do wątku i kontynuuj walkę.`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       })
       .catch(() => {});
   }

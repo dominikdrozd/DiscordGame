@@ -2,6 +2,7 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  MessageFlags,
   type ButtonInteraction,
 } from 'discord.js';
 import { PlayerStatsService, type PlayerStats } from './player-stats.js';
@@ -112,7 +113,7 @@ export class IdentificationService {
     const result = this.identify(player, uid);
     if (!result.ok) {
       await interaction
-        .reply({ content: `🚫 ${result.reason}`, ephemeral: true })
+        .reply({ content: `🚫 ${result.reason}`, flags: MessageFlags.Ephemeral })
         .catch(() => {});
       return;
     }
@@ -194,7 +195,7 @@ export class IdentificationService {
     const userId = parts[3];
     if (interaction.user.id !== userId) {
       await interaction
-        .reply({ content: 'To nie twój skryba.', ephemeral: true })
+        .reply({ content: 'To nie twój skryba.', flags: MessageFlags.Ephemeral })
         .catch(() => {});
       return;
     }

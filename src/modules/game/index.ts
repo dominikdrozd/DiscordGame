@@ -1,4 +1,5 @@
 import type { Client } from 'discord.js';
+import { MessageFlags } from 'discord.js';
 import type { CommandManager } from '../../managers/command.manager.js';
 import { PlayerStatsService } from './services/player-stats.js';
 import { PartyService } from './services/party.js';
@@ -77,7 +78,11 @@ export function registerGameCommands(manager: CommandManager, services: GameServ
   const dungeons = new DungeonService(stats, party);
   const crafting = new CraftService(stats);
   const inventory = new InventoryService(stats);
-  const inventoryCommand = new InventoryCommand(inventory);
+  // Closure: musi widzieć inventoryCommand do registerThreadFor — late-init.
+  let inventoryCommand: InventoryCommand;
+  inventoryCommand = new InventoryCommand(inventory, (thread) =>
+    manager.registerThreadFor(thread, inventoryCommand),
+  );
   const city = new CityService(stats, (id) => dungeons.hasActiveFor(id));
   const dialog = new DialogService(stats, quests);
   const cityCommand = new CityCommand(city, stats);
@@ -99,9 +104,9 @@ export function registerGameCommands(manager: CommandManager, services: GameServ
     openShopFromInteraction: async (interaction, cityIdArg) => {
       const reply = async (content: string): Promise<unknown> => {
         if (interaction.replied || interaction.deferred) {
-          return interaction.followUp({ content, ephemeral: true });
+          return interaction.followUp({ content, flags: MessageFlags.Ephemeral });
         }
-        return interaction.reply({ content, ephemeral: true });
+        return interaction.reply({ content, flags: MessageFlags.Ephemeral });
       };
       const channelCandidate: unknown = interaction.channel;
       if (!hasThreadCreate(channelCandidate)) {
@@ -131,9 +136,9 @@ export function registerGameCommands(manager: CommandManager, services: GameServ
     openInventoryFromInteraction: async (interaction) => {
       const reply = async (content: string): Promise<unknown> => {
         if (interaction.replied || interaction.deferred) {
-          return interaction.followUp({ content, ephemeral: true });
+          return interaction.followUp({ content, flags: MessageFlags.Ephemeral });
         }
-        return interaction.reply({ content, ephemeral: true });
+        return interaction.reply({ content, flags: MessageFlags.Ephemeral });
       };
       const channelCandidate: unknown = interaction.channel;
       if (!hasThreadCreate(channelCandidate)) {

@@ -327,7 +327,7 @@ export class BossService {
 
     if (interaction.user.id !== userId) {
       await interaction
-        .reply({ content: 'To nie twój browser.', ephemeral: true })
+        .reply({ content: 'To nie twój browser.', flags: MessageFlags.Ephemeral })
         .catch(() => {});
       return;
     }
@@ -336,7 +336,7 @@ export class BossService {
       await interaction
         .reply({
           content: 'Browser zamknięty — wpisz `.menu` lub `.boss <id>`.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         })
         .catch(() => {});
       return;
@@ -370,7 +370,7 @@ export class BossService {
     const player = this.stats.get(state.userId);
     const cooldownMsg = this.cooldownReason(player);
     if (cooldownMsg) {
-      await interaction.reply({ content: cooldownMsg, ephemeral: true }).catch(() => {});
+      await interaction.reply({ content: cooldownMsg, flags: MessageFlags.Ephemeral }).catch(() => {});
       return;
     }
     const channel: unknown = interaction.channel;
@@ -378,7 +378,7 @@ export class BossService {
       await interaction
         .reply({
           content: 'Nie mogę otworzyć wątku w tym kanale — użyj `.boss ' + def.id + '`.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         })
         .catch(() => {});
       return;
@@ -392,13 +392,13 @@ export class BossService {
       });
     } catch (e) {
       await interaction
-        .reply({ content: `Nie udało się otworzyć wątku: ${errMsg(e)}`, ephemeral: true })
+        .reply({ content: `Nie udało się otworzyć wątku: ${errMsg(e)}`, flags: MessageFlags.Ephemeral })
         .catch(() => {});
       return;
     }
     if (!thread || typeof thread !== 'object' || !('id' in thread) || typeof thread.id !== 'string') {
       await interaction
-        .reply({ content: 'Wątek bossa utworzony, ale brak API.', ephemeral: true })
+        .reply({ content: 'Wątek bossa utworzony, ale brak API.', flags: MessageFlags.Ephemeral })
         .catch(() => {});
       return;
     }
