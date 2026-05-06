@@ -6,14 +6,54 @@ export function buildExpBrowseRows(
   expsLength: number,
   canEnter: boolean,
   fromMenu = false,
+  inParty = false,
 ): ActionRowBuilder<ButtonBuilder>[] {
-  return buildBrowseRows({
-    prefix: 'exp',
-    userId,
-    itemsCount: expsLength,
-    mainAction: { id: 'enter', label: '🗺️ Wejdź', style: ButtonStyle.Success, disabled: !canEnter },
-    fromMenu,
-  });
+  if (!inParty) {
+    return buildBrowseRows({
+      prefix: 'exp',
+      userId,
+      itemsCount: expsLength,
+      mainAction: { id: 'enter', label: '🗺️ Wejdź', style: ButtonStyle.Success, disabled: !canEnter },
+      fromMenu,
+    });
+  }
+
+  const id = (action: string, arg?: string): string =>
+    `exp:${action}:${userId}${arg !== undefined ? `:${arg}` : ''}`;
+
+  const navRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(id('nav', '-1'))
+      .setLabel('◀')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(expsLength <= 1),
+    new ButtonBuilder()
+      .setCustomId(id('nav', '1'))
+      .setLabel('▶')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(expsLength <= 1),
+    new ButtonBuilder()
+      .setCustomId(id('close'))
+      .setLabel('✖ Zamknij')
+      .setStyle(ButtonStyle.Danger),
+  );
+
+  const enterRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(id('enter_solo'))
+      .setLabel('🗺️ Wejdź solo')
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(!canEnter),
+    new ButtonBuilder()
+      .setCustomId(id('enter_party'))
+      .setLabel('🗺️ Wejdź z party')
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(!canEnter),
+  );
+
+  const rows: ActionRowBuilder<ButtonBuilder>[] = [enterRow, navRow];
+  if (fromMenu) rows.push(buildBackToMenuRow(userId));
+  return rows;
 }
 
 /**

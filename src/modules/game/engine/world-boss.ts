@@ -46,6 +46,8 @@ const REGISTRATION_WINDOW_MS = 5 * 60_000;
 const MIN_PARTICIPANTS = 2;
 /** Cap — Discord button row mieści się max ~25 mentions sensownie. */
 const MAX_PARTICIPANTS = 8;
+/** Bazowy mnożnik raid-tier — wyrównuje WB do solo/dungeon bossów (BOSS_MULT=3.5). */
+const WORLD_BOSS_MULT = 3.5;
 /** Bonusowe lege/epickie itemy losowane PER UCZESTNIK na końcu walki. */
 const BONUS_DROP_POOL: readonly string[] = [
   'sword_diamond',
@@ -233,7 +235,20 @@ export class WorldBossService {
     // jakimkolwiek await — zapobiega race condition gdyby drugi event
     // wystartował na tym samym shared `BOSS_MOBS[id]` instance.
     boss.setTier(tier);
-    const bossCombatantRaw = boss.toCombatant(`wb_${Date.now().toString(36)}`);
+    const baseRaw = boss.toCombatant(`wb_${Date.now().toString(36)}`);
+    const bossHp = Math.round(baseRaw.hp * WORLD_BOSS_MULT * participants.length);
+    const bossDmg = Math.round(baseRaw.damageBonus * WORLD_BOSS_MULT);
+    const bossDef =
+      baseRaw.defenseBonus !== undefined
+        ? Math.round(baseRaw.defenseBonus * WORLD_BOSS_MULT)
+        : undefined;
+    const bossCombatantRaw = {
+      ...baseRaw,
+      hp: bossHp,
+      maxHp: bossHp,
+      damageBonus: bossDmg,
+      defenseBonus: bossDef,
+    };
     const bossName = boss.name;
 
     if (!hasThreadCreate(channel)) {
@@ -286,6 +301,7 @@ export class WorldBossService {
           content: [
             `🌋 **${boss.name}** (T${tier}) wkracza do walki przeciw ${players.length} graczom!`,
             `${participants.map((id) => `<@${id}>`).join(' ')}`,
+            `_raid-tier ×${WORLD_BOSS_MULT}, HP skalowane ×${players.length} uczestników._`,
             `HP bossa: **${bossCombatant.hp}**, dmg bonus: **+${bossCombatant.damageBonus}**.`,
             'Wybierajcie akcje — runda rozliczy się gdy wszyscy podają.',
           ].join('\n'),

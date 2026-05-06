@@ -472,6 +472,19 @@ export class PlayerStatsService {
     return PlayerStatsService.BASE_CRIT_PCT + this.critBonus(p) + this.critBonusFromEquipment(p);
   }
 
+  /**
+   * Skrócony "score" siły bojowej — używany do skalowania trudności (np.
+   * decyzji ile mobów spawnuje ambush). HP + 4×dmg + 2×def to rozsądny
+   * pojedynczy wskaźnik łączący żywotność, ofensywę i obronę.
+   */
+  combatPower(p: PlayerStats): number {
+    return (
+      this.effectiveMaxHp(p) +
+      this.effectiveDamageBonus(p) * 4 +
+      this.effectiveDefenseBonus(p) * 2
+    );
+  }
+
   /** Pełen max HP — base + primary + attribute + ekwipunek (z upgradami) + armor red gemy. */
   effectiveMaxHp(p: PlayerStats): number {
     const w = this.equippedItem(p, 'weapon');

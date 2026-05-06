@@ -113,16 +113,20 @@ export class PartyService {
     return { ok: true, party };
   }
 
-  accept(partyId: string, userId: string): { ok: boolean; reason?: string; party?: Party } {
+  accept(
+    partyId: string,
+    userId: string,
+  ): { ok: boolean; reason?: string; party?: Party; previousMembers?: string[] } {
     const party = this.parties.get(partyId);
     if (!party) return { ok: false, reason: 'Party już nie istnieje.' };
     if (!party.pendingInvites.includes(userId))
       return { ok: false, reason: 'Nie masz tu zaproszenia.' };
     if (this.getByMember(userId)) return { ok: false, reason: 'Jesteś już w innym party.' };
+    const previousMembers = [...party.members];
     party.pendingInvites = party.pendingInvites.filter((id) => id !== userId);
     party.members.push(userId);
     this.save();
-    return { ok: true, party };
+    return { ok: true, party, previousMembers };
   }
 
   decline(partyId: string, userId: string): { ok: boolean; party?: Party } {

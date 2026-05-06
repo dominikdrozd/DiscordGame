@@ -6,10 +6,12 @@ import {
   SlashCommandBuilder,
   type ButtonInteraction,
   type ChatInputCommandInteraction,
+  type Client,
 } from 'discord.js';
 import type { ICommandContext, ISlashCommand } from '../../../types/command.types.js';
-import { PartyService, MAX_PARTY } from '../services/party.js';
+import { PartyService, MAX_PARTY, type Party } from '../services/party.js';
 import { displayName } from '../../../utils.js';
+import { hasSendable } from '../engine/discord-helpers.js';
 import { BaseCommand } from './base.command.js';
 
 export class PartyCommand extends BaseCommand implements ISlashCommand {
@@ -152,6 +154,7 @@ export class PartyCommand extends BaseCommand implements ISlashCommand {
 
     if (sub === 'accept') {
       const partyId = args[1];
+      const joinerName = displayName(msg);
       if (!partyId) {
         const inv = this.party.getByPendingInvite(msg.author.id);
         if (!inv) {
@@ -159,11 +162,11 @@ export class PartyCommand extends BaseCommand implements ISlashCommand {
           return;
         }
         const result = this.party.accept(inv.id, msg.author.id);
-        await this.replyAccept(msg, result);
+        await this.replyAccept(msg, result, joinerName);
         return;
       }
       const result = this.party.accept(partyId, msg.author.id);
-      await this.replyAccept(msg, result);
+      await this.replyAccept(msg, result, joinerName);
       return;
     }
 
@@ -277,7 +280,11 @@ export class PartyCommand extends BaseCommand implements ISlashCommand {
     }
     if (sub === 'accept') {
       const partyIdArg = interaction.options.getString('party_id') ?? undefined;
-      await this.replyEphemeral(interaction, this.tryAccept(userId, partyIdArg));
+      const acceptResult = this.tryAccept(userId, partyIdArg);
+      await this.replyEphemeral(interaction, acceptResult.message);
+      if (acceptResult.party) {
+        await this.notifyAcceptInChannel(interaction.client, acceptResult.party, userName);
+      }
       return;
     }
     if (sub === 'decline') {
@@ -347,16 +354,22 @@ export class PartyCommand extends BaseCommand implements ISlashCommand {
     return { ok: true, message: '', partyId: myParty.id };
   }
 
-  private tryAccept(userId: string, partyIdArg: string | undefined): string {
+  private tryAccept(
+    userId: string,
+    partyIdArg: string | undefined,
+  ): { message: string; party?: Party } {
     let partyId = partyIdArg;
     if (!partyId) {
       const inv = this.party.getByPendingInvite(userId);
-      if (!inv) return 'Brak otwartych zaproszeń. Podaj `party_id` w komendzie.';
+      if (!inv) return { message: 'Brak otwartych zaproszeń. Podaj `party_id` w komendzie.' };
       partyId = inv.id;
     }
     const result = this.party.accept(partyId, userId);
-    if (!result.ok) return result.reason ?? 'Nie udało się dołączyć.';
-    return `✅ Dołączyłeś do party \`${result.party?.id ?? partyId}\`.`;
+    if (!result.ok) return { message: result.reason ?? 'Nie udało się dołączyć.' };
+    return {
+      message: `✅ Dołączyłeś do party \`${result.party?.id ?? partyId}\`.`,
+      party: result.party,
+    };
   }
 
   private tryDecline(userId: string, partyIdArg: string | undefined): string {
@@ -406,6 +419,10 @@ export class PartyCommand extends BaseCommand implements ISlashCommand {
           components: [],
         })
         .catch(() => {});
+      if (result.party) {
+        const joinerName = interaction.user.globalName ?? interaction.user.username;
+        await this.notifyAcceptInChannel(interaction.client, result.party, joinerName);
+      }
       return;
     }
     if (action === 'decline') {
@@ -418,13 +435,33 @@ export class PartyCommand extends BaseCommand implements ISlashCommand {
   }
 
   private async replyAccept(
-    msg: any,
-    result: { ok: boolean; reason?: string; party?: any },
+    msg: { reply: (content: string) => Promise<unknown>; client: Client; author: { id: string; username: string; globalName?: string | null } },
+    result: { ok: boolean; reason?: string; party?: Party },
+    joinerName: string,
   ): Promise<void> {
     if (!result.ok) {
       await msg.reply(result.reason ?? 'Nie udało się dołączyć.');
       return;
     }
-    await msg.reply(`✅ Dołączyłeś do party \`${result.party.id}\`.`);
+    await msg.reply(`✅ Dołączyłeś do party \`${result.party!.id}\`.`);
+    await this.notifyAcceptInChannel(msg.client, result.party!, joinerName);
+  }
+
+  private async notifyAcceptInChannel(
+    client: Client,
+    party: Party,
+    joinerName: string,
+  ): Promise<void> {
+    const channelId = process.env.WORLD_BOSS_CHANNEL_ID;
+    if (!channelId) return;
+    const channel = await client.channels.fetch(channelId).catch(() => null);
+    if (!hasSendable(channel)) return;
+    const mentions = party.members.map((id) => `<@${id}>`).join(' ');
+    await channel
+      .send({
+        content: `🎯 **${joinerName}** dołączył do party \`${party.id}\` — ${mentions} (${party.members.length}/${MAX_PARTY})`,
+        allowedMentions: { users: party.members },
+      })
+      .catch(() => {});
   }
 }

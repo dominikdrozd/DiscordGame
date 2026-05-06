@@ -97,7 +97,9 @@ export class ExpeditionService {
     const player = this.stats.get(userId);
 
     if (action === 'nav') return this.handleNav(interaction, userId, arg);
-    if (action === 'enter') return this.handleEnter(interaction, userId);
+    if (action === 'enter') return this.handleEnter(interaction, userId, false);
+    if (action === 'enter_solo') return this.handleEnter(interaction, userId, true);
+    if (action === 'enter_party') return this.handleEnter(interaction, userId, false);
     if (action === 'refresh') return this.refreshActive(interaction, player);
     if (action === 'claim') return this.handleClaim(interaction, player);
     if (action === 'resume') return this.handleResume(interaction, player);
@@ -132,9 +134,10 @@ export class ExpeditionService {
     this.browsers.set(msg.author.id, state);
     const sorted = sortedExpeditions();
     const exp = sorted[state.index];
+    const inParty = !!this.party.getByMember(player.id);
     await msg.reply({
       content: this.renderExpDetails(exp, player),
-      components: buildExpBrowseRows(player.id, sorted.length, this.canEnter(exp, player), false),
+      components: buildExpBrowseRows(player.id, sorted.length, this.canEnter(exp, player), false, inParty),
     });
   }
 
@@ -170,10 +173,11 @@ export class ExpeditionService {
     }
     const sorted = sortedExpeditions();
     const exp = sorted[state.index];
+    const inParty = !!this.party.getByMember(player.id);
     await interaction
       .reply({
         content: this.renderExpDetails(exp, player),
-        components: buildExpBrowseRows(player.id, sorted.length, this.canEnter(exp, player), false),
+        components: buildExpBrowseRows(player.id, sorted.length, this.canEnter(exp, player), false, inParty),
         flags: MessageFlags.Ephemeral,
       })
       .catch(() => {});
@@ -203,10 +207,11 @@ export class ExpeditionService {
     }
     const sorted = sortedExpeditions();
     const exp = sorted[state.index];
+    const inParty = !!this.party.getByMember(player.id);
     await interaction
       .update({
         content: this.renderExpDetails(exp, player),
-        components: buildExpBrowseRows(player.id, sorted.length, this.canEnter(exp, player), true),
+        components: buildExpBrowseRows(player.id, sorted.length, this.canEnter(exp, player), true, inParty),
       })
       .catch(() => {});
   }
@@ -409,6 +414,7 @@ export class ExpeditionService {
     const dir = dirArg === '-1' ? -1 : 1;
     state.index = (state.index + dir + sorted.length) % sorted.length;
     const exp = sorted[state.index];
+    const inParty = !!this.party.getByMember(player.id);
     await interaction
       .update({
         content: this.renderExpDetails(exp, player),
@@ -417,12 +423,17 @@ export class ExpeditionService {
           sorted.length,
           this.canEnter(exp, player),
           state.fromMenu,
+          inParty,
         ),
       })
       .catch(() => {});
   }
 
-  private async handleEnter(interaction: ButtonInteraction, userId: string): Promise<void> {
+  private async handleEnter(
+    interaction: ButtonInteraction,
+    userId: string,
+    soloMode: boolean,
+  ): Promise<void> {
     const state = this.browsers.get(userId);
     if (!state) {
       await interaction.reply({ content: 'Browser zamknięty.', flags: MessageFlags.Ephemeral }).catch(() => {});
@@ -431,7 +442,7 @@ export class ExpeditionService {
     const sorted = sortedExpeditions();
     const exp = sorted[state.index];
     const player = this.stats.get(userId);
-    const result = this.tryStartExpedition(player, exp, state.channelId);
+    const result = this.tryStartExpedition(player, exp, state.channelId, soloMode);
     if (!result.ok) {
       await interaction
         .reply({ content: result.reason ?? 'Nie udało się.', flags: MessageFlags.Ephemeral })
@@ -567,8 +578,9 @@ export class ExpeditionService {
     leader: PlayerStats,
     def: ExpeditionDef,
     channelId: string | undefined,
+    soloMode = false,
   ): { ok: boolean; reason?: string } {
-    const partyEntity = this.party.getByMember(leader.id);
+    const partyEntity = soloMode ? undefined : this.party.getByMember(leader.id);
     const isLeader = partyEntity?.leaderId === leader.id;
     if (partyEntity && !isLeader) {
       return { ok: false, reason: 'Wyprawę dla party może rozpocząć tylko lider.' };

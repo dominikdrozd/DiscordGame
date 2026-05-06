@@ -1,6 +1,12 @@
-import { Dialog, type DialogNode, Npc, type DialogOption } from '../npc.js';
+import { Dialog, type DialogNode, Npc, type DialogOption, type DialogContext } from '../npc.js';
 import { listRaces, fmtRaceStats, type Race } from '../../races/index.js';
-import { listClasses, fmtPrimary, type ClassDef } from '../../classes/index.js';
+import {
+  listClasses,
+  fmtPrimary,
+  type ClassDef,
+  type SubclassDef,
+  SUBCLASS_UNLOCK_LEVEL,
+} from '../../classes/index.js';
 
 const Q1 = 'first_steps';
 const Q2 = 'marek_pick_race';
@@ -10,6 +16,20 @@ const Q5 = 'marek_axe';
 const Q6 = 'marek_rod';
 const Q7 = 'marek_upgrade';
 const Q8 = 'marek_duel';
+
+const ALL_QUESTS = [Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q8] as const;
+
+/**
+ * Subklasa u Marka odblokowuje się gdy gracz: (a) ma klasę, (b) jeszcze nie
+ * ma subklasy, (c) ma combat lvl ≥ 20, (d) ukończył wszystkie 8 questów Marka.
+ * Subklasa to nagroda za skończenie tutorialu.
+ */
+function subclassReady(ctx: DialogContext): boolean {
+  if (!ctx.player.classId) return false;
+  if (ctx.player.subclassId) return false;
+  if (ctx.player.skills.combat.level < SUBCLASS_UNLOCK_LEVEL) return false;
+  return ALL_QUESTS.every((q) => ctx.quests.isCompleted(ctx.player, q));
+}
 
 /**
  * Helper — buduje 4-stanowe gałęzie dla questa typu "collect / kill".
@@ -80,6 +100,48 @@ function classListOptions(): DialogOption[] {
   }));
 }
 
+/** Lista subklas wszystkich klas; widoczność per-klasy filtruje się przez visibleIf. */
+function subclassListOptions(): DialogOption[] {
+  return listClasses().flatMap((cls) =>
+    cls.subclasses.map((sc) => ({
+      label: `⚔️ ${sc.name}`,
+      goto: `subclass_info_${cls.id}_${sc.id}`,
+      visibleIf: (ctx) => subclassReady(ctx) && ctx.player.classId === cls.id,
+    })),
+  );
+}
+
+function subclassInfoNode(cls: ClassDef, sc: SubclassDef): DialogNode {
+  return {
+    text:
+      `🧔 **Marek:** _${sc.name}? Hm. Pasuje to do twojej drogi?_\n\n` +
+      `⚔️ **${sc.name}** _(specjalizacja klasy ${cls.name})_ — ${sc.description}\n` +
+      `*Bonusy:* ${fmtPrimary(sc.primaryBonus)}\n` +
+      `*Dodatkowe skille:* ${sc.bonusSkills.join(', ')}\n\n` +
+      `_Wybór jest dożywotni._`,
+    options: [
+      {
+        label: '✅ Tak, biorę.',
+        goto: 'intro',
+        visibleIf: (ctx) => subclassReady(ctx) && ctx.player.classId === cls.id,
+        effect: (ctx) => {
+          const result = ctx.stats.applySubclass(
+            ctx.player,
+            cls.id,
+            sc.id,
+            sc.primaryBonus,
+            SUBCLASS_UNLOCK_LEVEL,
+            sc.bonusSkills,
+          );
+          if (!result.ok) return result.reason ?? 'Nie udało się wybrać subklasy.';
+          return `⚔️ Awansowałeś na **${sc.name}**! Otrzymujesz: ${fmtPrimary(sc.primaryBonus)}, dodatkowe skille: ${sc.bonusSkills.join(', ')}.`;
+        },
+      },
+      { label: '← Wracam do listy', goto: 'subclass_choose' },
+    ],
+  };
+}
+
 function classInfoNode(c: ClassDef): DialogNode {
   return {
     text:
@@ -141,10 +203,31 @@ class MarekDialog extends Dialog {
         ...questBranch(Q6, 'Wędka i Łuska Cykady'),
         ...questBranch(Q7, 'Próba Kowala'),
         ...questBranch(Q8, 'Pojedynek na Pomoście'),
+        {
+          label: '⚔️ Wybierz specjalizację',
+          goto: 'subclass_choose',
+          visibleIf: subclassReady,
+        },
         { label: 'Opowiedz mi o mieście', goto: 'about_city' },
         { label: 'Już nic. Bywaj.', goto: 'end' },
       ],
     },
+
+    subclass_choose: {
+      text:
+        '🧔 **Marek:** _Przeszedłeś moje próby. Czas wybrać ścieżkę specjalizacji — twoja klasa ma dwie. Wybór jest dożywotni._',
+      options: [...subclassListOptions(), { label: '← Wracam', goto: 'intro' }],
+    },
+
+    // ── Per-subklasa info nodes (10: 5 klas × 2 subklasy)
+    ...Object.fromEntries(
+      listClasses().flatMap((cls) =>
+        cls.subclasses.map((sc) => [
+          `subclass_info_${cls.id}_${sc.id}`,
+          subclassInfoNode(cls, sc),
+        ]),
+      ),
+    ),
 
     // ── Q1: first_steps ────────────────────────────────
     [`q_${Q1}_offer`]: {

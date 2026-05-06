@@ -20,6 +20,23 @@ function buildAmbushOpts(def: ExpeditionDef | undefined, combatLvl: number): Ran
 }
 
 /**
+ * Liczba mobów w solo-ambushu na podstawie `combatPower` gracza. Słabsi
+ * gracze (power < 100) zawsze dostają 1 moba; przy 800+ jest ~40% szans
+ * na 2 i ~15% na 3. Liniowy lerp w przedziale 100–800. Cap=3 — solo gracz
+ * przeciw 4 mobom = certain death, nie chcemy tego nawet endgame.
+ */
+function rollAmbushMobCount(power: number, rand: () => number = Math.random): number {
+  const clamped = Math.max(100, Math.min(800, power));
+  const t = (clamped - 100) / 700; // 0..1
+  const chance3 = 0.15 * t;
+  const chance2 = 0.4 * t;
+  const roll = rand();
+  if (roll < chance3) return 3;
+  if (roll < chance3 + chance2) return 2;
+  return 1;
+}
+
+/**
  * Skaluje staty ambush moba przez tier ekspedycji (×1 dla T1, ×5 dla T5).
  * Liniowo, niezależnie od `TIER_MULTIPLIERS` — żeby T1 wyprawy były tutorial
  * easy a T5 były genuine endgame challenge. Dotyczy hp/maxHp/dmg/def/primary.
@@ -400,13 +417,17 @@ export class AmbushService {
     };
     const expDef = EXPEDITIONS[exp.destination];
     const expTier = expDef?.tier ?? 1;
-    const mob = randomAmbushMob(buildAmbushOpts(expDef, player.skills.combat.level));
-    const scaled = applyExpeditionTier(mob.toCombatant(`${Date.now()}`), expTier);
-    const mobCombatant: BattleCombatant = {
-      ...scaled,
-      team: 1,
-      controller: 'ai',
-    };
+    const mobCount = rollAmbushMobCount(this.stats.combatPower(player));
+    const mobCombatants: BattleCombatant[] = [];
+    for (let i = 0; i < mobCount; i++) {
+      const mob = randomAmbushMob(buildAmbushOpts(expDef, player.skills.combat.level));
+      const scaled = applyExpeditionTier(mob.toCombatant(`${Date.now()}_${i + 1}`), expTier);
+      mobCombatants.push({
+        ...scaled,
+        team: 1,
+        controller: 'ai',
+      });
+    }
 
     const ambushStart = Date.now();
     // Zamrażamy czas wyprawy gracza — `endsAt` nie liczy się przez ambush.
@@ -416,7 +437,7 @@ export class AmbushService {
     const state: AmbushBattleState = {
       id: thread.id,
       thread,
-      combatants: [playerCombatant, mobCombatant],
+      combatants: [playerCombatant, ...mobCombatants],
       pending: new Map(),
       promptMessageIds: new Map(),
       roundNumber: 1,
@@ -430,8 +451,15 @@ export class AmbushService {
     }, AMBUSH_TIMEOUT_MS);
     state.timeoutHandle.unref?.();
 
+    const mobLine = mobCombatants
+      .map((m) => `**${m.name}** (${m.hp} HP, +${m.damageBonus} dmg)`)
+      .join(', ');
+    const intro =
+      mobCount === 1
+        ? `${mobLine} blokuje Ci drogę!`
+        : `Z krzaków wyskakuje ${mobCount} napastników: ${mobLine}!`;
     await thread.send(
-      `**${mobCombatant.name}** (${mobCombatant.hp} HP, +${mobCombatant.damageBonus} dmg) blokuje Ci drogę! **Wyprawa zatrzymana** — dokończ walkę w ciągu **${Math.round(AMBUSH_TIMEOUT_MS / 60_000 / 60)} h** lub przepada.`,
+      `${intro} **Wyprawa zatrzymana** — dokończ walkę w ciągu **${Math.round(AMBUSH_TIMEOUT_MS / 60_000 / 60)} h** lub przepada.`,
     );
     await this.promptHumans(state);
   }
