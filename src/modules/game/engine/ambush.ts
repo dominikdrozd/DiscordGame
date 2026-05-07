@@ -205,6 +205,33 @@ export class AmbushService {
     const state = this.getActiveStateForPlayer(playerId);
     if (!state) return { ok: false };
 
+    // Hydrated state — `state.thread === null` (po `hydrate()` z Mongo).
+    // Recreate thread od razu, bez próby send-fail-fallback.
+    if (state.thread === null) {
+      const newThread = await this.recreateThreadFor(state, playerId);
+      if (!newThread || !hasThreadId(newThread)) {
+        console.error('[ambush] resume fail (hydrated): parent channel unreachable');
+        return { ok: false };
+      }
+      this.states.delete(state.id);
+      state.id = newThread.id;
+      state.thread = newThread;
+      state.promptMessageIds.clear();
+      this.states.set(newThread.id, state);
+      await this.battleStore.updateThreadId(state._battleId, newThread.id);
+
+      try {
+        await state.thread.send(
+          `⚔️ <@${playerId}> wraca do walki — aktualny stan:\n${this.fmtBoard(state)}`,
+        );
+        await this.promptHumans(state);
+      } catch (e) {
+        console.error('[ambush] resume hydrated promptHumans fail:', errMsg(e));
+        return { ok: false };
+      }
+      return { ok: true, threadId: newThread.id };
+    }
+
     const tryUnarchive = async (): Promise<void> => {
       if (typeof state.thread.setArchived === 'function') {
         await state.thread.setArchived(false).catch(() => {});
@@ -236,6 +263,7 @@ export class AmbushService {
       state.thread = newThread;
       state.promptMessageIds.clear();
       this.states.set(newThread.id, state);
+      await this.battleStore.updateThreadId(state._battleId, newThread.id);
       alive = await sendBoard();
       if (!alive) return { ok: false };
     }
