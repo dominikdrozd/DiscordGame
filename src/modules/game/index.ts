@@ -80,9 +80,9 @@ export function registerGameCommands(manager: CommandManager, services: GameServ
   const dungeons = new DungeonService(stats, party);
   const crafting = new CraftService(stats);
   const inventory = new InventoryService(stats);
-  // Closure: musi widzieć inventoryCommand do registerThreadFor — late-init.
-  let inventoryCommand: InventoryCommand;
-  inventoryCommand = new InventoryCommand(inventory, (thread) =>
+  // Closure: musi widzieć inventoryCommand do registerThreadFor. Closure
+  // wykonuje się dopiero przy `registerThreadFor` (po init), więc TDZ-safe.
+  const inventoryCommand: InventoryCommand = new InventoryCommand(inventory, (thread) =>
     manager.registerThreadFor(thread, inventoryCommand),
   );
   const city = new CityService(stats, (id) => dungeons.hasActiveFor(id));

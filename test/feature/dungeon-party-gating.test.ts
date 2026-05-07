@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { DungeonService } from '../../src/modules/game/services/dungeon.service.js';
 import { PlayerStatsService } from '../../src/modules/game/services/player-stats.js';
 import { PartyService } from '../../src/modules/game/services/party.js';
@@ -7,7 +8,7 @@ import { DUNGEONS } from '../../src/modules/game/engine/encounters.js';
 import { mongoPlayerStats, type MongoStatsTest } from '../helpers/factories.js';
 
 function tmpPartyFile(): string {
-  return path.join(require('node:os').tmpdir(), `parties-${Date.now()}-${Math.random()}.json`);
+  return path.join(os.tmpdir(), `parties-${Date.now()}-${Math.random()}.json`);
 }
 
 describe('DungeonService — party gating', () => {
