@@ -4,6 +4,7 @@ import { CommandManager } from './managers/command.manager.js';
 import { errMsg } from './utils.js';
 import { MongoConnection } from './persistence/mongo.js';
 import { makeRepos, ensureIndexes } from './persistence/repos/index.js';
+import { migrateLegacyJsonIfNeeded } from './persistence/migrate-legacy.js';
 import { AskCommand } from './commands/ask.command.js';
 import { AskMovieCommand } from './commands/ask-movie.command.js';
 import { AskMedCommand } from './commands/ask-med.command.js';
@@ -28,6 +29,7 @@ const mongo = new MongoConnection();
 await mongo.connect(mongoUri);
 const repos = makeRepos(mongo.db());
 await ensureIndexes(repos);
+await migrateLegacyJsonIfNeeded(repos);
 console.log('[mongo] connected to', mongo.db().databaseName);
 
 const client = new Client({
