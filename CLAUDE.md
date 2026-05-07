@@ -54,13 +54,20 @@ Example: armor red gem adds HP. The bonus lives in `armorGemHpBonus(p)` which `e
 
 When changing combat flow, prefer fewer messages: combine round summary into the new panel via one `interaction.update`, skip "disable buttons" edits when the panel is going to be replaced anyway.
 
-## Persistence: per-player JSON files
+## Persistence: MongoDB (collections `players`, `items`)
 
-Player state is in `data/players/<userId>.json` (one file per player, compact JSON, no indent). Old monolithic `data/players.json` auto-migrates to per-player files on first start and is **deleted** afterwards (`PlayerStatsService.migrateLegacy`).
+Stan trzymany w MongoDB self-hosted (env: `MONGO_URI`, fail-fast jeśli brak). `PlayerStatsService` to in-RAM SoT — `byId: Map<string, PlayerStats>` + `itemsByUid: Map<string, ItemInstance>` + `itemsByUser: Map<string, Set<uid>>`. Read: tylko z RAM (po `await stats.load()` na starcie). Write: `save()` zostaje sync z perspektywy callera, ale **fire-and-forget async upsert** do Mongo z dirty-trackingiem (porównanie `JSON.stringify` per player + per item). `flush()` w SIGTERM/SIGINT czeka na pending writes przed `mongo.close()`.
 
-`save()` does dirty tracking via `lastSavedJson` cache — multiple `save()` calls back-to-back only write players whose serialized JSON changed. Tests pass `legacyFile` paths; the `dir` is derived as `legacyFile` without `.json` suffix so tests in `os.tmpdir()` get isolated subdirs.
+Items są w **osobnej kolekcji** z `userId` jako foreign reference (indeks `{ userId: 1 }`). `PlayerStats.inventory` ma tylko `resources: Record<string, number>` — pole `items` znika z dokumentu gracza. Dostęp przez API serwisu:
+- `playerStats.addItem(p, item)` / `removeItem(p, uid)` / `findItem(p, uid)`
+- `playerStats.getItemsForPlayer(userId): ItemInstance[]` — całe inventory gracza
+- `playerStats.equippedItem(p, slot)` — założony item (`equipped` to nadal mapa slotów → uidy)
 
-Writes are still synchronous (`writeFileSync`). When optimizing for lag, the next step is async write or debouncing — see lag-diagnostic logging (below).
+**NIE używaj `player.inventory.items`** — pole nie istnieje. Wszystkie zewnętrzne miejsca które filtrują po itemach idą przez `getItemsForPlayer(p.id).filter(...)`. Funkcje pomocnicze (np. `socketableItems`, `upgradeableItems`) przyjmują `stats: PlayerStatsService` jako drugi argument.
+
+Migracja legacy: `migrateLegacyJsonIfNeeded(repos)` na starcie (z `src/persistence/migrate-legacy.ts`) czyta `data/players.json` LUB `data/players/*.json`, splituje na `players` collection (bez `inventory.items`) + `items` collection (z `userId`), rename'uje stary plik/folder na `*.migrated-<ts>` jako safety net (NIE usuwa). Idempotent (gate `await repos.player.count() > 0`). Walidacja unique uidy między graczami przed insertem — duplicate = throw fail-fast.
+
+Testy: `mongodb-memory-server` per-test (helper `mongoPlayerStats()` w `test/helpers/factories.ts`), izolacja przez unikalne `dbName` (UUID). Każdy test setup'uje świeży harness w `beforeEach` async + cleanup w `afterEach`.
 
 ## Diagnostics: lag logging
 
