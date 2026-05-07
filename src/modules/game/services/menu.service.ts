@@ -2,10 +2,10 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  MessageFlags,
   type ButtonInteraction,
   type ChatInputCommandInteraction,
 } from 'discord.js';
+import { chat } from '../../../managers/chat.manager.js';
 import type { ICommandContext } from '../../../types/command.types.js';
 import { PlayerStatsService, type PlayerStats } from './player-stats.js';
 import { PartyService } from './party.js';
@@ -91,8 +91,7 @@ export class MenuService {
   async handle(ctx: ICommandContext): Promise<void> {
     const { msg } = ctx;
     const player = this.stats.get(msg.author.id, displayName(msg));
-    await msg.reply({
-      content: this.renderMain(player),
+    await chat.replyToMessage(msg, this.renderMain(player), {
       components: buildMenuRows(player.id),
     });
   }
@@ -106,13 +105,10 @@ export class MenuService {
       interaction.user.id,
       interaction.user.globalName || interaction.user.username,
     );
-    await interaction
-      .reply({
-        content: this.renderMain(player),
-        components: buildMenuRows(player.id),
-        flags: MessageFlags.Ephemeral,
-      })
-      .catch(() => {});
+    await chat.reply(interaction, this.renderMain(player), {
+      ephemeral: true,
+      components: buildMenuRows(player.id),
+    });
   }
 
   async handleInteraction(interaction: ButtonInteraction): Promise<void> {
@@ -124,15 +120,15 @@ export class MenuService {
     const userId = parts[parts.length - 1];
 
     if (interaction.user.id !== userId) {
-      await interaction.reply({ content: 'To nie twoje menu.', flags: MessageFlags.Ephemeral }).catch(() => {});
+      await chat.reply(interaction, 'To nie twoje menu.', { ephemeral: true });
       return;
     }
     const player = this.stats.get(userId, interaction.user.globalName || interaction.user.username);
 
     if (action === 'close') {
-      await interaction
-        .update({ content: 'Menu zamknięte. `.menu` aby otworzyć ponownie.', components: [] })
-        .catch(() => {});
+      await chat.update(interaction, 'Menu zamknięte. `.menu` aby otworzyć ponownie.', {
+        components: [],
+      });
       return;
     }
     if (action === 'back' || action === 'refresh') {
@@ -175,12 +171,9 @@ export class MenuService {
       return this.enchanter.openFromInteraction(interaction, cityId);
     }
     if (action === 'quests') {
-      await interaction
-        .update({
-          content: this.questCommand.renderList(player),
-          components: this.questCommand.buildRows(player),
-        })
-        .catch(() => {});
+      await chat.update(interaction, this.questCommand.renderList(player), {
+        components: this.questCommand.buildRows(player),
+      });
       return;
     }
     if (action === 'citytalk') {
@@ -234,7 +227,7 @@ export class MenuService {
   ): Promise<void> {
     const userId = interaction.user.id;
     const components = sub ? [buildBackToMenuRow(userId)] : buildMenuRows(userId);
-    await interaction.update({ content: content.slice(0, 1900), components }).catch(() => {});
+    await chat.update(interaction, content, { components });
   }
 
   // ── Renders ─────────────────────────────────────────

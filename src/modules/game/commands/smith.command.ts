@@ -1,5 +1,4 @@
 import {
-  MessageFlags,
   SlashCommandBuilder,
   type AutocompleteInteraction,
   type ButtonInteraction,
@@ -12,6 +11,7 @@ import { listCities } from '../cities/index.js';
 import { REGION_LVL_REQ } from '../engine/encounters.js';
 import { PlayerStatsService } from '../services/player-stats.js';
 import { BaseCommand } from './base.command.js';
+import { chat } from '../../../managers/chat.manager.js';
 
 export class SmithCommand extends BaseCommand implements ISlashCommand {
   readonly name = 'smith';
@@ -40,7 +40,8 @@ export class SmithCommand extends BaseCommand implements ISlashCommand {
 
   async execute(ctx: ICommandContext): Promise<void> {
     const { msg } = ctx;
-    await msg.reply(
+    await chat.replyToMessage(
+      msg,
       'Kowal dostępny przez `/smith city:<id>` lub `/menu` → Miasta → wybierz miasto → 🔨 Kowal.',
     );
   }
@@ -53,19 +54,16 @@ export class SmithCommand extends BaseCommand implements ISlashCommand {
     );
     const city = listCities().find((c) => c.id === cityId);
     if (!city) {
-      await interaction
-        .reply({ content: `Nieznane miasto \`${cityId}\`.`, flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, `Nieznane miasto \`${cityId}\`.`, { ephemeral: true });
       return;
     }
     const minLvl = REGION_LVL_REQ[city.region];
     if (player.skills.combat.level < minLvl) {
-      await interaction
-        .reply({
-          content: `🚫 Miasto **${city.name}** wymaga combat lvl **${minLvl}**. Masz ${player.skills.combat.level}.`,
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      await chat.reply(
+        interaction,
+        `🚫 Miasto **${city.name}** wymaga combat lvl **${minLvl}**. Masz ${player.skills.combat.level}.`,
+        { ephemeral: true },
+      );
       return;
     }
     await this.smith.openFromSlash(interaction, cityId);

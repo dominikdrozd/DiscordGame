@@ -1,5 +1,6 @@
 import type { ICommand, ICommandContext } from '../types/command.types.js';
 import { errMsg } from '../utils.js';
+import { chat } from '../managers/chat.manager.js';
 
 const PURGE_CHANNEL_ID = process.env.PURGE_CHANNEL_ID || '1500080398426705940';
 const OWNER_ID = process.env.BOT_OWNER_ID || '240155722908696577';
@@ -27,7 +28,7 @@ export class PurgeCommand implements ICommand {
       return;
     }
     if (msg.author.id !== OWNER_ID) {
-      await msg.reply('Tylko właściciel bota może użyć `.purge`.').catch(() => {});
+      await chat.replyToMessage(msg, 'Tylko właściciel bota może użyć `.purge`.');
       return;
     }
 
@@ -37,14 +38,13 @@ export class PurgeCommand implements ICommand {
     try {
       const fetched = await msg.channel.messages.fetch({ limit });
       const result = await msg.channel.bulkDelete(fetched, true);
-      await msg.channel
-        .send(
-          `🧹 Wyczyszczone: ${result.size} wiadomości (pominięte starsze niż 14 dni nie wchodzą w bulk-delete).`,
-        )
-        .catch(() => {});
+      await chat.send(
+        msg.channel,
+        `🧹 Wyczyszczone: ${result.size} wiadomości (pominięte starsze niż 14 dni nie wchodzą w bulk-delete).`,
+      );
     } catch (e) {
       console.error('[purge]', errMsg(e));
-      await msg.channel.send(`Błąd przy purge: ${errMsg(e)}`).catch(() => {});
+      await chat.send(msg.channel, `Błąd przy purge: ${errMsg(e)}`);
     }
   }
 }

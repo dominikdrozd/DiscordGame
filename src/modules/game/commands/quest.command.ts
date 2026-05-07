@@ -2,7 +2,6 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  MessageFlags,
   SlashCommandBuilder,
   type AutocompleteInteraction,
   type ButtonInteraction,
@@ -16,6 +15,7 @@ import { type QuestDef } from '../quests/index.js';
 import { ITEMS } from '../services/items.js';
 import { displayName } from '../../../utils.js';
 import { BaseCommand } from './base.command.js';
+import { chat } from '../../../managers/chat.manager.js';
 
 /**
  * Quest tracking — slash i message. Główny widok przez `/menu` → 📜 Questy.
@@ -65,10 +65,10 @@ export class QuestCommand extends BaseCommand implements ISlashCommand {
     if (parts[0] === 'abandon' && parts[1]) {
       const result = this.quests.abandon(player, parts[1]);
       this.stats.save();
-      await msg.reply(result.line);
+      await chat.replyToMessage(msg, result.line);
       return;
     }
-    await msg.reply({ content: this.renderList(player), components: this.buildRows(player) });
+    await chat.replyToMessage(msg, this.renderList(player), { components: this.buildRows(player) });
   }
 
   async executeSlash(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -78,22 +78,17 @@ export class QuestCommand extends BaseCommand implements ISlashCommand {
       interaction.user.globalName || interaction.user.username,
     );
     if (sub === 'list') {
-      await interaction
-        .reply({
-          content: this.renderList(player),
-          components: this.buildRows(player),
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      await chat.reply(interaction, this.renderList(player), {
+        ephemeral: true,
+        components: this.buildRows(player),
+      });
       return;
     }
     if (sub === 'abandon') {
       const id = interaction.options.getString('id', true);
       const result = this.quests.abandon(player, id);
       this.stats.save();
-      await interaction
-        .reply({ content: result.line, flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, result.line, { ephemeral: true });
     }
   }
 
@@ -120,35 +115,27 @@ export class QuestCommand extends BaseCommand implements ISlashCommand {
     const action = parts[1];
     const userId = parts[2];
     if (button.user.id !== userId) {
-      await button
-        .reply({ content: 'To nie twój widok questów.', flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(button, 'To nie twój widok questów.', { ephemeral: true });
       return;
     }
     const player = this.stats.get(userId, button.user.globalName || button.user.username);
     if (action === 'close') {
-      await button.update({ content: 'Widok questów zamknięty.', components: [] }).catch(() => {});
+      await chat.update(button, 'Widok questów zamknięty.', { components: [] });
       return;
     }
     if (action === 'abandon') {
       const questId = parts[3];
       const result = this.quests.abandon(player, questId);
       this.stats.save();
-      await button
-        .update({
-          content: `${result.line}\n\n${this.renderList(player)}`,
-          components: this.buildRows(player),
-        })
-        .catch(() => {});
+      await chat.update(button, `${result.line}\n\n${this.renderList(player)}`, {
+        components: this.buildRows(player),
+      });
       return;
     }
     if (action === 'refresh') {
-      await button
-        .update({
-          content: this.renderList(player),
-          components: this.buildRows(player),
-        })
-        .catch(() => {});
+      await chat.update(button, this.renderList(player), {
+        components: this.buildRows(player),
+      });
     }
   }
 

@@ -1,5 +1,4 @@
 import {
-  MessageFlags,
   SlashCommandBuilder,
   type ChatInputCommandInteraction,
   type RESTPostAPIChatInputApplicationCommandsJSONBody,
@@ -10,6 +9,7 @@ import { rollLoot, type LootEntry } from '../services/loot.js';
 import { fmtResource, type ToolKind } from '../services/items.js';
 import { displayName } from '../../../utils.js';
 import type { QuestService } from '../services/quest.service.js';
+import { chat } from '../../../managers/chat.manager.js';
 
 export interface GatheringConfig {
   name: string;
@@ -67,7 +67,7 @@ export abstract class GatheringCommand implements ICommand, ISlashCommand {
   async execute(ctx: ICommandContext): Promise<void> {
     const { msg } = ctx;
     const player = this.stats.get(msg.author.id, displayName(msg));
-    await msg.reply(this.runGather(player));
+    await chat.replyToMessage(msg, this.runGather(player));
   }
 
   async executeSlash(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -75,9 +75,7 @@ export abstract class GatheringCommand implements ICommand, ISlashCommand {
       interaction.user.id,
       interaction.user.globalName || interaction.user.username,
     );
-    await interaction
-      .reply({ content: this.runGather(player), flags: MessageFlags.Ephemeral })
-      .catch(() => {});
+    await chat.reply(interaction, this.runGather(player), { ephemeral: true });
   }
 
   /**

@@ -5,7 +5,6 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  MessageFlags,
 } from 'discord.js';
 import { PlayerStatsService } from '../services/player-stats.js';
 import { PartyService } from '../services/party.js';
@@ -31,6 +30,7 @@ import {
 } from './battle-helpers.js';
 import { buildPanelOpenerRow } from '../ui/battle-buttons.js';
 import { errMsg } from '../../../utils.js';
+import { chat } from '../../../managers/chat.manager.js';
 
 const TICK_MS = 60_000;
 /** Codzienna godzina ogłoszenia areny (lokalna strefa). */
@@ -182,24 +182,22 @@ export class ArenaService {
     const MENTION_BATCH = 50;
 
     const registrationEndsAt = Date.now() + REGISTRATION_WINDOW_MS;
-    const sent = await channel
-      .send({
-        content: [
-          '🏟️ **ARENA OTWARTA!**',
-          mentions.slice(0, MENTION_BATCH).join(' '),
-          `Codzienny turniej PvP. Rejestracja **${Math.round(REGISTRATION_WINDOW_MS / 60_000)} min**.`,
-          `Min ${MIN_PARTICIPANTS}, max ${MAX_PARTICIPANTS} graczy. **Round-robin** — każdy walczy z każdym (interaktywne walki).`,
-          `🏆 **Mistrz:** ${WINNER_GOLD} zł + ${WINNER_XP} PvP XP + ${WINNER_COMBAT_XP} combat XP.`,
-          `🥈 **Runner-up:** ${RUNNER_UP_GOLD} zł + ${RUNNER_UP_XP} PvP XP.`,
-          '',
-          '_Gracze na ekspedycji nie mogą startować — kliknij **Anuluj wyprawę** żeby się zapisać._',
-        ]
-          .filter(Boolean)
-          .join('\n')
-          .slice(0, 1900),
-        components: [buildAnnounceRow()],
-      })
-      .catch(() => null);
+    const sent = await chat.send(
+      channel,
+      [
+        '🏟️ **ARENA OTWARTA!**',
+        mentions.slice(0, MENTION_BATCH).join(' '),
+        `Codzienny turniej PvP. Rejestracja **${Math.round(REGISTRATION_WINDOW_MS / 60_000)} min**.`,
+        `Min ${MIN_PARTICIPANTS}, max ${MAX_PARTICIPANTS} graczy. **Round-robin** — każdy walczy z każdym (interaktywne walki).`,
+        `🏆 **Mistrz:** ${WINNER_GOLD} zł + ${WINNER_XP} PvP XP + ${WINNER_COMBAT_XP} combat XP.`,
+        `🥈 **Runner-up:** ${RUNNER_UP_GOLD} zł + ${RUNNER_UP_XP} PvP XP.`,
+        '',
+        '_Gracze na ekspedycji nie mogą startować — kliknij **Anuluj wyprawę** żeby się zapisać._',
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      { components: [buildAnnounceRow()] },
+    );
 
     const announceMsgId =
       sent && typeof sent === 'object' && 'id' in sent && typeof (sent as { id: unknown }).id === 'string'
@@ -235,12 +233,9 @@ export class ArenaService {
   private async handleJoin(interaction: ButtonInteraction): Promise<void> {
     const evt = this.pendingEvent;
     if (!evt) {
-      await interaction
-        .reply({
-          content: 'Rejestracja zamknięta — następna arena jutro o 18:10.',
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      await chat.reply(interaction, 'Rejestracja zamknięta — następna arena jutro o 18:10.', {
+        ephemeral: true,
+      });
       return;
     }
     const userId = interaction.user.id;
@@ -249,55 +244,45 @@ export class ArenaService {
       interaction.user.globalName ?? interaction.user.username,
     );
     if (player.activeExpedition) {
-      await interaction
-        .reply({
-          content:
-            '🚫 Jesteś na wyprawie — kliknij **Anuluj wyprawę** żeby się wypisać i dołączyć do areny.',
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      await chat.reply(
+        interaction,
+        '🚫 Jesteś na wyprawie — kliknij **Anuluj wyprawę** żeby się wypisać i dołączyć do areny.',
+        { ephemeral: true },
+      );
       return;
     }
     if (evt.participants.has(userId)) {
-      await interaction
-        .reply({ content: '✅ Już zapisany — czekaj na start.', flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, '✅ Już zapisany — czekaj na start.', { ephemeral: true });
       return;
     }
     if (evt.participants.size >= MAX_PARTICIPANTS) {
-      await interaction
-        .reply({ content: `Slot pełny (max ${MAX_PARTICIPANTS}).`, flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, `Slot pełny (max ${MAX_PARTICIPANTS}).`, { ephemeral: true });
       return;
     }
     evt.participants.add(userId);
-    await interaction
-      .reply({
-        content: `🏟️ Dołączasz! Zapisanych: ${evt.participants.size}/${MAX_PARTICIPANTS}.`,
-        flags: MessageFlags.Ephemeral,
-      })
-      .catch(() => {});
+    await chat.reply(
+      interaction,
+      `🏟️ Dołączasz! Zapisanych: ${evt.participants.size}/${MAX_PARTICIPANTS}.`,
+      { ephemeral: true },
+    );
   }
 
   private async handleCancelExpedition(interaction: ButtonInteraction): Promise<void> {
     const userId = interaction.user.id;
     const player = this.stats.get(userId, interaction.user.globalName ?? interaction.user.username);
     if (!player.activeExpedition) {
-      await interaction
-        .reply({ content: 'Nie jesteś na żadnej wyprawie.', flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, 'Nie jesteś na żadnej wyprawie.', { ephemeral: true });
       return;
     }
     const partyId = player.activeExpedition.partyId;
     if (partyId) {
       const partyEntity = this.party.get(partyId);
       if (partyEntity && partyEntity.leaderId !== userId) {
-        await interaction
-          .reply({
-            content: `🚫 Tylko **lider party** (<@${partyEntity.leaderId}>) może anulować wyprawę party.`,
-            flags: MessageFlags.Ephemeral,
-          })
-          .catch(() => {});
+        await chat.reply(
+          interaction,
+          `🚫 Tylko **lider party** (<@${partyEntity.leaderId}>) może anulować wyprawę party.`,
+          { ephemeral: true },
+        );
         return;
       }
       const members = partyEntity ? partyEntity.members : [userId];
@@ -306,19 +291,16 @@ export class ArenaService {
         m.activeExpedition = null;
       }
       this.stats.save();
-      await interaction
-        .reply({
-          content: `✅ Wyprawa party anulowana (${members.length} graczy zwolnionych).`,
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      await chat.reply(
+        interaction,
+        `✅ Wyprawa party anulowana (${members.length} graczy zwolnionych).`,
+        { ephemeral: true },
+      );
       return;
     }
     player.activeExpedition = null;
     this.stats.save();
-    await interaction
-      .reply({ content: '✅ Twoja solo-wyprawa anulowana.', flags: MessageFlags.Ephemeral })
-      .catch(() => {});
+    await chat.reply(interaction, '✅ Twoja solo-wyprawa anulowana.', { ephemeral: true });
   }
 
   async tryStartTournament(evt: ArenaEvent): Promise<void> {
@@ -341,34 +323,30 @@ export class ArenaService {
       }
     }
     if (droppedOnExpedition.length > 0) {
-      await channel
-        .send(
-          `⚠️ Wykluczeni z areny (są na wyprawie): ${droppedOnExpedition.map((id) => `<@${id}>`).join(', ')}`,
-        )
-        .catch(() => {});
+      await chat.send(
+        channel,
+        `⚠️ Wykluczeni z areny (są na wyprawie): ${droppedOnExpedition.map((id) => `<@${id}>`).join(', ')}`,
+      );
     }
 
     if (evt.participants.size < MIN_PARTICIPANTS) {
-      await channel
-        .send(
-          `🏟️ Arena anulowana — za mało chętnych (${evt.participants.size}/${MIN_PARTICIPANTS}).`,
-        )
-        .catch(() => {});
+      await chat.send(
+        channel,
+        `🏟️ Arena anulowana — za mało chętnych (${evt.participants.size}/${MIN_PARTICIPANTS}).`,
+      );
       await this.disableAnnounceButton(evt);
       return;
     }
 
     if (!('threads' in channel) || typeof (channel as { threads?: unknown }).threads !== 'object') {
-      await channel
-        .send('Nie mogę otworzyć wątku areny — kanał nie wspiera wątków.')
-        .catch(() => {});
+      await chat.send(channel, 'Nie mogę otworzyć wątku areny — kanał nie wspiera wątków.');
       return;
     }
     const threadsApi = (channel as {
       threads: { create?: (opts: unknown) => Promise<unknown> };
     }).threads;
     if (!threadsApi.create) {
-      await channel.send('Nie mogę otworzyć wątku areny — brak API.').catch(() => {});
+      await chat.send(channel, 'Nie mogę otworzyć wątku areny — brak API.');
       return;
     }
     const thread = await threadsApi
@@ -381,9 +359,7 @@ export class ArenaService {
         return null;
       });
     if (!isSendableThread(thread)) {
-      await channel
-        .send('Nie udało się otworzyć wątku areny (brak permissions albo limit).')
-        .catch(() => {});
+      await chat.send(channel, 'Nie udało się otworzyć wątku areny (brak permissions albo limit).');
       return;
     }
 
@@ -411,7 +387,7 @@ export class ArenaService {
       '',
       participantIds.map((id) => `<@${id}>`).join(' '),
     ].join('\n');
-    await thread.send({ content: intro }).catch(() => {});
+    await chat.send(thread, intro);
 
     await this.startNextMatch(this.tournament);
   }
@@ -443,15 +419,14 @@ export class ArenaService {
     };
     t.currentBattle = state;
 
-    await t.thread
-      .send({
-        content: [
-          `⚔️ **Match ${t.currentMatchIdx + 1}/${t.pairs.length}**`,
-          `<@${aId}> (${ca.hp} HP) vs <@${bId}> (${cb.hp} HP)`,
-          'Obaj klikajcie **Otwórz panel** żeby wybrać akcję — runda rozliczy się gdy oboje podadzą.',
-        ].join('\n'),
-      })
-      .catch(() => {});
+    await chat.send(
+      t.thread,
+      [
+        `⚔️ **Match ${t.currentMatchIdx + 1}/${t.pairs.length}**`,
+        `<@${aId}> (${ca.hp} HP) vs <@${bId}> (${cb.hp} HP)`,
+        'Obaj klikajcie **Otwórz panel** żeby wybrać akcję — runda rozliczy się gdy oboje podadzą.',
+      ].join('\n'),
+    );
     await promptHumansWithPanel(state);
   }
 
@@ -464,8 +439,7 @@ export class ArenaService {
     for (const [, msgId] of state.promptMessageIds) {
       try {
         const m = await t.thread.messages?.fetch(msgId).catch(() => null);
-        if (m)
-          await m.edit({ components: [buildPanelOpenerRow(state.id, true)] }).catch(() => {});
+        if (m) await chat.edit(m, { components: [buildPanelOpenerRow(state.id, true)] });
       } catch {}
     }
     state.promptMessageIds.clear();
@@ -485,7 +459,7 @@ export class ArenaService {
         lines.push('', `⚖️ **Match ${t.currentMatchIdx + 1}** — remis (oboje padli), brak punktu.`);
       }
       lines.push('', this.fmtStandings(t));
-      await t.thread.send({ content: lines.join('\n').slice(0, 1900) }).catch(() => {});
+      await chat.send(t.thread, lines.join('\n'));
 
       // Sync consumables (potki użyte) do PlayerStats per gracz.
       syncConsumablesAfterBattle(this.stats, state);
@@ -499,13 +473,10 @@ export class ArenaService {
       return;
     }
 
-    await t.thread
-      .send({
-        content: [...lines, '', this.fmtBoard(state), `⏭ Runda ${state.roundNumber}`]
-          .join('\n')
-          .slice(0, 1900),
-      })
-      .catch(() => {});
+    await chat.send(
+      t.thread,
+      [...lines, '', this.fmtBoard(state), `⏭ Runda ${state.roundNumber}`].join('\n'),
+    );
     await promptHumansWithPanel(state);
   }
 

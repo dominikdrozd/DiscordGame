@@ -1,4 +1,4 @@
-import { MessageFlags, SlashCommandBuilder, type ChatInputCommandInteraction } from 'discord.js';
+import { SlashCommandBuilder, type ChatInputCommandInteraction } from 'discord.js';
 import type { ICommandContext, ISlashCommand } from '../../../types/command.types.js';
 import { PlayerStatsService, type PlayerStats } from '../services/player-stats.js';
 import { fmtInstance } from '../services/items.js';
@@ -6,6 +6,7 @@ import { RACES } from '../races/index.js';
 import { CLASSES, findSubclass, findSubclass2 } from '../classes/index.js';
 import { displayName } from '../../../utils.js';
 import { BaseCommand } from './base.command.js';
+import { chat } from '../../../managers/chat.manager.js';
 
 export class StatsCommand extends BaseCommand implements ISlashCommand {
   readonly name = 'stats';
@@ -31,7 +32,7 @@ export class StatsCommand extends BaseCommand implements ISlashCommand {
     const name =
       target.id === msg.author.id ? displayName(msg) : target.globalName || target.username;
     const p = this.stats.get(target.id, name);
-    await msg.reply(this.renderProfile(p));
+    await chat.replyToMessage(msg, this.renderProfile(p));
   }
 
   async executeSlash(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -41,9 +42,7 @@ export class StatsCommand extends BaseCommand implements ISlashCommand {
         ? interaction.user.globalName || interaction.user.username
         : targetUser.globalName || targetUser.username;
     const p = this.stats.get(targetUser.id, name);
-    await interaction
-      .reply({ content: this.renderProfile(p), flags: MessageFlags.Ephemeral })
-      .catch(() => {});
+    await chat.reply(interaction, this.renderProfile(p), { ephemeral: true });
   }
 
   private renderProfile(p: PlayerStats): string {

@@ -1,5 +1,4 @@
 import {
-  MessageFlags,
   SlashCommandBuilder,
   type AutocompleteInteraction,
   type ButtonInteraction,
@@ -11,6 +10,7 @@ import { SpellsService } from '../services/spells.service.js';
 import { SKILLS } from '../skills/index.js';
 import { PlayerStatsService } from '../services/player-stats.js';
 import { BaseCommand } from './base.command.js';
+import { chat } from '../../../managers/chat.manager.js';
 
 export class SpellsCommand extends BaseCommand implements ISlashCommand {
   readonly name = 'spells';
@@ -55,15 +55,16 @@ export class SpellsCommand extends BaseCommand implements ISlashCommand {
     if (parts[0] === 'learn' && parts[1]) {
       const skill = SKILLS[parts[1]];
       if (!skill) {
-        await msg.reply(`Nie ma spella \`${parts[1]}\`.`);
+        await chat.replyToMessage(msg, `Nie ma spella \`${parts[1]}\`.`);
         return;
       }
       const result = this.spells.learn(player, skill);
       this.stats.save();
-      await msg.reply(result);
+      await chat.replyToMessage(msg, result);
       return;
     }
-    await msg.reply(
+    await chat.replyToMessage(
+      msg,
       'Browser spelli dostępny przez `/spells` lub button **✨ Spelle** w `.menu`. CLI: `.spells learn <id>`.',
     );
   }
@@ -82,14 +83,12 @@ export class SpellsCommand extends BaseCommand implements ISlashCommand {
       const id = interaction.options.getString('id', true);
       const skill = SKILLS[id];
       if (!skill) {
-        await interaction
-          .reply({ content: `Nie ma spella \`${id}\`.`, flags: MessageFlags.Ephemeral })
-          .catch(() => {});
+        await chat.reply(interaction, `Nie ma spella \`${id}\`.`, { ephemeral: true });
         return;
       }
       const result = this.spells.learn(player, skill);
       this.stats.save();
-      await interaction.reply({ content: result, flags: MessageFlags.Ephemeral }).catch(() => {});
+      await chat.reply(interaction, result, { ephemeral: true });
     }
   }
 

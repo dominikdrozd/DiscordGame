@@ -1,5 +1,6 @@
 import type { ICommand, ICommandContext } from '../types/command.types.js';
 import { errMsg } from '../utils.js';
+import { chat } from '../managers/chat.manager.js';
 
 export class ClearCommand implements ICommand {
   readonly name = 'clear';
@@ -22,7 +23,7 @@ export class ClearCommand implements ICommand {
     const inOurThread = msg.channel?.isThread?.() && msg.channel.ownerId === client.user?.id;
 
     if (!inOurThread) {
-      await msg.reply('`.clear` działa wyłącznie wewnątrz wątku stworzonego przez bota.');
+      await chat.replyToMessage(msg, '`.clear` działa wyłącznie wewnątrz wątku stworzonego przez bota.');
       return;
     }
 
@@ -31,7 +32,7 @@ export class ClearCommand implements ICommand {
       forgetThread(threadId);
       await msg.channel.delete('manual .clear');
     } catch (e) {
-      await msg.reply(`Błąd usuwania wątku: ${errMsg(e)}`).catch(() => {});
+      await chat.replyToMessage(msg, `Błąd usuwania wątku: ${errMsg(e)}`);
     }
   }
 }

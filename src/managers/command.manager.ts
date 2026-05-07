@@ -4,10 +4,10 @@ import type {
   Client,
   RESTPostAPIChatInputApplicationCommandsJSONBody,
 } from 'discord.js';
-import { MessageFlags } from 'discord.js';
 import type { ICommand } from '../types/command.types.js';
 import { hasSlashCommand } from '../types/command.types.js';
 import { errMsg } from '../utils.js';
+import { chat } from './chat.manager.js';
 
 interface InteractionHandler {
   handleInteraction(interaction: unknown): Promise<void>;
@@ -46,11 +46,10 @@ export class CommandManager {
     if (isThread && !isRegisteredThread && msg.channel?.name) {
       const name = String(msg.channel.name);
       if (name.startsWith('Plecak:') || name.startsWith('Sklep:') || name.startsWith('Smith:')) {
-        await msg
-          .reply(
-            '⚠️ Ten wątek osierocony po restarcie bota — wpisz `.inv` / `.menu` żeby otworzyć nowy. Stary zaraz znika.',
-          )
-          .catch(() => {});
+        await chat.replyToMessage(
+          msg,
+          '⚠️ Ten wątek osierocony po restarcie bota — wpisz `.inv` / `.menu` żeby otworzyć nowy. Stary zaraz znika.',
+        );
         if (typeof msg.channel.delete === 'function') {
           msg.channel.delete('Orphaned thread po restarcie bota').catch(() => {});
         }
@@ -71,7 +70,7 @@ export class CommandManager {
       cmd = cmdByPrefix;
       prompt = cmd.extractPrompt(msg.content);
       if (!prompt && cmd.requiresPrompt !== false) {
-        await msg.reply(`Użycie: \`${cmd.prefix.trim()} <pytanie>\``);
+        await chat.replyToMessage(msg, `Użycie: \`${cmd.prefix.trim()} <pytanie>\``);
         return;
       }
     } else if (isRegisteredThread) {
@@ -145,9 +144,7 @@ export class CommandManager {
       } catch (e) {
         console.error(`[manager] dispatchSlash ${cmd.name}:`, errMsg(e));
         if (!interaction.replied && !interaction.deferred) {
-          await interaction
-            .reply({ content: `Błąd: ${errMsg(e)}`, flags: MessageFlags.Ephemeral })
-            .catch(() => {});
+          await chat.reply(interaction, `Błąd: ${errMsg(e)}`, { ephemeral: true });
         }
       }
       return;

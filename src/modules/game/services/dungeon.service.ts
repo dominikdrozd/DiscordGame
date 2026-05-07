@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import {
   ChannelType,
-  MessageFlags,
   type ButtonInteraction,
   type ChatInputCommandInteraction,
 } from 'discord.js';
+import { chat } from '../../../managers/chat.manager.js';
 import type { ICommandContext } from '../../../types/command.types.js';
 import { PlayerStatsService, type PlayerStats } from './player-stats.js';
 import { PartyService, type Party, MAX_PARTY } from './party.js';
@@ -160,7 +160,7 @@ export class DungeonService {
       if (typeof state.thread.setArchived === 'function') {
         await state.thread.setArchived(false).catch(() => {});
       }
-      await state.thread.send(`🏰 <@${playerId}> wraca do walki w dungeonie.`);
+      await chat.send(state.thread, `🏰 <@${playerId}> wraca do walki w dungeonie.`);
       await promptHumansWithPanel(state);
       return { ok: true, threadId: state.thread.id };
     } catch {
@@ -185,7 +185,7 @@ export class DungeonService {
     this.states.set(tid, state);
     await this.battleStore.updateThreadId(state._battleId, tid);
     try {
-      await state.thread.send(`🏰 <@${playerId}> wraca do walki w dungeonie.`);
+      await chat.send(state.thread, `🏰 <@${playerId}> wraca do walki w dungeonie.`);
       await promptHumansWithPanel(state);
     } catch {
       return { ok: false };
@@ -280,12 +280,11 @@ export class DungeonService {
   async startFromSlash(interaction: ChatInputCommandInteraction, dungeonId: string): Promise<void> {
     const def = DUNGEONS[dungeonId];
     if (!def) {
-      await interaction
-        .reply({
-          content: `Nie ma dungeona \`${dungeonId}\`. Wpisz \`/dungeon\` żeby zobaczyć listę.`,
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      await chat.reply(
+        interaction,
+        `Nie ma dungeona \`${dungeonId}\`. Wpisz \`/dungeon\` żeby zobaczyć listę.`,
+        { ephemeral: true },
+      );
       return;
     }
     const player = this.stats.get(
@@ -294,22 +293,19 @@ export class DungeonService {
     );
     const check = this.canStart(player.id, def);
     if (!check.ok || !check.party) {
-      await interaction
-        .reply({ content: check.reason ?? 'Nie można rozpocząć.', flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, check.reason ?? 'Nie można rozpocząć.', { ephemeral: true });
       return;
     }
     const channel: unknown = interaction.channel;
     if (!hasThreadCreate(channel)) {
-      await interaction
-        .reply({
-          content: 'Ten kanał nie wspiera wątków — użyj `.dungeon <id>` w innym kanale.',
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      await chat.reply(
+        interaction,
+        'Ten kanał nie wspiera wątków — użyj `.dungeon <id>` w innym kanale.',
+        { ephemeral: true },
+      );
       return;
     }
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => {});
+    await chat.deferReply(interaction, true);
     let thread: unknown;
     try {
       thread = await channel.threads.create({
@@ -318,21 +314,15 @@ export class DungeonService {
         type: ChannelType.PublicThread,
       });
     } catch (e) {
-      await interaction
-        .editReply({ content: `Nie udało się otworzyć wątku: ${errMsg(e)}` })
-        .catch(() => {});
+      await chat.editReply(interaction, `Nie udało się otworzyć wątku: ${errMsg(e)}`);
       return;
     }
     if (!thread || typeof thread !== 'object' || !('id' in thread) || typeof thread.id !== 'string') {
-      await interaction
-        .editReply({ content: 'Wątek utworzony, ale brak API.' })
-        .catch(() => {});
+      await chat.editReply(interaction, 'Wątek utworzony, ale brak API.');
       return;
     }
     await this.startBattleInThread(thread, check.party, def);
-    await interaction
-      .editReply({ content: `🏰 Dungeon otwarty: <#${thread.id}>` })
-      .catch(() => {});
+    await chat.editReply(interaction, `🏰 Dungeon otwarty: <#${thread.id}>`);
   }
 
   async start(ctx: ICommandContext): Promise<void> {
@@ -350,19 +340,22 @@ export class DungeonService {
         lines.push(`  💎 Final boss: ${fmtGemDropChances(finalTier)}`);
       }
       lines.push('', 'Użycie: `.dungeon <id>` (lider party). Max party: ' + MAX_PARTY + '.');
-      await msg.reply(lines.join('\n').slice(0, 1900));
+      await chat.replyToMessage(msg, lines.join('\n'));
       return;
     }
 
     const def = DUNGEONS[prompt];
     if (!def) {
-      await msg.reply(`Nie ma dungeona \`${prompt}\`. Wpisz \`.dungeon\` żeby zobaczyć listę.`);
+      await chat.replyToMessage(
+        msg,
+        `Nie ma dungeona \`${prompt}\`. Wpisz \`.dungeon\` żeby zobaczyć listę.`,
+      );
       return;
     }
 
     const check = this.canStart(player.id, def);
     if (!check.ok || !check.party) {
-      await msg.reply(check.reason ?? 'Nie można rozpocząć.');
+      await chat.replyToMessage(msg, check.reason ?? 'Nie można rozpocząć.');
       return;
     }
 
@@ -374,7 +367,7 @@ export class DungeonService {
       });
       if (thread?.id) registerThread(thread);
     } catch (e) {
-      await msg.reply(`Nie udało się otworzyć wątku: ${errMsg(e)}`);
+      await chat.replyToMessage(msg, `Nie udało się otworzyć wątku: ${errMsg(e)}`);
       return;
     }
 
@@ -429,7 +422,8 @@ export class DungeonService {
     }
 
     const memberMentions = party.members.map((id) => `<@${id}>`).join(' ');
-    await thread.send(
+    await chat.send(
+      thread,
       `🏰 **${def.name}** — wchodzi party!\n${memberMentions}\n_${def.description}_\n\nPokoje: ${def.rooms.length} · baseTier T${def.baseTier} · final boss T${dungeonRoomTier(def, def.rooms.length - 1)}.\nPierwszy: **${firstBoss.name}** (${firstBoss.hp} HP).`,
     );
     await this.promptHumans(state);
@@ -482,7 +476,7 @@ export class DungeonService {
         syncConsumablesAfterBattle(this.stats, state);
         this.stats.save();
         if (lines.length > 0) {
-          await state.thread.send(lines.join('\n').slice(0, 1900));
+          await chat.send(state.thread, lines.join('\n'));
         }
         await postBattleSummary(
           state.thread,
@@ -547,7 +541,7 @@ export class DungeonService {
         syncConsumablesAfterBattle(this.stats, state);
         this.stats.save();
         if (lines.length > 0) {
-          await state.thread.send(lines.join('\n').slice(0, 1900));
+          await chat.send(state.thread, lines.join('\n'));
         }
         await postBattleSummary(
           state.thread,
@@ -568,7 +562,8 @@ export class DungeonService {
       state.draw = undefined;
       await this.battleStore.snapshot(state);
       this.stats.save();
-      await state.thread.send(
+      await chat.send(
+        state.thread,
         [
           ...lines,
           '',
@@ -579,7 +574,8 @@ export class DungeonService {
       return;
     }
 
-    await state.thread.send(
+    await chat.send(
+      state.thread,
       [...lines, '', this.fmtBoard(state), `⏭ Runda ${state.roundNumber}`].join('\n'),
     );
     await this.promptHumans(state);

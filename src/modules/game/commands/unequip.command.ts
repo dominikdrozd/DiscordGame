@@ -1,9 +1,10 @@
-import { MessageFlags, SlashCommandBuilder, type ChatInputCommandInteraction } from 'discord.js';
+import { SlashCommandBuilder, type ChatInputCommandInteraction } from 'discord.js';
 import type { ICommandContext, ISlashCommand } from '../../../types/command.types.js';
 import { PlayerStatsService, type PlayerStats } from '../services/player-stats.js';
 import { fmtInstance, type ItemSlot } from '../services/items.js';
 import { displayName } from '../../../utils.js';
 import { BaseCommand } from './base.command.js';
+import { chat } from '../../../managers/chat.manager.js';
 
 function isItemSlot(s: string): s is ItemSlot {
   return s === 'weapon' || s === 'armor' || s === 'tool';
@@ -38,7 +39,7 @@ export class UnequipCommand extends BaseCommand implements ISlashCommand {
   async execute(ctx: ICommandContext): Promise<void> {
     const { msg, prompt } = ctx;
     const player = this.stats.get(msg.author.id, displayName(msg));
-    await msg.reply(this.tryUnequip(player, prompt.trim().toLowerCase()));
+    await chat.replyToMessage(msg, this.tryUnequip(player, prompt.trim().toLowerCase()));
   }
 
   async executeSlash(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -47,9 +48,7 @@ export class UnequipCommand extends BaseCommand implements ISlashCommand {
       interaction.user.globalName || interaction.user.username,
     );
     const slot = interaction.options.getString('slot', true);
-    await interaction
-      .reply({ content: this.tryUnequip(player, slot), flags: MessageFlags.Ephemeral })
-      .catch(() => {});
+    await chat.reply(interaction, this.tryUnequip(player, slot), { ephemeral: true });
   }
 
   private tryUnequip(player: PlayerStats, slot: string): string {

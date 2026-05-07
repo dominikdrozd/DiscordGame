@@ -1,9 +1,9 @@
 import {
-  MessageFlags,
   type ButtonInteraction,
   type ChatInputCommandInteraction,
 } from 'discord.js';
 import { PlayerStatsService, type PlayerStats } from './player-stats.js';
+import { chat } from '../../../managers/chat.manager.js';
 import {
   type ItemInstance,
   appliedItemStats,
@@ -98,13 +98,10 @@ export class SmithService {
     const state: BrowserState = { userId, cityId, fromMenu: false, index: 0 };
     this.browsers.set(userId, state);
     const items = upgradeableItems(player, this.stats);
-    await interaction
-      .reply({
-        content: this.renderContent(player, state, items),
-        components: this.renderRows(player, state, items),
-        flags: MessageFlags.Ephemeral,
-      })
-      .catch(() => {});
+    await chat.reply(interaction, this.renderContent(player, state, items), {
+      ephemeral: true,
+      components: this.renderRows(player, state, items),
+    });
   }
 
   async handleInteraction(interaction: ButtonInteraction): Promise<void> {
@@ -113,19 +110,21 @@ export class SmithService {
     const action = parts[1];
     const userId = parts[2];
     if (interaction.user.id !== userId) {
-      await interaction.reply({ content: 'To nie twój kowal.', flags: MessageFlags.Ephemeral }).catch(() => {});
+      await chat.reply(interaction, 'To nie twój kowal.', { ephemeral: true });
       return;
     }
     const state = this.browsers.get(userId);
     if (!state) {
-      await interaction.reply({ content: 'Sesja kowala wygasła — otwórz ponownie.', flags: MessageFlags.Ephemeral }).catch(() => {});
+      await chat.reply(interaction, 'Sesja kowala wygasła — otwórz ponownie.', {
+        ephemeral: true,
+      });
       return;
     }
     const player = this.stats.get(userId);
 
     if (action === 'close') {
       this.browsers.delete(userId);
-      await interaction.update({ content: 'Kowal odprawił cię z kuźni.', components: [] }).catch(() => {});
+      await chat.update(interaction, 'Kowal odprawił cię z kuźni.', { components: [] });
       return;
     }
     if (action === 'nav') {

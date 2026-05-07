@@ -1,5 +1,4 @@
 import {
-  MessageFlags,
   SlashCommandBuilder,
   type AutocompleteInteraction,
   type ChatInputCommandInteraction,
@@ -18,6 +17,7 @@ import {
 } from '../classes/index.js';
 import { displayName } from '../../../utils.js';
 import { BaseCommand } from './base.command.js';
+import { chat } from '../../../managers/chat.manager.js';
 
 export class ClassCommand extends BaseCommand implements ISlashCommand {
   readonly name = 'class';
@@ -85,7 +85,7 @@ export class ClassCommand extends BaseCommand implements ISlashCommand {
     else if (sub === 'subclass2') result = this.trySubclass2(player, args[1] ?? '');
     else if (sub === 'reset') result = this.tryReset(player);
     else result = 'Użycie: `.class` / `.class info|pick|subclass|subclass2|reset <id>`.';
-    await msg.reply(result);
+    await chat.replyToMessage(msg, result);
   }
 
   async autocomplete(interaction: AutocompleteInteraction): Promise<void> {
@@ -133,7 +133,7 @@ export class ClassCommand extends BaseCommand implements ISlashCommand {
     else if (sub === 'subclass2')
       content = this.trySubclass2(player, interaction.options.getString('id', true));
     else content = this.tryReset(player);
-    await interaction.reply({ content, flags: MessageFlags.Ephemeral }).catch(() => {});
+    await chat.reply(interaction, content, { ephemeral: true });
   }
 
   private renderList(player: PlayerStats): string {

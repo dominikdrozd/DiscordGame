@@ -1,6 +1,6 @@
 import type { Client } from 'discord.js';
-import { MessageFlags } from 'discord.js';
 import type { CommandManager } from '../../managers/command.manager.js';
+import { chat } from '../../managers/chat.manager.js';
 import type { Repos } from '../../persistence/repos/index.js';
 import { PlayerStatsService } from './services/player-stats.js';
 import { PartyService } from './services/party.js';
@@ -116,10 +116,8 @@ export async function registerGameCommands(
   const shopOpener: MenuShopOpener = {
     openShopFromInteraction: async (interaction, cityIdArg) => {
       const reply = async (content: string): Promise<unknown> => {
-        if (interaction.replied || interaction.deferred) {
-          return interaction.followUp({ content, flags: MessageFlags.Ephemeral });
-        }
-        return interaction.reply({ content, flags: MessageFlags.Ephemeral });
+        await chat.reply(interaction, content, { ephemeral: true });
+        return undefined;
       };
       const channelCandidate: unknown = interaction.channel;
       if (!hasThreadCreate(channelCandidate)) {
@@ -148,10 +146,8 @@ export async function registerGameCommands(
   const inventoryOpener: MenuInventoryOpener = {
     openInventoryFromInteraction: async (interaction) => {
       const reply = async (content: string): Promise<unknown> => {
-        if (interaction.replied || interaction.deferred) {
-          return interaction.followUp({ content, flags: MessageFlags.Ephemeral });
-        }
-        return interaction.reply({ content, flags: MessageFlags.Ephemeral });
+        await chat.reply(interaction, content, { ephemeral: true });
+        return undefined;
       };
       const channelCandidate: unknown = interaction.channel;
       if (!hasThreadCreate(channelCandidate)) {

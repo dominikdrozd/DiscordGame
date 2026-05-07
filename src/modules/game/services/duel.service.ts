@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
   ChannelType,
-  MessageFlags,
   type ButtonInteraction,
   type ChatInputCommandInteraction,
 } from 'discord.js';
@@ -25,6 +24,7 @@ import {
 import { buildPanelOpenerRow } from '../ui/battle-buttons.js';
 import { displayName, errMsg } from '../../../utils.js';
 import type { QuestService } from './quest.service.js';
+import { chat } from '../../../managers/chat.manager.js';
 
 import { hasThreadCreate } from '../engine/discord-helpers.js';
 
@@ -47,34 +47,32 @@ export class DuelService {
   async startFromSlash(interaction: ChatInputCommandInteraction): Promise<void> {
     const opponent = interaction.options.getUser('user', true);
     if (opponent.id === interaction.user.id) {
-      await interaction
-        .reply({ content: 'Nie możesz pojedynkować się ze sobą.', flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, 'Nie możesz pojedynkować się ze sobą.', { ephemeral: true });
       return;
     }
     if (opponent.bot) {
-      await interaction
-        .reply({ content: 'Z botami się nie biję, znajdź sobie człowieka.', flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, 'Z botami się nie biję, znajdź sobie człowieka.', {
+        ephemeral: true,
+      });
       return;
     }
     const channel: unknown = interaction.channel;
     if (!hasThreadCreate(channel)) {
-      await interaction
-        .reply({
-          content: 'Ten kanał nie wspiera wątków — użyj `.duel @user` w innym kanale.',
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      await chat.reply(
+        interaction,
+        'Ten kanał nie wspiera wątków — użyj `.duel @user` w innym kanale.',
+        { ephemeral: true },
+      );
       return;
     }
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => {});
+    await chat.deferReply(interaction, true);
     const myParty = this.party.getByMember(interaction.user.id);
     const oppParty = this.party.getByMember(opponent.id);
     if (myParty && oppParty && myParty.id !== oppParty.id) {
-      await interaction
-        .editReply({ content: 'Party-duel ze slash nie jest jeszcze wspierany — użyj `.duel @user`.' })
-        .catch(() => {});
+      await chat.editReply(
+        interaction,
+        'Party-duel ze slash nie jest jeszcze wspierany — użyj `.duel @user`.',
+      );
       return;
     }
 
@@ -85,15 +83,14 @@ export class DuelService {
     const stats2 = this.stats.get(opponent.id, opponent.globalName || opponent.username);
 
     if (stats1.activeExpedition) {
-      await interaction
-        .editReply({ content: '🚫 Jesteś na wyprawie — pojedynki niedostępne.' })
-        .catch(() => {});
+      await chat.editReply(interaction, '🚫 Jesteś na wyprawie — pojedynki niedostępne.');
       return;
     }
     if (stats2.activeExpedition) {
-      await interaction
-        .editReply({ content: `🚫 <@${opponent.id}> jest na wyprawie — nie może walczyć teraz.` })
-        .catch(() => {});
+      await chat.editReply(
+        interaction,
+        `🚫 <@${opponent.id}> jest na wyprawie — nie może walczyć teraz.`,
+      );
       return;
     }
 
@@ -105,43 +102,37 @@ export class DuelService {
         type: ChannelType.PublicThread,
       });
     } catch (e) {
-      await interaction
-        .editReply({ content: `Nie udało się otworzyć wątku: ${errMsg(e)}` })
-        .catch(() => {});
+      await chat.editReply(interaction, `Nie udało się otworzyć wątku: ${errMsg(e)}`);
       return;
     }
     if (!thread || typeof thread !== 'object' || !('id' in thread) || typeof thread.id !== 'string') {
-      await interaction
-        .editReply({ content: 'Wątek utworzony, ale brak API.' })
-        .catch(() => {});
+      await chat.editReply(interaction, 'Wątek utworzony, ale brak API.');
       return;
     }
     await this.startBattleInThread(thread, stats1, stats2, false);
-    await interaction
-      .editReply({ content: `⚔️ Pojedynek otwarty: <#${thread.id}>` })
-      .catch(() => {});
+    await chat.editReply(interaction, `⚔️ Pojedynek otwarty: <#${thread.id}>`);
   }
 
   async start(ctx: ICommandContext): Promise<void> {
     const { msg, registerThread } = ctx;
     const opponent = msg.mentions?.users?.first();
     if (!opponent || opponent.id === msg.author.id) {
-      await msg.reply('Użycie: `.duel @przeciwnik` — wybierz innego (żywego) użytkownika.');
+      await chat.replyToMessage(msg, 'Użycie: `.duel @przeciwnik` — wybierz innego (żywego) użytkownika.');
       return;
     }
     if (opponent.bot) {
-      await msg.reply('Z botami się nie biję, znajdź sobie człowieka.');
+      await chat.replyToMessage(msg, 'Z botami się nie biję, znajdź sobie człowieka.');
       return;
     }
 
     const myStats = this.stats.get(msg.author.id, displayName(msg));
     if (myStats.activeExpedition) {
-      await msg.reply('🚫 Jesteś na wyprawie — pojedynki niedostępne. Dokończ wyprawę najpierw.');
+      await chat.replyToMessage(msg, '🚫 Jesteś na wyprawie — pojedynki niedostępne. Dokończ wyprawę najpierw.');
       return;
     }
     const oppStatsCheck = this.stats.get(opponent.id, opponent.globalName || opponent.username);
     if (oppStatsCheck.activeExpedition) {
-      await msg.reply(`🚫 <@${opponent.id}> jest na wyprawie — nie może walczyć teraz.`);
+      await chat.replyToMessage(msg, `🚫 <@${opponent.id}> jest na wyprawie — nie może walczyć teraz.`);
       return;
     }
 
@@ -159,7 +150,7 @@ export class DuelService {
       });
       if (thread?.id) registerThread(thread);
     } catch (e) {
-      await msg.reply(`Nie udało się otworzyć wątku: ${errMsg(e)}`);
+      await chat.replyToMessage(msg, `Nie udało się otworzyć wątku: ${errMsg(e)}`);
       return;
     }
 
@@ -201,7 +192,8 @@ export class DuelService {
     };
     this.states.set(thread.id, state);
 
-    await thread.send(
+    await chat.send(
+      thread,
       `⚔️ **Pojedynek!**\n` +
         `${this.fmtPlayer(p1, stats1)} **vs** ${this.fmtPlayer(p2, stats2)}\n` +
         `Mikstury używasz tylko z plecaka. W każdej rundzie obaj wybieracie akcję — wynik rozlicza się gdy obaj klikną.`,
@@ -220,7 +212,7 @@ export class DuelService {
       });
       if (thread?.id) registerThread(thread);
     } catch (e) {
-      await msg.reply(`Nie udało się otworzyć wątku: ${errMsg(e)}`);
+      await chat.replyToMessage(msg, `Nie udało się otworzyć wątku: ${errMsg(e)}`);
       return;
     }
 
@@ -255,7 +247,8 @@ export class DuelService {
     const fmtSide = (side: typeof sideA) =>
       side.map((x) => `<@${x.combatant.id}> (L${x.stats.level} · ${x.combatant.hp} HP)`).join(', ');
 
-    await thread.send(
+    await chat.send(
+      thread,
       `⚔️ **Party-Duel!** ${sideA.length} vs ${sideB.length}\n` +
         `**Drużyna A:** ${fmtSide(sideA)}\n` +
         `**Drużyna B:** ${fmtSide(sideB)}\n` +
@@ -281,7 +274,7 @@ export class DuelService {
       try {
         const m = await state.thread.messages.fetch(msgId).catch(() => null);
         if (!m) continue;
-        await m.edit({ components: [buildPanelOpenerRow(state.id, true)] }).catch(() => {});
+        await chat.edit(m, { components: [buildPanelOpenerRow(state.id, true)] });
       } catch {}
     }
     state.promptMessageIds.clear();
@@ -291,8 +284,9 @@ export class DuelService {
     // Log walki — wysyłany ZAWSZE, też dla ostatniej rundy (gdy ktoś ginie),
     // żeby gracze widzieli decydujący cios przed komunikatem o zwycięstwie.
     if (result.lines.length > 0) {
-      await state.thread.send(
-        [...result.lines, '', this.fmtBoard(state)].join('\n').slice(0, 1900),
+      await chat.send(
+        state.thread,
+        [...result.lines, '', this.fmtBoard(state)].join('\n'),
       );
     }
 
@@ -301,7 +295,7 @@ export class DuelService {
       return;
     }
 
-    await state.thread.send(`⏭ Runda ${state.roundNumber}`);
+    await chat.send(state.thread, `⏭ Runda ${state.roundNumber}`);
     await this.promptHumans(state);
   }
 

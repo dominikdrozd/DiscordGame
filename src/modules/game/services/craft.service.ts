@@ -1,5 +1,4 @@
 import {
-  MessageFlags,
   type ButtonInteraction,
   type ChatInputCommandInteraction,
 } from 'discord.js';
@@ -9,6 +8,7 @@ import { listRecipes, getRecipe, type Recipe } from './recipes.js';
 import { rollCraftedInstance, fmtInstance, ITEMS } from './items.js';
 import { displayName } from '../../../utils.js';
 import { buildCraftBrowseRows, buildCraftAfterRows } from '../ui/craft-buttons.js';
+import { chat } from '../../../managers/chat.manager.js';
 
 interface BrowserState {
   userId: string;
@@ -46,7 +46,7 @@ export class CraftService {
     const arg = parts[3];
 
     if (interaction.user.id !== userId) {
-      await interaction.reply({ content: 'To nie twój browser.', flags: MessageFlags.Ephemeral }).catch(() => {});
+      await chat.reply(interaction, 'To nie twój browser.', { ephemeral: true });
       return;
     }
 
@@ -61,14 +61,13 @@ export class CraftService {
     const player = this.stats.get(msg.author.id, displayName(msg));
     const recipes = sortedRecipes();
     if (recipes.length === 0) {
-      await msg.reply('Brak przepisów.');
+      await chat.replyToMessage(msg, 'Brak przepisów.');
       return;
     }
     const state: BrowserState = { userId: msg.author.id, index: 0, fromMenu: false };
     this.browsers.set(msg.author.id, state);
     const recipe = recipes[state.index];
-    await msg.reply({
-      content: this.renderRecipeContent(recipe, player),
+    await chat.replyToMessage(msg, this.renderRecipeContent(recipe, player), {
       components: buildCraftBrowseRows(
         player.id,
         recipes.length,
@@ -88,26 +87,21 @@ export class CraftService {
     const player = this.stats.get(userId, userName);
     const recipes = sortedRecipes();
     if (recipes.length === 0) {
-      await interaction
-        .reply({ content: 'Brak przepisów.', flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, 'Brak przepisów.', { ephemeral: true });
       return;
     }
     const state: BrowserState = { userId, index: 0, fromMenu: false };
     this.browsers.set(userId, state);
     const recipe = recipes[state.index];
-    await interaction
-      .reply({
-        content: this.renderRecipeContent(recipe, player),
-        components: buildCraftBrowseRows(
-          player.id,
-          recipes.length,
-          this.canCraft(recipe, player),
-          false,
-        ),
-        flags: MessageFlags.Ephemeral,
-      })
-      .catch(() => {});
+    await chat.reply(interaction, this.renderRecipeContent(recipe, player), {
+      ephemeral: true,
+      components: buildCraftBrowseRows(
+        player.id,
+        recipes.length,
+        this.canCraft(recipe, player),
+        false,
+      ),
+    });
   }
 
   /**
@@ -121,23 +115,20 @@ export class CraftService {
     const player = this.stats.get(userId, userName);
     const recipes = sortedRecipes();
     if (recipes.length === 0) {
-      await interaction.update({ content: 'Brak przepisów.', components: [] }).catch(() => {});
+      await chat.update(interaction, 'Brak przepisów.', { components: [] });
       return;
     }
     const state: BrowserState = { userId, index: 0, fromMenu: true };
     this.browsers.set(userId, state);
     const recipe = recipes[state.index];
-    await interaction
-      .update({
-        content: this.renderRecipeContent(recipe, player),
-        components: buildCraftBrowseRows(
-          player.id,
-          recipes.length,
-          this.canCraft(recipe, player),
-          true,
-        ),
-      })
-      .catch(() => {});
+    await chat.update(interaction, this.renderRecipeContent(recipe, player), {
+      components: buildCraftBrowseRows(
+        player.id,
+        recipes.length,
+        this.canCraft(recipe, player),
+        true,
+      ),
+    });
   }
 
   private renderRecipeContent(recipe: Recipe, player: PlayerStats): string {
@@ -192,12 +183,9 @@ export class CraftService {
   ): Promise<void> {
     const state = this.browsers.get(userId);
     if (!state) {
-      await interaction
-        .reply({
-          content: 'Browser zamknięty — wpisz `.craft` żeby otworzyć.',
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      await chat.reply(interaction, 'Browser zamknięty — wpisz `.craft` żeby otworzyć.', {
+        ephemeral: true,
+      });
       return;
     }
     const recipes = sortedRecipes();
@@ -205,23 +193,20 @@ export class CraftService {
     state.index = (state.index + dir + recipes.length) % recipes.length;
     const recipe = recipes[state.index];
     const player = this.stats.get(userId);
-    await interaction
-      .update({
-        content: this.renderRecipeContent(recipe, player),
-        components: buildCraftBrowseRows(
-          userId,
-          recipes.length,
-          this.canCraft(recipe, player),
-          state.fromMenu,
-        ),
-      })
-      .catch(() => {});
+    await chat.update(interaction, this.renderRecipeContent(recipe, player), {
+      components: buildCraftBrowseRows(
+        userId,
+        recipes.length,
+        this.canCraft(recipe, player),
+        state.fromMenu,
+      ),
+    });
   }
 
   private async handleCreate(interaction: ButtonInteraction, userId: string): Promise<void> {
     const state = this.browsers.get(userId);
     if (!state) {
-      await interaction.reply({ content: 'Browser zamknięty.', flags: MessageFlags.Ephemeral }).catch(() => {});
+      await chat.reply(interaction, 'Browser zamknięty.', { ephemeral: true });
       return;
     }
     const recipes = sortedRecipes();
@@ -229,40 +214,34 @@ export class CraftService {
     const player = this.stats.get(userId);
     const reasons = this.craftBlockReasons(recipe, player);
     if (reasons.length > 0) {
-      await interaction
-        .reply({ content: `Nie mogę: ${reasons.join(', ')}.`, flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, `Nie mogę: ${reasons.join(', ')}.`, { ephemeral: true });
       return;
     }
     const result = this.executeCraft(recipe, player);
     if (!result.ok) {
-      await interaction
-        .reply({ content: result.message ?? 'Bug w crafcie.', flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, result.message ?? 'Bug w crafcie.', { ephemeral: true });
       return;
     }
-    await interaction
-      .update({
-        content: `${this.renderRecipeContent(recipe, player)}\n\n${result.message ?? ''}`,
+    await chat.update(
+      interaction,
+      `${this.renderRecipeContent(recipe, player)}\n\n${result.message ?? ''}`,
+      {
         components: buildCraftBrowseRows(
           userId,
           recipes.length,
           this.canCraft(recipe, player),
           state.fromMenu,
         ),
-      })
-      .catch(() => {});
+      },
+    );
   }
 
   private async handleClose(interaction: ButtonInteraction, userId: string): Promise<void> {
     const fromMenu = this.browsers.get(userId)?.fromMenu ?? false;
     this.browsers.delete(userId);
-    await interaction
-      .update({
-        content: 'Browser craftingu zamknięty.',
-        components: fromMenu ? buildCraftAfterRows(userId) : [],
-      })
-      .catch(() => {});
+    await chat.update(interaction, 'Browser craftingu zamknięty.', {
+      components: fromMenu ? buildCraftAfterRows(userId) : [],
+    });
   }
 
   // ── Helpers ───────────────────────────────────────────
@@ -304,19 +283,19 @@ export class CraftService {
     const player = this.stats.get(msg.author.id, displayName(msg));
     const recipe = getRecipe(recipeId);
     if (!recipe) {
-      await msg.reply(`Nie ma przepisu \`${recipeId}\`. Wpisz \`.craft\` żeby zobaczyć listę.`);
+      await chat.replyToMessage(msg, `Nie ma przepisu \`${recipeId}\`. Wpisz \`.craft\` żeby zobaczyć listę.`);
       return;
     }
     const reasons = this.craftBlockReasons(recipe, player);
     if (reasons.length > 0) {
-      await msg.reply(`Nie mogę scraftować: ${reasons.join(', ')}.`);
+      await chat.replyToMessage(msg, `Nie mogę scraftować: ${reasons.join(', ')}.`);
       return;
     }
     const result = this.executeCraft(recipe, player);
     if (!result.ok) {
-      await msg.reply(result.message ?? 'Bug w crafcie.');
+      await chat.replyToMessage(msg, result.message ?? 'Bug w crafcie.');
       return;
     }
-    await msg.reply(result.message ?? '🛠️ Crafting udany!');
+    await chat.replyToMessage(msg, result.message ?? '🛠️ Crafting udany!');
   }
 }

@@ -1,5 +1,4 @@
 import {
-  MessageFlags,
   SlashCommandBuilder,
   type ButtonInteraction,
   type ChatInputCommandInteraction,
@@ -7,6 +6,7 @@ import {
 import type { ICommandContext, ISlashCommand } from '../../../types/command.types.js';
 import { InventoryService } from '../services/inventory.service.js';
 import { BaseCommand } from './base.command.js';
+import { chat } from '../../../managers/chat.manager.js';
 
 export class InventoryCommand extends BaseCommand implements ISlashCommand {
   readonly name = 'inv';
@@ -39,15 +39,12 @@ export class InventoryCommand extends BaseCommand implements ISlashCommand {
   async executeSlash(interaction: ChatInputCommandInteraction): Promise<void> {
     const channel: unknown = interaction.channel;
     if (!hasThreadCreate(channel)) {
-      await interaction
-        .reply({
-          content: 'Ten kanał nie wspiera prywatnych wątków.',
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      await chat.reply(interaction, 'Ten kanał nie wspiera prywatnych wątków.', {
+        ephemeral: true,
+      });
       return;
     }
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => {});
+    await chat.deferReply(interaction, true);
     let errorMsg: string | undefined;
     let openSucceeded = false;
     await this.inventory.openInventoryForUser({
@@ -64,11 +61,9 @@ export class InventoryCommand extends BaseCommand implements ISlashCommand {
       },
     });
     if (errorMsg && !openSucceeded) {
-      await interaction.editReply({ content: errorMsg }).catch(() => {});
+      await chat.editReply(interaction, errorMsg);
     } else {
-      await interaction
-        .editReply({ content: '🎒 Plecak otwarty w prywatnym wątku.' })
-        .catch(() => {});
+      await chat.editReply(interaction, '🎒 Plecak otwarty w prywatnym wątku.');
     }
   }
 

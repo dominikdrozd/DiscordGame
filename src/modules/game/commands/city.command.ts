@@ -1,6 +1,5 @@
 import {
   ChannelType,
-  MessageFlags,
   SlashCommandBuilder,
   type AutocompleteInteraction,
   type ButtonInteraction,
@@ -12,6 +11,7 @@ import { CITIES, listCities } from '../cities/index.js';
 import { ITEMS } from '../services/items.js';
 import { PlayerStatsService } from '../services/player-stats.js';
 import { BaseCommand } from './base.command.js';
+import { chat } from '../../../managers/chat.manager.js';
 
 export class CityCommand extends BaseCommand implements ISlashCommand {
   readonly name = 'city';
@@ -137,54 +137,41 @@ export class CityCommand extends BaseCommand implements ISlashCommand {
     );
 
     if (sub === 'list') {
-      await interaction
-        .reply({ content: this.city.renderList(player), flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, this.city.renderList(player), { ephemeral: true });
       return;
     }
     if (sub === 'info') {
       const cityId = interaction.options.getString('city_id', true);
-      await interaction
-        .reply({ content: this.city.renderInfo(player, cityId), flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, this.city.renderInfo(player, cityId), { ephemeral: true });
       return;
     }
     if (sub === 'buy') {
       const cityId = interaction.options.getString('city_id', true);
       const itemId = interaction.options.getString('item_id', true);
       const qty = interaction.options.getInteger('qty') ?? 1;
-      await interaction
-        .reply({
-          content: this.city.tryBuy(player, cityId, itemId, qty),
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      await chat.reply(interaction, this.city.tryBuy(player, cityId, itemId, qty), {
+        ephemeral: true,
+      });
       return;
     }
     if (sub === 'sell') {
       const itemId = interaction.options.getString('item_id', true);
       const qty = interaction.options.getInteger('qty') ?? undefined;
-      await interaction
-        .reply({
-          content: this.city.trySell(player, itemId, qty ?? undefined),
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      await chat.reply(interaction, this.city.trySell(player, itemId, qty ?? undefined), {
+        ephemeral: true,
+      });
       return;
     }
     if (sub === 'shop') {
       const cityId = interaction.options.getString('city_id', true);
       const channel: unknown = interaction.channel;
       if (!hasThreadCreate(channel)) {
-        await interaction
-          .reply({
-            content: 'Ten kanał nie wspiera prywatnych wątków.',
-            flags: MessageFlags.Ephemeral,
-          })
-          .catch(() => {});
+        await chat.reply(interaction, 'Ten kanał nie wspiera prywatnych wątków.', {
+          ephemeral: true,
+        });
         return;
       }
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => {});
+      await chat.deferReply(interaction, true);
       let openSucceeded = false;
       let errorMsg: string | undefined;
       await this.city.openShopForUser({
@@ -201,11 +188,9 @@ export class CityCommand extends BaseCommand implements ISlashCommand {
         },
       });
       if (errorMsg && !openSucceeded) {
-        await interaction.editReply({ content: errorMsg }).catch(() => {});
+        await chat.editReply(interaction, errorMsg);
       } else {
-        await interaction
-          .editReply({ content: '🛒 Sklep otwarty w prywatnym wątku.' })
-          .catch(() => {});
+        await chat.editReply(interaction, '🛒 Sklep otwarty w prywatnym wątku.');
       }
       void ChannelType;
     }

@@ -1,6 +1,7 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, type ButtonInteraction } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, type ButtonInteraction } from 'discord.js';
 import type { ICommand, ICommandContext } from '../types/command.types.js';
 import type { CommandManager } from '../managers/command.manager.js';
+import { chat } from '../managers/chat.manager.js';
 
 const DISCORD_LIMIT = 2000;
 const HEADER_RESERVE = 80;
@@ -25,7 +26,7 @@ export class HelpCommand implements ICommand {
 
   async execute(ctx: ICommandContext): Promise<void> {
     const view = this.buildView(0);
-    await ctx.msg.reply(view);
+    await chat.replyToMessage(ctx.msg, view.content, { components: view.components });
   }
 
   async handleInteraction(interaction: ButtonInteraction): Promise<void> {
@@ -35,13 +36,7 @@ export class HelpCommand implements ICommand {
     const page = parseInt(pageStr, 10);
     if (!Number.isFinite(page)) return;
     const view = this.buildView(page);
-    try {
-      await interaction.update(view);
-    } catch {
-      await interaction
-        .reply({ content: 'Nie udało się przełączyć strony.', flags: MessageFlags.Ephemeral })
-        .catch(() => {});
-    }
+    await chat.update(interaction, view.content, { components: view.components });
   }
 
   private buildPages(): string[] {

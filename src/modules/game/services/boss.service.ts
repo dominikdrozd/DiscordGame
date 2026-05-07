@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
   ChannelType,
-  MessageFlags,
   type ButtonInteraction,
   type ChatInputCommandInteraction,
 } from 'discord.js';
@@ -35,6 +34,7 @@ import { SKILLS } from '../skills/index.js';
 import { QuestService } from './quest.service.js';
 import { type Mob } from '../mobs/index.js';
 import { displayName, errMsg } from '../../../utils.js';
+import { chat } from '../../../managers/chat.manager.js';
 
 interface BossBattleState extends BattleState {
   bossId: string;
@@ -107,7 +107,7 @@ export class BossService {
       if (typeof state.thread.setArchived === 'function') {
         await state.thread.setArchived(false).catch(() => {});
       }
-      await state.thread.send(`👹 <@${playerId}> wraca do walki z bossem.`);
+      await chat.send(state.thread, `👹 <@${playerId}> wraca do walki z bossem.`);
       await promptHumansWithPanel(state);
       return { ok: true, threadId: state.thread.id };
     } catch {
@@ -132,7 +132,7 @@ export class BossService {
     this.states.set(tid, state);
     await this.battleStore.updateThreadId(state._battleId, tid);
     try {
-      await state.thread.send(`👹 <@${playerId}> wraca do walki z bossem.`);
+      await chat.send(state.thread, `👹 <@${playerId}> wraca do walki z bossem.`);
       await promptHumansWithPanel(state);
     } catch {
       return { ok: false };
@@ -169,24 +169,24 @@ export class BossService {
         );
       }
       lines.push('', 'Użycie: `.boss <id>` lub `.menu` → 👹 Bossowie (interaktywny browser).');
-      await msg.reply(lines.join('\n').slice(0, 1900));
+      await chat.replyToMessage(msg, lines.join('\n'));
       return;
     }
 
     const def = BOSS_MOBS[prompt];
     if (!def) {
-      await msg.reply(`Nie ma bossa \`${prompt}\`. Wpisz \`.boss\` żeby zobaczyć listę.`);
+      await chat.replyToMessage(msg, `Nie ma bossa \`${prompt}\`. Wpisz \`.boss\` żeby zobaczyć listę.`);
       return;
     }
 
     const player = this.stats.get(msg.author.id, displayName(msg));
     if (player.activeExpedition) {
-      await msg.reply('🚫 Jesteś na wyprawie — bossowie niedostępni. Dokończ wyprawę najpierw.');
+      await chat.replyToMessage(msg, '🚫 Jesteś na wyprawie — bossowie niedostępni. Dokończ wyprawę najpierw.');
       return;
     }
     const cooldownMsg = this.cooldownReason(player);
     if (cooldownMsg) {
-      await msg.reply(cooldownMsg);
+      await chat.replyToMessage(msg, cooldownMsg);
       return;
     }
 
@@ -198,7 +198,7 @@ export class BossService {
       });
       if (thread?.id) registerThread(thread);
     } catch (e) {
-      await msg.reply(`Nie udało się otworzyć wątku: ${errMsg(e)}`);
+      await chat.replyToMessage(msg, `Nie udało się otworzyć wątku: ${errMsg(e)}`);
       return;
     }
     await this.startBattle(thread, player, def);
@@ -210,17 +210,16 @@ export class BossService {
     const userName = interaction.user.globalName || interaction.user.username;
     const player = this.stats.get(userId, userName);
     if (player.activeExpedition) {
-      await interaction
-        .update({
-          content: '🚫 Jesteś na wyprawie — bossowie niedostępni. Dokończ wyprawę najpierw.',
-          components: [],
-        })
-        .catch(() => {});
+      await chat.update(
+        interaction,
+        '🚫 Jesteś na wyprawie — bossowie niedostępni. Dokończ wyprawę najpierw.',
+        { components: [] },
+      );
       return;
     }
     const bosses = sortedBosses();
     if (bosses.length === 0) {
-      await interaction.update({ content: 'Brak bossów.', components: [] }).catch(() => {});
+      await chat.update(interaction, 'Brak bossów.', { components: [] });
       return;
     }
     const state: BrowserState = { userId, index: 0, fromMenu: true };
@@ -237,32 +236,26 @@ export class BossService {
     const userName = interaction.user.globalName || interaction.user.username;
     const player = this.stats.get(userId, userName);
     if (player.activeExpedition) {
-      await interaction
-        .reply({
-          content: '🚫 Jesteś na wyprawie — bossowie niedostępni. Dokończ wyprawę najpierw.',
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      await chat.reply(
+        interaction,
+        '🚫 Jesteś na wyprawie — bossowie niedostępni. Dokończ wyprawę najpierw.',
+        { ephemeral: true },
+      );
       return;
     }
     const bosses = sortedBosses();
     if (bosses.length === 0) {
-      await interaction
-        .reply({ content: 'Brak bossów.', flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, 'Brak bossów.', { ephemeral: true });
       return;
     }
     const state: BrowserState = { userId, index: 0, fromMenu: false };
     this.browsers.set(userId, state);
     const def = bosses[state.index];
     const canFight = !this.cooldownReason(player);
-    await interaction
-      .reply({
-        content: this.renderBossDetails(def, player),
-        components: buildBossBrowseRows(state.userId, bosses.length, canFight, false),
-        flags: MessageFlags.Ephemeral,
-      })
-      .catch(() => {});
+    await chat.reply(interaction, this.renderBossDetails(def, player), {
+      ephemeral: true,
+      components: buildBossBrowseRows(state.userId, bosses.length, canFight, false),
+    });
   }
 
   private cooldownReason(player: PlayerStats): string | null {
@@ -341,12 +334,9 @@ export class BossService {
     const def = bosses[state.index];
     const player = this.stats.get(state.userId);
     const canFight = !this.cooldownReason(player);
-    await interaction
-      .update({
-        content: this.renderBossDetails(def, player),
-        components: buildBossBrowseRows(state.userId, bosses.length, canFight, state.fromMenu),
-      })
-      .catch(() => {});
+    await chat.update(interaction, this.renderBossDetails(def, player), {
+      components: buildBossBrowseRows(state.userId, bosses.length, canFight, state.fromMenu),
+    });
   }
 
   private async startBattle(thread: any, player: PlayerStats, def: Mob): Promise<void> {
@@ -388,7 +378,8 @@ export class BossService {
     });
 
     const bagPotion = playerCombatant.consumables?.potion_small ?? 0;
-    await thread.send(
+    await chat.send(
+      thread,
       `👹 **${def.name}** stanął przed Tobą!\n` +
         `_${def.description}_\n\n` +
         `Ty: ${playerCombatant.hp}/${playerCombatant.maxHp} HP, +${playerCombatant.damageBonus} dmg, ${bagPotion} mikstur w plecaku.\n` +
@@ -418,19 +409,14 @@ export class BossService {
     const arg = parts[3];
 
     if (interaction.user.id !== userId) {
-      await interaction
-        .reply({ content: 'To nie twój browser.', flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, 'To nie twój browser.', { ephemeral: true });
       return;
     }
     const state = this.browsers.get(userId);
     if (!state) {
-      await interaction
-        .reply({
-          content: 'Browser zamknięty — wpisz `.menu` lub `.boss <id>`.',
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      await chat.reply(interaction, 'Browser zamknięty — wpisz `.menu` lub `.boss <id>`.', {
+        ephemeral: true,
+      });
       return;
     }
     const bosses = sortedBosses();
@@ -447,9 +433,7 @@ export class BossService {
     }
     if (action === 'close') {
       this.browsers.delete(userId);
-      await interaction
-        .update({ content: 'Browser bossów zamknięty.', components: [] })
-        .catch(() => {});
+      await chat.update(interaction, 'Browser bossów zamknięty.', { components: [] });
     }
   }
 
@@ -462,17 +446,16 @@ export class BossService {
     const player = this.stats.get(state.userId);
     const cooldownMsg = this.cooldownReason(player);
     if (cooldownMsg) {
-      await interaction.reply({ content: cooldownMsg, flags: MessageFlags.Ephemeral }).catch(() => {});
+      await chat.reply(interaction, cooldownMsg, { ephemeral: true });
       return;
     }
     const channel: unknown = interaction.channel;
     if (!hasThreadCreate(channel)) {
-      await interaction
-        .reply({
-          content: 'Nie mogę otworzyć wątku w tym kanale — użyj `.boss ' + def.id + '`.',
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      await chat.reply(
+        interaction,
+        'Nie mogę otworzyć wątku w tym kanale — użyj `.boss ' + def.id + '`.',
+        { ephemeral: true },
+      );
       return;
     }
     let thread: unknown;
@@ -483,24 +466,19 @@ export class BossService {
         type: ChannelType.PublicThread,
       });
     } catch (e) {
-      await interaction
-        .reply({ content: `Nie udało się otworzyć wątku: ${errMsg(e)}`, flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, `Nie udało się otworzyć wątku: ${errMsg(e)}`, {
+        ephemeral: true,
+      });
       return;
     }
     if (!thread || typeof thread !== 'object' || !('id' in thread) || typeof thread.id !== 'string') {
-      await interaction
-        .reply({ content: 'Wątek bossa utworzony, ale brak API.', flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, 'Wątek bossa utworzony, ale brak API.', { ephemeral: true });
       return;
     }
     this.browsers.delete(state.userId);
-    await interaction
-      .update({
-        content: `⚔️ **${def.name}** — wątek otwarty: <#${thread.id}>`,
-        components: [],
-      })
-      .catch(() => {});
+    await chat.update(interaction, `⚔️ **${def.name}** — wątek otwarty: <#${thread.id}>`, {
+      components: [],
+    });
     await this.startBattle(thread, player, def);
   }
 
@@ -516,8 +494,7 @@ export class BossService {
     for (const [, msgId] of state.promptMessageIds) {
       try {
         const m = await state.thread.messages.fetch(msgId).catch(() => null);
-        if (m)
-          await m.edit({ components: [buildPanelOpenerRow(state.id, true)] }).catch(() => {});
+        if (m) await chat.edit(m, { components: [buildPanelOpenerRow(state.id, true)] });
       } catch {}
     }
     state.promptMessageIds.clear();
@@ -527,8 +504,9 @@ export class BossService {
 
     // Log walki — także dla ostatniej rundy (przed `finish`).
     if (result.lines.length > 0) {
-      await state.thread.send(
-        [...result.lines, '', this.fmtBoard(state)].join('\n').slice(0, 1900),
+      await chat.send(
+        state.thread,
+        [...result.lines, '', this.fmtBoard(state)].join('\n'),
       );
     }
 
@@ -537,7 +515,7 @@ export class BossService {
       return;
     }
 
-    await state.thread.send(`⏭ Runda ${state.roundNumber}`);
+    await chat.send(state.thread, `⏭ Runda ${state.roundNumber}`);
     await this.promptHumans(state);
   }
 

@@ -1,4 +1,4 @@
-import { MessageFlags, SlashCommandBuilder, type ChatInputCommandInteraction } from 'discord.js';
+import { SlashCommandBuilder, type ChatInputCommandInteraction } from 'discord.js';
 import type { ICommandContext, ISlashCommand } from '../../../types/command.types.js';
 import {
   PlayerStatsService,
@@ -7,6 +7,7 @@ import {
 } from '../services/player-stats.js';
 import { displayName } from '../../../utils.js';
 import { BaseCommand } from './base.command.js';
+import { chat } from '../../../managers/chat.manager.js';
 
 const VALID: readonly PrimaryAttribute[] = ['str', 'agi', 'wit', 'int'];
 
@@ -59,19 +60,19 @@ export class SkillsCommand extends BaseCommand implements ISlashCommand {
     const player = this.stats.get(msg.author.id, displayName(msg));
 
     if (!prompt) {
-      await msg.reply(this.renderShow(player));
+      await chat.replyToMessage(msg, this.renderShow(player));
       return;
     }
 
     const parts = prompt.split(/\s+/);
     if (parts[0] !== 'add' || parts.length < 3) {
-      await msg.reply('Użycie: `.skills add <str|agi|wit|int> <ile>`');
+      await chat.replyToMessage(msg, 'Użycie: `.skills add <str|agi|wit|int> <ile>`');
       return;
     }
     const attr = parts[1];
     const pts = parseInt(parts[2], 10);
     const result = this.tryAdd(player, attr, pts);
-    await msg.reply(result);
+    await chat.replyToMessage(msg, result);
   }
 
   async executeSlash(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -81,16 +82,14 @@ export class SkillsCommand extends BaseCommand implements ISlashCommand {
     );
     const sub = interaction.options.getSubcommand();
     if (sub === 'show') {
-      await interaction
-        .reply({ content: this.renderShow(player), flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, this.renderShow(player), { ephemeral: true });
       return;
     }
     if (sub === 'add') {
       const attr = interaction.options.getString('attr', true);
       const pts = interaction.options.getInteger('points', true);
       const result = this.tryAdd(player, attr, pts);
-      await interaction.reply({ content: result, flags: MessageFlags.Ephemeral }).catch(() => {});
+      await chat.reply(interaction, result, { ephemeral: true });
     }
   }
 

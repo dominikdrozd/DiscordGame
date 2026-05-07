@@ -8,6 +8,7 @@ import { ITEMS } from '../services/items.js';
 import { EXPEDITIONS, type ExpeditionDef } from './encounters.js';
 import { randomAmbushMob, ambushTierForLevel, type RandomAmbushOpts } from '../mobs/index.js';
 import { errMsg } from '../../../utils.js';
+import { chat } from '../../../managers/chat.manager.js';
 
 function buildAmbushOpts(def: ExpeditionDef | undefined, combatLvl: number): RandomAmbushOpts {
   const opts: RandomAmbushOpts = {};
@@ -223,7 +224,8 @@ export class AmbushService {
       await this.battleStore.updateThreadId(state._battleId, newThread.id);
 
       try {
-        await state.thread.send(
+        await chat.send(
+          state.thread,
           `⚔️ <@${playerId}> wraca do walki — aktualny stan:\n${this.fmtBoard(state)}`,
         );
         await this.promptHumans(state);
@@ -240,14 +242,11 @@ export class AmbushService {
       }
     };
     const sendBoard = async (): Promise<boolean> => {
-      try {
-        await state.thread.send(
-          `⚔️ <@${playerId}> wraca do walki — aktualny stan:\n${this.fmtBoard(state)}`,
-        );
-        return true;
-      } catch {
-        return false;
-      }
+      const sent = await chat.send(
+        state.thread,
+        `⚔️ <@${playerId}> wraca do walki — aktualny stan:\n${this.fmtBoard(state)}`,
+      );
+      return sent !== null;
     };
 
     await tryUnarchive();
@@ -440,7 +439,8 @@ export class AmbushService {
     state.timeoutHandle.unref?.();
 
     const mobLine = mobCombatants.map((m) => `**${m.name}** (${m.hp} HP)`).join(', ');
-    await thread.send(
+    await chat.send(
+      thread,
       `Wrogowie: ${mobLine}. Każdy członek party klika dla siebie — runda się rozliczy gdy wszyscy podadzą akcje. **Wyprawa zatrzymana** — dokończcie walkę w ciągu **${Math.round(AMBUSH_TIMEOUT_MS / 60_000 / 60)} h** lub przepada.`,
     );
     await this.promptHumans(state);
@@ -524,7 +524,8 @@ export class AmbushService {
       mobCount === 1
         ? `${mobLine} blokuje Ci drogę!`
         : `Z krzaków wyskakuje ${mobCount} napastników: ${mobLine}!`;
-    await thread.send(
+    await chat.send(
+      thread,
       `${intro} **Wyprawa zatrzymana** — dokończ walkę w ciągu **${Math.round(AMBUSH_TIMEOUT_MS / 60_000 / 60)} h** lub przepada.`,
     );
     await this.promptHumans(state);
@@ -541,8 +542,7 @@ export class AmbushService {
     for (const [, msgId] of state.promptMessageIds) {
       try {
         const m = await state.thread.messages.fetch(msgId).catch(() => null);
-        if (m)
-          await m.edit({ components: [buildPanelOpenerRow(state.id, true)] }).catch(() => {});
+        if (m) await chat.edit(m, { components: [buildPanelOpenerRow(state.id, true)] });
       } catch {}
     }
     state.promptMessageIds.clear();
@@ -553,7 +553,8 @@ export class AmbushService {
 
     // Log walki — zawsze, też dla ostatniej rundy gdy ktoś ginie.
     if (result.lines.length > 0) {
-      await state.thread.send(
+      await chat.send(
+        state.thread,
         [...result.lines, '', this.fmtBoard(state)].join('\n').slice(0, 1900),
       );
     }
@@ -563,7 +564,7 @@ export class AmbushService {
       return;
     }
 
-    await state.thread.send(`⏭ Runda ${state.roundNumber}`);
+    await chat.send(state.thread, `⏭ Runda ${state.roundNumber}`);
     await this.promptHumans(state);
   }
 

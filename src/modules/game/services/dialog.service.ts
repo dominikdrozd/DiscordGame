@@ -2,7 +2,6 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  MessageFlags,
   type ButtonInteraction,
   type ChatInputCommandInteraction,
 } from 'discord.js';
@@ -11,6 +10,7 @@ import { findNpcCity, getNpc } from '../npcs/index.js';
 import { Npc, type DialogContext, type DialogNode, type DialogOption } from '../npcs/npc.js';
 import { buildDialogOptionRows } from '../ui/dialog-buttons.js';
 import { QuestService } from './quest.service.js';
+import { chat } from '../../../managers/chat.manager.js';
 
 interface RenderTarget {
   reply(payload: { content: string; components?: ActionRowBuilder<ButtonBuilder>[] }): Promise<unknown>;
@@ -56,7 +56,7 @@ export class DialogService {
   async startFromInteraction(interaction: ButtonInteraction, npcId: string): Promise<void> {
     const npc = getNpc(npcId);
     if (!npc) {
-      await interaction.reply({ content: `Nie znam NPC \`${npcId}\`.`, flags: MessageFlags.Ephemeral }).catch(() => {});
+      await chat.reply(interaction, `Nie znam NPC \`${npcId}\`.`, { ephemeral: true });
       return;
     }
     const player = this.stats.get(
@@ -65,19 +65,14 @@ export class DialogService {
     );
     const node = npc.dialog.getNode(npc.dialog.startNodeId);
     if (!node) {
-      await interaction
-        .reply({ content: `Dialog \`${npc.id}\` nie ma startNode.`, flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, `Dialog \`${npc.id}\` nie ma startNode.`, { ephemeral: true });
       return;
     }
     const ctx = this.buildCtx(player, npc);
     const options = this.visibleOptions(node, ctx);
-    await interaction
-      .update({
-        content: this.renderNode(npc, node, ''),
-        components: buildDialogOptionRows(npc.id, npc.dialog.startNodeId, options, player.id),
-      })
-      .catch(() => {});
+    await chat.update(interaction, this.renderNode(npc, node, ''), {
+      components: buildDialogOptionRows(npc.id, npc.dialog.startNodeId, options, player.id),
+    });
   }
 
   async startFromSlash(
@@ -86,9 +81,7 @@ export class DialogService {
   ): Promise<void> {
     const npc = getNpc(npcId);
     if (!npc) {
-      await interaction
-        .reply({ content: `Nie znam NPC \`${npcId}\`.`, flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, `Nie znam NPC \`${npcId}\`.`, { ephemeral: true });
       return;
     }
     const player = this.stats.get(
@@ -97,23 +90,15 @@ export class DialogService {
     );
     const node = npc.dialog.getNode(npc.dialog.startNodeId);
     if (!node) {
-      await interaction
-        .reply({
-          content: `Dialog \`${npc.id}\` nie ma startNode.`,
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      await chat.reply(interaction, `Dialog \`${npc.id}\` nie ma startNode.`, { ephemeral: true });
       return;
     }
     const ctx = this.buildCtx(player, npc);
     const options = this.visibleOptions(node, ctx);
-    await interaction
-      .reply({
-        content: this.renderNode(npc, node, ''),
-        components: buildDialogOptionRows(npc.id, npc.dialog.startNodeId, options, player.id),
-        flags: MessageFlags.Ephemeral,
-      })
-      .catch(() => {});
+    await chat.reply(interaction, this.renderNode(npc, node, ''), {
+      ephemeral: true,
+      components: buildDialogOptionRows(npc.id, npc.dialog.startNodeId, options, player.id),
+    });
   }
 
   async handleInteraction(interaction: ButtonInteraction): Promise<void> {
@@ -129,16 +114,14 @@ export class DialogService {
 
     if (action !== 'opt') return;
     if (interaction.user.id !== userId) {
-      await interaction
-        .reply({ content: 'To nie twoja rozmowa.', flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, 'To nie twoja rozmowa.', { ephemeral: true });
       return;
     }
     const npc = getNpc(npcId);
     if (!npc) {
-      await interaction
-        .reply({ content: 'Ten NPC już cię nie pamięta (bot się zrestartował?).', flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, 'Ten NPC już cię nie pamięta (bot się zrestartował?).', {
+        ephemeral: true,
+      });
       return;
     }
     const player = this.stats.get(
@@ -148,21 +131,20 @@ export class DialogService {
     const ctx = this.buildCtx(player, npc);
     const sourceNode = npc.dialog.getNode(currentNodeId);
     if (!sourceNode) {
-      await interaction
-        .reply({ content: `Nieznany węzeł rozmowy \`${currentNodeId}\`.`, flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, `Nieznany węzeł rozmowy \`${currentNodeId}\`.`, {
+        ephemeral: true,
+      });
       return;
     }
     const visible = this.visibleOptions(sourceNode, ctx);
     const opt = visible[optIdx];
     if (!opt) {
       // Stan zmienił się między renderem a klikiem — re-render z aktualną listą.
-      await interaction
-        .update({
-          content: this.renderNode(npc, sourceNode, '_(opcja już niedostępna)_'),
-          components: buildDialogOptionRows(npc.id, currentNodeId, visible, player.id),
-        })
-        .catch(() => {});
+      await chat.update(
+        interaction,
+        this.renderNode(npc, sourceNode, '_(opcja już niedostępna)_'),
+        { components: buildDialogOptionRows(npc.id, currentNodeId, visible, player.id) },
+      );
       return;
     }
 
@@ -180,19 +162,16 @@ export class DialogService {
     }
     const targetNode = npc.dialog.getNode(opt.goto);
     if (!targetNode) {
-      await interaction
-        .reply({ content: `Nieznany węzeł rozmowy \`${opt.goto}\`.`, flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, `Nieznany węzeł rozmowy \`${opt.goto}\`.`, {
+        ephemeral: true,
+      });
       return;
     }
     const newCtx = this.buildCtx(player, npc); // re-fetch po effect
     const targetVisible = this.visibleOptions(targetNode, newCtx);
-    await interaction
-      .update({
-        content: this.renderNode(npc, targetNode, effectLine),
-        components: buildDialogOptionRows(npc.id, opt.goto, targetVisible, player.id),
-      })
-      .catch(() => {});
+    await chat.update(interaction, this.renderNode(npc, targetNode, effectLine), {
+      components: buildDialogOptionRows(npc.id, opt.goto, targetVisible, player.id),
+    });
   }
 
   // ── Helpers ────────────────────────────────────────
@@ -249,7 +228,7 @@ export class DialogService {
     }
     const tail = `💬 **${npc.name}** kiwa głową na pożegnanie. _Rozmowa zakończona._`;
     const content = prefixLine ? `${prefixLine}\n\n${tail}` : tail;
-    await interaction.update({ content, components: rows }).catch(() => {});
+    await chat.update(interaction, content, { components: rows });
   }
 
   /** Wrapper bound do `.talk` command — przyjmuje `msg` ICommandContext. */

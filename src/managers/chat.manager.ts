@@ -250,6 +250,20 @@ class ChatManager {
     await this.withRetry(() => msg.reply(clipped));
   }
 
+  /**
+   * `interaction.editReply` — używać po `deferReply` żeby wstawić docelową
+   * odpowiedź. Pasuje też do follow-up z update'em deferred slash response.
+   */
+  async editReply(
+    interaction: ReplyableInteraction,
+    content: string,
+    opts: UpdateOpts = {},
+  ): Promise<void> {
+    const payload: InteractionEditReplyOptions = { content: this.clip(content) };
+    if (opts.components !== undefined) payload.components = opts.components;
+    await this.withRetry(() => interaction.editReply(payload));
+  }
+
   /** Defer interaction reply — używać gdy operacja > 3s (Discord interaction TTL). */
   async deferReply(interaction: ReplyableInteraction, ephemeral = false): Promise<void> {
     if (interaction.replied || interaction.deferred) return;

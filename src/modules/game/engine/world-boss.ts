@@ -5,7 +5,6 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  MessageFlags,
 } from 'discord.js';
 import { PlayerStatsService } from '../services/player-stats.js';
 import { BOSS_MOBS, type Mob, type MobTier } from '../mobs/index.js';
@@ -38,6 +37,7 @@ import { buildPanelOpenerRow } from '../ui/battle-buttons.js';
 import { rollItemInstance } from '../services/items.js';
 import { awardGemDrops } from '../services/gem-effects.js';
 import { errMsg } from '../../../utils.js';
+import { chat } from '../../../managers/chat.manager.js';
 
 /** Co ile sprawdzamy czy nadeszła zaplanowana pora. */
 const TICK_MS = 60_000;
@@ -276,27 +276,25 @@ export class WorldBossService {
     const MENTION_BATCH = 50;
 
     const registrationEndsAt = Date.now() + REGISTRATION_WINDOW_MS;
-    const sent = await channel
-      .send({
-        content: [
-          '🌋 **POJAWIA SIĘ WORLD BOSS!**',
-          mentions.slice(0, MENTION_BATCH).join(' '),
-          `Zbierzcie się w ciągu **${Math.round(REGISTRATION_WINDOW_MS / 60_000)} min** —`,
-          `kliknij guzik poniżej, żeby dołączyć. Min ${MIN_PARTICIPANTS}, max ${MAX_PARTICIPANTS} graczy.`,
-          'Tier bossa zostanie dopasowany do avg combat lvl uczestników.',
-          'Drop: bazowe rewardy bossa + bonusowy lege/epicki item per gracz.',
-        ]
-          .filter(Boolean)
-          .join('\n')
-          .slice(0, 1900),
-        components: [buildAnnounceRow(channelId)],
-      })
-      .catch(() => null);
+    const sent = await chat.send(
+      channel,
+      [
+        '🌋 **POJAWIA SIĘ WORLD BOSS!**',
+        mentions.slice(0, MENTION_BATCH).join(' '),
+        `Zbierzcie się w ciągu **${Math.round(REGISTRATION_WINDOW_MS / 60_000)} min** —`,
+        `kliknij guzik poniżej, żeby dołączyć. Min ${MIN_PARTICIPANTS}, max ${MAX_PARTICIPANTS} graczy.`,
+        'Tier bossa zostanie dopasowany do avg combat lvl uczestników.',
+        'Drop: bazowe rewardy bossa + bonusowy lege/epicki item per gracz.',
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      { components: [buildAnnounceRow(channelId)] },
+    );
     await sendMentionBatches(channel, mentions, MENTION_BATCH, MENTION_BATCH);
 
     const announceMsgId =
-      sent && typeof sent === 'object' && 'id' in sent && typeof sent.id === 'string'
-        ? sent.id
+      sent && typeof sent === 'object' && 'id' in sent && typeof (sent as { id: unknown }).id === 'string'
+        ? (sent as { id: string }).id
         : undefined;
 
     this.pendingEvent = {
@@ -313,11 +311,10 @@ export class WorldBossService {
     if (!channel || !hasSendable(channel)) return;
 
     if (evt.participants.size < MIN_PARTICIPANTS) {
-      await channel
-        .send(
-          `🌫️ World boss się ulotnił — za mało chętnych (zgłosiło się ${evt.participants.size}, potrzeba ${MIN_PARTICIPANTS}+).`,
-        )
-        .catch(() => {});
+      await chat.send(
+        channel,
+        `🌫️ World boss się ulotnił — za mało chętnych (zgłosiło się ${evt.participants.size}, potrzeba ${MIN_PARTICIPANTS}+).`,
+      );
       await this.disableAnnounceButton(evt);
       return;
     }
@@ -349,9 +346,7 @@ export class WorldBossService {
     const bossName = boss.name;
 
     if (!hasThreadCreate(channel)) {
-      await channel
-        .send('Nie mogę otworzyć wątku na world boss — kanał nie wspiera wątków.')
-        .catch(() => {});
+      await chat.send(channel, 'Nie mogę otworzyć wątku na world boss — kanał nie wspiera wątków.');
       return;
     }
     const thread = await channel.threads
@@ -362,7 +357,7 @@ export class WorldBossService {
       .catch(() => null);
 
     if (!thread || typeof thread !== 'object' || !('id' in thread) || typeof thread.id !== 'string') {
-      await channel.send('Nie udało się otworzyć wątku world boss.').catch(() => {});
+      await chat.send(channel, 'Nie udało się otworzyć wątku world boss.');
       return;
     }
     const tid = (thread as { id: string }).id;
@@ -397,19 +392,18 @@ export class WorldBossService {
 
     await this.disableAnnounceButton(evt);
 
-    const tt = thread as { send?: (payload: unknown) => Promise<unknown> };
+    const tt = thread as { send?: (payload: unknown) => Promise<unknown>; id?: string };
     if (tt.send) {
-      await tt
-        .send({
-          content: [
-            `🌋 **${boss.name}** (T${tier}) wkracza do walki przeciw ${players.length} graczom!`,
-            `${participants.map((id) => `<@${id}>`).join(' ')}`,
-            `_raid-tier ×${WORLD_BOSS_MULT}, HP skalowane ×${players.length} uczestników._`,
-            `HP bossa: **${bossCombatant.hp}**, dmg bonus: **+${bossCombatant.damageBonus}**.`,
-            'Wybierajcie akcje — runda rozliczy się gdy wszyscy podają.',
-          ].join('\n'),
-        })
-        .catch(() => {});
+      await chat.send(
+        { id: tt.id, send: tt.send },
+        [
+          `🌋 **${boss.name}** (T${tier}) wkracza do walki przeciw ${players.length} graczom!`,
+          `${participants.map((id) => `<@${id}>`).join(' ')}`,
+          `_raid-tier ×${WORLD_BOSS_MULT}, HP skalowane ×${players.length} uczestników._`,
+          `HP bossa: **${bossCombatant.hp}**, dmg bonus: **+${bossCombatant.damageBonus}**.`,
+          'Wybierajcie akcje — runda rozliczy się gdy wszyscy podają.',
+        ].join('\n'),
+      );
     }
     await this.promptHumans(state);
   }
@@ -436,36 +430,28 @@ export class WorldBossService {
   private async handleJoin(interaction: ButtonInteraction): Promise<void> {
     const evt = this.pendingEvent;
     if (!evt) {
-      await interaction
-        .reply({
-          content: 'Rejestracja zamknięta — następny world boss za niedługo.',
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      await chat.reply(interaction, 'Rejestracja zamknięta — następny world boss za niedługo.', {
+        ephemeral: true,
+      });
       return;
     }
     const userId = interaction.user.id;
     if (evt.participants.has(userId)) {
-      await interaction
-        .reply({ content: '✅ Już jesteś zapisany.', flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, '✅ Już jesteś zapisany.', { ephemeral: true });
       return;
     }
     if (evt.participants.size >= MAX_PARTICIPANTS) {
-      await interaction
-        .reply({ content: `Slot pełny (max ${MAX_PARTICIPANTS}).`, flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, `Slot pełny (max ${MAX_PARTICIPANTS}).`, { ephemeral: true });
       return;
     }
     // Upewnij się, że gracz ma profil.
     this.stats.get(userId, interaction.user.globalName ?? interaction.user.username);
     evt.participants.add(userId);
-    await interaction
-      .reply({
-        content: `⚔️ Dołączasz! Aktualnie zapisanych: ${evt.participants.size}/${MAX_PARTICIPANTS}.`,
-        flags: MessageFlags.Ephemeral,
-      })
-      .catch(() => {});
+    await chat.reply(
+      interaction,
+      `⚔️ Dołączasz! Aktualnie zapisanych: ${evt.participants.size}/${MAX_PARTICIPANTS}.`,
+      { ephemeral: true },
+    );
 
     // Auto-start gdy slot pełny.
     if (evt.participants.size >= MAX_PARTICIPANTS) {
@@ -485,8 +471,7 @@ export class WorldBossService {
     for (const [, msgId] of state.promptMessageIds) {
       try {
         const m = await state.thread.messages.fetch(msgId).catch(() => null);
-        if (m)
-          await m.edit({ components: [buildPanelOpenerRow(state.id, true)] }).catch(() => {});
+        if (m) await chat.edit(m, { components: [buildPanelOpenerRow(state.id, true)] });
       } catch {}
     }
     state.promptMessageIds.clear();
@@ -506,7 +491,7 @@ export class WorldBossService {
         syncConsumablesAfterBattle(this.stats, state);
         this.stats.save();
         if (lines.length > 0) {
-          await state.thread.send(lines.join('\n').slice(0, 1900));
+          await chat.send(state.thread, lines.join('\n'));
         }
         await postBattleSummary(
           state.thread,
@@ -547,7 +532,7 @@ export class WorldBossService {
       syncConsumablesAfterBattle(this.stats, state);
       this.stats.save();
       if (lines.length > 0) {
-        await state.thread.send(lines.join('\n').slice(0, 1900));
+        await chat.send(state.thread, lines.join('\n'));
       }
       await postBattleSummary(
         state.thread,
@@ -558,7 +543,8 @@ export class WorldBossService {
       return;
     }
 
-    await state.thread.send(
+    await chat.send(
+      state.thread,
       [...lines, '', this.fmtBoard(state), `⏭ Runda ${state.roundNumber}`].join('\n'),
     );
     await this.promptHumans(state);

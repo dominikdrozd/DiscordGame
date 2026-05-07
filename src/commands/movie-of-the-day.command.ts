@@ -1,6 +1,7 @@
 import type { ICommand, ICommandContext } from '../types/command.types.js';
 import { getMovieOfTheDay } from '../tools.js';
 import { errMsg } from '../utils.js';
+import { chat } from '../managers/chat.manager.js';
 
 export class MovieOfTheDayCommand implements ICommand {
   readonly name = 'film_dnia';
@@ -25,15 +26,15 @@ export class MovieOfTheDayCommand implements ICommand {
     try {
       const movie = await getMovieOfTheDay(this.tmdbApiKey);
       if ('error' in movie) {
-        await msg.reply(`Błąd TMDB: ${movie.error}`);
+        await chat.replyToMessage(msg, `Błąd TMDB: ${movie.error}`);
         await msg.react('❌').catch(() => {});
         return;
       }
-      await msg.reply(`🎬 **Film na dzisiaj (TMDB trending):**\n${movie.formatted}`);
+      await chat.replyToMessage(msg, `🎬 **Film na dzisiaj (TMDB trending):**\n${movie.formatted}`);
       await msg.react('✅').catch(() => {});
     } catch (err) {
       console.error(err);
-      await msg.reply(`Błąd: ${errMsg(err)}`).catch(() => {});
+      await chat.replyToMessage(msg, `Błąd: ${errMsg(err)}`);
       await msg.react('❌').catch(() => {});
     }
   }

@@ -1,5 +1,4 @@
 import {
-  MessageFlags,
   SlashCommandBuilder,
   type AutocompleteInteraction,
   type ButtonInteraction,
@@ -11,6 +10,7 @@ import { getCity, listCities } from '../cities/index.js';
 import { findNpcCity, getNpc } from '../npcs/index.js';
 import { displayName } from '../../../utils.js';
 import { BaseCommand } from './base.command.js';
+import { chat } from '../../../managers/chat.manager.js';
 
 /**
  * Cienki access-point do rozmów z NPC. Cała logika dialogu w `DialogService`.
@@ -53,7 +53,7 @@ export class TalkCommand extends BaseCommand implements ISlashCommand {
     const args = prompt.split(/\s+/).filter(Boolean);
 
     if (args.length === 0) {
-      await msg.reply(this.renderList());
+      await chat.replyToMessage(msg, this.renderList());
       return;
     }
 
@@ -71,19 +71,20 @@ export class TalkCommand extends BaseCommand implements ISlashCommand {
     if (cityId) {
       const city = getCity(cityId);
       if (!city) {
-        await msg.reply(`Nie ma miasta \`${cityId}\`. Wpisz \`.city\` żeby zobaczyć listę.`);
+        await chat.replyToMessage(msg, `Nie ma miasta \`${cityId}\`. Wpisz \`.city\` żeby zobaczyć listę.`);
         return;
       }
       const npc = city.findNpc(npcId);
       if (!npc) {
-        await msg.reply(
+        await chat.replyToMessage(
+          msg,
           `W **${city.name}** nie ma NPC \`${npcId}\`. Wpisz \`.talk\` żeby zobaczyć kto gdzie jest.`,
         );
         return;
       }
     } else {
       if (!getNpc(npcId)) {
-        await msg.reply(`Nie znam NPC \`${npcId}\`. Wpisz \`.talk\` żeby zobaczyć listę.`);
+        await chat.replyToMessage(msg, `Nie znam NPC \`${npcId}\`. Wpisz \`.talk\` żeby zobaczyć listę.`);
         return;
       }
     }
@@ -109,19 +110,16 @@ export class TalkCommand extends BaseCommand implements ISlashCommand {
   async executeSlash(interaction: ChatInputCommandInteraction): Promise<void> {
     const sub = interaction.options.getSubcommand();
     if (sub === 'list') {
-      await interaction
-        .reply({ content: this.renderList(), flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, this.renderList(), { ephemeral: true });
       return;
     }
     const npcId = interaction.options.getString('npc', true);
     if (!getNpc(npcId)) {
-      await interaction
-        .reply({
-          content: `Nie znam NPC \`${npcId}\`. Wpisz \`/talk list\` żeby zobaczyć listę.`,
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      await chat.reply(
+        interaction,
+        `Nie znam NPC \`${npcId}\`. Wpisz \`/talk list\` żeby zobaczyć listę.`,
+        { ephemeral: true },
+      );
       return;
     }
     await this.dialog.startFromSlash(interaction, npcId);

@@ -1,9 +1,9 @@
 import {
-  MessageFlags,
   type ButtonInteraction,
   type ChatInputCommandInteraction,
 } from 'discord.js';
 import { PlayerStatsService, type PlayerStats } from './player-stats.js';
+import { chat } from '../../../managers/chat.manager.js';
 import {
   SKILLS,
   SUPER_SKILLS,
@@ -120,24 +120,20 @@ export class SpellsService {
     this.browsers.set(userId, state);
     const list = this.spellsForTab(state);
     if (list.length === 0) {
-      await interaction
-        .reply({
-          content: 'Najpierw wybierz klasę (`/class pick`) — wtedy zobaczysz dostępne spelle.',
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      await chat.reply(
+        interaction,
+        'Najpierw wybierz klasę (`/class pick`) — wtedy zobaczysz dostępne spelle.',
+        { ephemeral: true },
+      );
       return;
     }
     const player = this.stats.get(userId);
     const skill = list[state.index];
     const canLearn = this.canLearnNow(player, skill);
-    await interaction
-      .reply({
-        content: this.renderSpell(player, skill, state, list.length),
-        components: buildSpellsBrowseRows(userId, list.length, canLearn, state.tab, false),
-        flags: MessageFlags.Ephemeral,
-      })
-      .catch(() => {});
+    await chat.reply(interaction, this.renderSpell(player, skill, state, list.length), {
+      ephemeral: true,
+      components: buildSpellsBrowseRows(userId, list.length, canLearn, state.tab, false),
+    });
   }
 
   async handleInteraction(interaction: ButtonInteraction): Promise<void> {
@@ -146,7 +142,7 @@ export class SpellsService {
     const action = parts[1];
     const userId = parts[2];
     if (interaction.user.id !== userId) {
-      await interaction.reply({ content: 'To nie twój browser.', flags: MessageFlags.Ephemeral }).catch(() => {});
+      await chat.reply(interaction, 'To nie twój browser.', { ephemeral: true });
       return;
     }
     let state = this.browsers.get(userId);
@@ -156,7 +152,7 @@ export class SpellsService {
     }
     if (action === 'close') {
       this.browsers.delete(userId);
-      await interaction.update({ content: 'Browser spelli zamknięty.', components: [] }).catch(() => {});
+      await chat.update(interaction, 'Browser spelli zamknięty.', { components: [] });
       return;
     }
     if (action === 'tab') {

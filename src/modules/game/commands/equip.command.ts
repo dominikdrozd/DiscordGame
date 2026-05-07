@@ -1,5 +1,4 @@
 import {
-  MessageFlags,
   SlashCommandBuilder,
   type AutocompleteInteraction,
   type ChatInputCommandInteraction,
@@ -9,6 +8,7 @@ import { PlayerStatsService, type PlayerStats } from '../services/player-stats.j
 import { fmtInstance } from '../services/items.js';
 import { displayName } from '../../../utils.js';
 import { BaseCommand } from './base.command.js';
+import { chat } from '../../../managers/chat.manager.js';
 
 export class EquipCommand extends BaseCommand implements ISlashCommand {
   readonly name = 'equip';
@@ -35,7 +35,7 @@ export class EquipCommand extends BaseCommand implements ISlashCommand {
   async execute(ctx: ICommandContext): Promise<void> {
     const { msg, prompt } = ctx;
     const player = this.stats.get(msg.author.id, displayName(msg));
-    await msg.reply(this.tryEquip(player, prompt.trim()));
+    await chat.replyToMessage(msg, this.tryEquip(player, prompt.trim()));
   }
 
   async autocomplete(interaction: AutocompleteInteraction): Promise<void> {
@@ -67,9 +67,7 @@ export class EquipCommand extends BaseCommand implements ISlashCommand {
       interaction.user.globalName || interaction.user.username,
     );
     const uid = interaction.options.getString('uid', true);
-    await interaction
-      .reply({ content: this.tryEquip(player, uid), flags: MessageFlags.Ephemeral })
-      .catch(() => {});
+    await chat.reply(interaction, this.tryEquip(player, uid), { ephemeral: true });
   }
 
   private tryEquip(player: PlayerStats, uid: string): string {
