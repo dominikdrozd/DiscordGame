@@ -176,6 +176,71 @@ describe('migrateLegacyJsonIfNeeded', () => {
     expect(await env.repos.player.count()).toBe(0);
   });
 
+  it('zachowuje WSZYSTKIE pola itemu (stats, primary, upgrades, gems, identified, itemLevel, socketable)', async () => {
+    const fullPlayer = samplePlayer('alice');
+    fullPlayer.inventory.items = [
+      {
+        uid: 'epic-sword-1',
+        baseId: 'sword_diamond',
+        rarity: 'epic',
+        name: 'Epicki Diamentowy Miecz',
+        stats: { attack: 12, defense: 0, hp: 5, crit: 3, speed: 1 },
+        slot: 'weapon',
+        upgrades: [
+          { attack: 2, hp: 1 },
+          { attack: 1, crit: 1 },
+        ],
+        primary: { str: 4, agi: 1 },
+        identified: true,
+        itemLevel: 14,
+        socketable: true,
+        gemSlots: 3,
+        gems: ['gem_ruby_medium', null, 'gem_emerald_small'],
+      } as LegacyItem,
+    ];
+    const dir = path.join(tmpRoot, 'players');
+    fs.mkdirSync(dir);
+    writeFileSync(path.join(dir, 'alice.json'), JSON.stringify(fullPlayer));
+
+    await migrateLegacyJsonIfNeeded(env.repos, tmpRoot);
+
+    const items = await env.repos.item.findByUserId('alice');
+    expect(items).toHaveLength(1);
+    const it = items[0];
+    expect(it._id).toBe('epic-sword-1');
+    expect(it.userId).toBe('alice');
+    expect(it.baseId).toBe('sword_diamond');
+    expect(it.rarity).toBe('epic');
+    expect(it.name).toBe('Epicki Diamentowy Miecz');
+    expect(it.stats).toEqual({ attack: 12, defense: 0, hp: 5, crit: 3, speed: 1 });
+    expect(it.slot).toBe('weapon');
+    expect(it.upgrades).toEqual([
+      { attack: 2, hp: 1 },
+      { attack: 1, crit: 1 },
+    ]);
+    expect(it.primary).toEqual({ str: 4, agi: 1 });
+    expect(it.identified).toBe(true);
+    expect(it.itemLevel).toBe(14);
+    expect(it.socketable).toBe(true);
+    expect(it.gemSlots).toBe(3);
+    expect(it.gems).toEqual(['gem_ruby_medium', null, 'gem_emerald_small']);
+  });
+
+  it('zachowuje pole `equipped` na graczu (referencje uid przeżywają)', async () => {
+    const player = samplePlayer('alice', [{ uid: 'sword-uid', baseId: 'sword_iron' }]);
+    player.equipped = { weapon: 'sword-uid' };
+    const dir = path.join(tmpRoot, 'players');
+    fs.mkdirSync(dir);
+    writeFileSync(path.join(dir, 'alice.json'), JSON.stringify(player));
+
+    await migrateLegacyJsonIfNeeded(env.repos, tmpRoot);
+
+    const found = await env.repos.player.findAll();
+    expect(found[0].equipped.weapon).toBe('sword-uid');
+    const items = await env.repos.item.findByUserId('alice');
+    expect(items[0]._id).toBe('sword-uid');
+  });
+
   it('throws on duplicate item uids across players', async () => {
     fs.mkdirSync(path.join(tmpRoot, 'players'));
     writeFileSync(
