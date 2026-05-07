@@ -46,10 +46,12 @@ interface ReplyableMessage {
 export interface ReplyOpts {
   ephemeral?: boolean;
   components?: InteractionReplyOptions['components'];
+  allowedMentions?: InteractionReplyOptions['allowedMentions'];
 }
 
 export interface SendOpts {
   components?: MessageCreateOptions['components'];
+  allowedMentions?: MessageCreateOptions['allowedMentions'];
 }
 
 export interface UpdateOpts {
@@ -191,6 +193,7 @@ class ChatManager {
   ): Promise<TMsg | null> {
     const payload: MessageCreateOptions = { content: this.clip(content) };
     if (opts.components) payload.components = opts.components;
+    if (opts.allowedMentions) payload.allowedMentions = opts.allowedMentions;
 
     const channelId = target.id ?? '__no_id__';
     const prev = this.channelQueues.get(channelId) ?? Promise.resolve();
@@ -230,10 +233,14 @@ class ChatManager {
     opts: SendOpts = {},
   ): Promise<void> {
     const clipped = this.clip(content);
-    const payload: MessageCreateOptions | string = opts.components
-      ? { content: clipped, components: opts.components }
-      : clipped;
-    await this.withRetry(() => msg.reply(payload));
+    if (opts.components || opts.allowedMentions) {
+      const payload: MessageCreateOptions = { content: clipped };
+      if (opts.components) payload.components = opts.components;
+      if (opts.allowedMentions) payload.allowedMentions = opts.allowedMentions;
+      await this.withRetry(() => msg.reply(payload));
+      return;
+    }
+    await this.withRetry(() => msg.reply(clipped));
   }
 
   /** Defer interaction reply — używać gdy operacja > 3s (Discord interaction TTL). */

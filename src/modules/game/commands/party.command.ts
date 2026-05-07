@@ -2,17 +2,18 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  MessageFlags,
   SlashCommandBuilder,
   type ButtonInteraction,
   type ChatInputCommandInteraction,
   type Client,
+  type MessageCreateOptions,
 } from 'discord.js';
 import type { ICommandContext, ISlashCommand } from '../../../types/command.types.js';
 import { PartyService, MAX_PARTY, type Party } from '../services/party.js';
 import { displayName } from '../../../utils.js';
 import { hasSendable } from '../engine/discord-helpers.js';
 import { BaseCommand } from './base.command.js';
+import { chat } from '../../../managers/chat.manager.js';
 
 export class PartyCommand extends BaseCommand implements ISlashCommand {
   readonly name = 'party';
@@ -77,11 +78,15 @@ export class PartyCommand extends BaseCommand implements ISlashCommand {
     if (!sub) {
       const party = this.party.getByMember(msg.author.id);
       if (!party) {
-        await msg.reply('Nie jesteś w party. Użyj `.party create` lub poczekaj na zaproszenie.');
+        await chat.replyToMessage(
+          msg,
+          'Nie jesteś w party. Użyj `.party create` lub poczekaj na zaproszenie.',
+        );
         return;
       }
       const lead = party.leaderId === msg.author.id ? ' (Ty — lider)' : '';
-      await msg.reply(
+      await chat.replyToMessage(
+        msg,
         [
           `🎯 **Party** \`${party.id}\`${lead}`,
           `Lider: <@${party.leaderId}>`,
@@ -98,11 +103,12 @@ export class PartyCommand extends BaseCommand implements ISlashCommand {
 
     if (sub === 'create') {
       if (this.party.getByMember(msg.author.id)) {
-        await msg.reply('Już jesteś w party. Użyj `.party leave` najpierw.');
+        await chat.replyToMessage(msg, 'Już jesteś w party. Użyj `.party leave` najpierw.');
         return;
       }
       const party = this.party.create(msg.author.id);
-      await msg.reply(
+      await chat.replyToMessage(
+        msg,
         `🎯 Party \`${party.id}\` założone — jesteś liderem. Zapraszaj przez \`.party invite @user\`.`,
       );
       return;
@@ -111,41 +117,43 @@ export class PartyCommand extends BaseCommand implements ISlashCommand {
     if (sub === 'invite') {
       const target = msg.mentions?.users?.first();
       if (!target) {
-        await msg.reply('Użycie: `.party invite @user`.');
+        await chat.replyToMessage(msg, 'Użycie: `.party invite @user`.');
         return;
       }
       if (target.bot) {
-        await msg.reply('Bota nie zapraszaj, sam się tu wpadnie.');
+        await chat.replyToMessage(msg, 'Bota nie zapraszaj, sam się tu wpadnie.');
         return;
       }
       const myParty = this.party.getByMember(msg.author.id);
       if (!myParty) {
-        await msg.reply('Najpierw załóż party przez `.party create`.');
+        await chat.replyToMessage(msg, 'Najpierw załóż party przez `.party create`.');
         return;
       }
       const result = this.party.invite(myParty.id, msg.author.id, target.id);
       if (!result.ok) {
-        await msg.reply(result.reason ?? 'Nie udało się zaprosić.');
+        await chat.replyToMessage(msg, result.reason ?? 'Nie udało się zaprosić.');
         return;
       }
-      try {
-        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-          new ButtonBuilder()
-            .setCustomId(`party:${myParty.id}:accept`)
-            .setLabel('✅ Akceptuj')
-            .setStyle(ButtonStyle.Success),
-          new ButtonBuilder()
-            .setCustomId(`party:${myParty.id}:decline`)
-            .setLabel('❌ Odrzuć')
-            .setStyle(ButtonStyle.Danger),
-        );
-        await target.send({
-          content: `🎯 **${displayName(msg)}** zaprasza Cię do party \`${myParty.id}\`.`,
-          components: [row],
-        });
-        await msg.reply(`Wysłano zaproszenie do <@${target.id}>.`);
-      } catch {
-        await msg.reply(
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`party:${myParty.id}:accept`)
+          .setLabel('✅ Akceptuj')
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId(`party:${myParty.id}:decline`)
+          .setLabel('❌ Odrzuć')
+          .setStyle(ButtonStyle.Danger),
+      );
+      const dm = await chat.send(
+        target,
+        `🎯 **${displayName(msg)}** zaprasza Cię do party \`${myParty.id}\`.`,
+        { components: [row] },
+      );
+      if (dm) {
+        await chat.replyToMessage(msg, `Wysłano zaproszenie do <@${target.id}>.`);
+      } else {
+        await chat.replyToMessage(
+          msg,
           `Zaproszenie zarejestrowane, ale DM zablokowany. <@${target.id}> niech użyje \`.party accept ${myParty.id}\`.`,
         );
       }
@@ -158,7 +166,10 @@ export class PartyCommand extends BaseCommand implements ISlashCommand {
       if (!partyId) {
         const inv = this.party.getByPendingInvite(msg.author.id);
         if (!inv) {
-          await msg.reply('Brak otwartych zaproszeń. Użycie: `.party accept <partyId>`.');
+          await chat.replyToMessage(
+            msg,
+            'Brak otwartych zaproszeń. Użycie: `.party accept <partyId>`.',
+          );
           return;
         }
         const result = this.party.accept(inv.id, msg.author.id);
@@ -174,21 +185,22 @@ export class PartyCommand extends BaseCommand implements ISlashCommand {
       const partyId = args[1];
       const inv = partyId ? this.party.get(partyId) : this.party.getByPendingInvite(msg.author.id);
       if (!inv) {
-        await msg.reply('Brak takiego zaproszenia.');
+        await chat.replyToMessage(msg, 'Brak takiego zaproszenia.');
         return;
       }
       this.party.decline(inv.id, msg.author.id);
-      await msg.reply(`Odrzucono zaproszenie do \`${inv.id}\`.`);
+      await chat.replyToMessage(msg, `Odrzucono zaproszenie do \`${inv.id}\`.`);
       return;
     }
 
     if (sub === 'leave') {
       const result = this.party.leave(msg.author.id);
       if (!result.ok) {
-        await msg.reply(result.reason ?? 'Nie udało się wyjść.');
+        await chat.replyToMessage(msg, result.reason ?? 'Nie udało się wyjść.');
         return;
       }
-      await msg.reply(
+      await chat.replyToMessage(
+        msg,
         result.partyDisbanded ? 'Wyszedłeś — party rozwiązane.' : 'Wyszedłeś z party.',
       );
       return;
@@ -197,39 +209,40 @@ export class PartyCommand extends BaseCommand implements ISlashCommand {
     if (sub === 'kick') {
       const target = msg.mentions?.users?.first();
       if (!target) {
-        await msg.reply('Użycie: `.party kick @user`.');
+        await chat.replyToMessage(msg, 'Użycie: `.party kick @user`.');
         return;
       }
       const myParty = this.party.getByMember(msg.author.id);
       if (!myParty) {
-        await msg.reply('Nie jesteś w party.');
+        await chat.replyToMessage(msg, 'Nie jesteś w party.');
         return;
       }
       const result = this.party.kick(myParty.id, msg.author.id, target.id);
       if (!result.ok) {
-        await msg.reply(result.reason ?? 'Nie udało się wyrzucić.');
+        await chat.replyToMessage(msg, result.reason ?? 'Nie udało się wyrzucić.');
         return;
       }
-      await msg.reply(`Wyrzucono <@${target.id}>.`);
+      await chat.replyToMessage(msg, `Wyrzucono <@${target.id}>.`);
       return;
     }
 
     if (sub === 'disband') {
       const myParty = this.party.getByMember(msg.author.id);
       if (!myParty) {
-        await msg.reply('Nie jesteś w party.');
+        await chat.replyToMessage(msg, 'Nie jesteś w party.');
         return;
       }
       const result = this.party.disband(myParty.id, msg.author.id);
       if (!result.ok) {
-        await msg.reply(result.reason ?? 'Nie udało się rozwiązać.');
+        await chat.replyToMessage(msg, result.reason ?? 'Nie udało się rozwiązać.');
         return;
       }
-      await msg.reply('Party rozwiązane.');
+      await chat.replyToMessage(msg, 'Party rozwiązane.');
       return;
     }
 
-    await msg.reply(
+    await chat.replyToMessage(
+      msg,
       'Użycie: `.party` / `.party create` / `.party invite @user` / `.party accept` / `.party decline` / `.party leave` / `.party kick @user` / `.party disband`.',
     );
   }
@@ -254,23 +267,24 @@ export class PartyCommand extends BaseCommand implements ISlashCommand {
         await this.replyEphemeral(interaction, result.message);
         return;
       }
-      try {
-        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-          new ButtonBuilder()
-            .setCustomId(`party:${result.partyId}:accept`)
-            .setLabel('✅ Akceptuj')
-            .setStyle(ButtonStyle.Success),
-          new ButtonBuilder()
-            .setCustomId(`party:${result.partyId}:decline`)
-            .setLabel('❌ Odrzuć')
-            .setStyle(ButtonStyle.Danger),
-        );
-        await target.send({
-          content: `🎯 **${userName}** zaprasza Cię do party \`${result.partyId}\`.`,
-          components: [row],
-        });
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`party:${result.partyId}:accept`)
+          .setLabel('✅ Akceptuj')
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId(`party:${result.partyId}:decline`)
+          .setLabel('❌ Odrzuć')
+          .setStyle(ButtonStyle.Danger),
+      );
+      const dm = await chat.send(
+        target,
+        `🎯 **${userName}** zaprasza Cię do party \`${result.partyId}\`.`,
+        { components: [row] },
+      );
+      if (dm) {
         await this.replyEphemeral(interaction, `Wysłano zaproszenie do <@${target.id}>.`);
-      } catch {
+      } else {
         await this.replyEphemeral(
           interaction,
           `Zaproszenie zarejestrowane, ale DM zablokowany. <@${target.id}> niech użyje \`/party accept party_id:${result.partyId}\`.`,
@@ -310,7 +324,7 @@ export class PartyCommand extends BaseCommand implements ISlashCommand {
     interaction: ChatInputCommandInteraction,
     content: string,
   ): Promise<void> {
-    await interaction.reply({ content, flags: MessageFlags.Ephemeral }).catch(() => {});
+    await chat.reply(interaction, content, { ephemeral: true });
   }
 
   private renderStatus(userId: string): string {
@@ -408,17 +422,14 @@ export class PartyCommand extends BaseCommand implements ISlashCommand {
     if (action === 'accept') {
       const result = this.party.accept(partyId, interaction.user.id);
       if (!result.ok) {
-        await interaction
-          .reply({ content: result.reason ?? 'Nie udało się dołączyć.', flags: MessageFlags.Ephemeral })
-          .catch(() => {});
+        await chat.reply(interaction, result.reason ?? 'Nie udało się dołączyć.', {
+          ephemeral: true,
+        });
         return;
       }
-      await interaction
-        .update({
-          content: `✅ Dołączyłeś do party \`${partyId}\`.`,
-          components: [],
-        })
-        .catch(() => {});
+      await chat.update(interaction, `✅ Dołączyłeś do party \`${partyId}\`.`, {
+        components: [],
+      });
       if (result.party) {
         const joinerName = interaction.user.globalName ?? interaction.user.username;
         await this.notifyAcceptInChannel(interaction.client, result.party, joinerName);
@@ -427,23 +438,27 @@ export class PartyCommand extends BaseCommand implements ISlashCommand {
     }
     if (action === 'decline') {
       this.party.decline(partyId, interaction.user.id);
-      await interaction
-        .update({ content: `❌ Odrzucono zaproszenie do \`${partyId}\`.`, components: [] })
-        .catch(() => {});
+      await chat.update(interaction, `❌ Odrzucono zaproszenie do \`${partyId}\`.`, {
+        components: [],
+      });
       return;
     }
   }
 
   private async replyAccept(
-    msg: { reply: (content: string) => Promise<unknown>; client: Client; author: { id: string; username: string; globalName?: string | null } },
+    msg: {
+      reply: (payload: string | MessageCreateOptions) => Promise<unknown>;
+      client: Client;
+      author: { id: string; username: string; globalName?: string | null };
+    },
     result: { ok: boolean; reason?: string; party?: Party },
     joinerName: string,
   ): Promise<void> {
     if (!result.ok) {
-      await msg.reply(result.reason ?? 'Nie udało się dołączyć.');
+      await chat.replyToMessage(msg, result.reason ?? 'Nie udało się dołączyć.');
       return;
     }
-    await msg.reply(`✅ Dołączyłeś do party \`${result.party!.id}\`.`);
+    await chat.replyToMessage(msg, `✅ Dołączyłeś do party \`${result.party!.id}\`.`);
     await this.notifyAcceptInChannel(msg.client, result.party!, joinerName);
   }
 
@@ -457,11 +472,10 @@ export class PartyCommand extends BaseCommand implements ISlashCommand {
     const channel = await client.channels.fetch(channelId).catch(() => null);
     if (!hasSendable(channel)) return;
     const mentions = party.members.map((id) => `<@${id}>`).join(' ');
-    await channel
-      .send({
-        content: `🎯 **${joinerName}** dołączył do party \`${party.id}\` — ${mentions} (${party.members.length}/${MAX_PARTY})`,
-        allowedMentions: { users: party.members },
-      })
-      .catch(() => {});
+    await chat.send(
+      channel,
+      `🎯 **${joinerName}** dołączył do party \`${party.id}\` — ${mentions} (${party.members.length}/${MAX_PARTY})`,
+      { allowedMentions: { users: party.members } },
+    );
   }
 }
