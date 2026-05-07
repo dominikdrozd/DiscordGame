@@ -106,36 +106,43 @@ describe('ChatManager', () => {
   });
 
   describe('send', () => {
-    test('wywołuje target.send z content', async () => {
+    test('bez extras → plain string', async () => {
       const send = jest.fn().mockResolvedValue({ id: 'msg-1' });
       const target = { id: 'ch-1', send };
       await chat.send(target, 'hello channel');
-      expect(send).toHaveBeenCalledWith({ content: 'hello channel' });
+      expect(send).toHaveBeenCalledWith('hello channel');
+    });
+
+    test('z components → object payload', async () => {
+      const send = jest.fn().mockResolvedValue({ id: 'msg-c' });
+      const target = { id: 'ch-c', send };
+      await chat.send(target, 'with btns', { components: [] });
+      expect(send).toHaveBeenCalledWith({ content: 'with btns', components: [] });
     });
 
     test('content > 1900 → slice', async () => {
       const send = jest.fn().mockResolvedValue({ id: 'msg-1' });
       const target = { id: 'ch-clip', send };
       await chat.send(target, 'B'.repeat(2500));
-      const call = send.mock.calls[0][0] as { content: string };
-      expect(call.content.length).toBeLessThanOrEqual(1900);
+      const call = send.mock.calls[0][0] as string;
+      expect(call.length).toBeLessThanOrEqual(1900);
     });
 
     test('per-channel queue: drugi send do tego samego id czeka na pierwszy', async () => {
       const order: string[] = [];
       let firstResolve: (v: unknown) => void = () => {};
-      const send = jest.fn().mockImplementation((p: { content: string }) => {
-        order.push(`start:${p.content}`);
-        if (p.content === 'first') {
+      const send = jest.fn().mockImplementation((p: string) => {
+        order.push(`start:${p}`);
+        if (p === 'first') {
           return new Promise((resolve) => {
             firstResolve = (v) => {
-              order.push(`done:${p.content}`);
+              order.push(`done:${p}`);
               resolve(v);
             };
           });
         }
-        order.push(`done:${p.content}`);
-        return Promise.resolve({ id: p.content });
+        order.push(`done:${p}`);
+        return Promise.resolve({ id: p });
       });
       const target = { id: 'ch-queue', send };
 

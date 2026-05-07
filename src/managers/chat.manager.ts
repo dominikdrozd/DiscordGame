@@ -191,9 +191,16 @@ class ChatManager {
     content: string,
     opts: SendOpts = {},
   ): Promise<TMsg | null> {
-    const payload: MessageCreateOptions = { content: this.clip(content) };
-    if (opts.components) payload.components = opts.components;
-    if (opts.allowedMentions) payload.allowedMentions = opts.allowedMentions;
+    const clipped = this.clip(content);
+    let payload: MessageCreateOptions | string;
+    if (opts.components || opts.allowedMentions) {
+      const obj: MessageCreateOptions = { content: clipped };
+      if (opts.components) obj.components = opts.components;
+      if (opts.allowedMentions) obj.allowedMentions = opts.allowedMentions;
+      payload = obj;
+    } else {
+      payload = clipped;
+    }
 
     const channelId = target.id ?? '__no_id__';
     const prev = this.channelQueues.get(channelId) ?? Promise.resolve();

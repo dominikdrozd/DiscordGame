@@ -1,4 +1,4 @@
-import { MessageFlags, type ButtonInteraction, type Client } from 'discord.js';
+import { type ButtonInteraction, type Client } from 'discord.js';
 import type { BattleCombatant, BattleState } from './battle-state.js';
 import { findCombatant, aliveAllies, aliveEnemies } from './battle-state.js';
 import { consumablesUsed } from './player-combatant.js';
@@ -14,19 +14,20 @@ import {
   buildTargetRow,
 } from '../ui/battle-buttons.js';
 import { getSkill, isOnCooldown } from '../skills/index.js';
+import { chat } from '../../../managers/chat.manager.js';
 
 /**
  * Acknowledge interakcji która trafia w nieaktualny stan (walka skończona / nieznany battleId).
  * Bez tego Discord pokazuje "This interaction failed".
  */
 export async function ackStaleInteraction(interaction: ButtonInteraction): Promise<void> {
-  await interaction
-    .reply({ content: 'Walka już się zakończyła lub jest nieaktywna.', flags: MessageFlags.Ephemeral })
-    .catch(() => {});
+  await chat.reply(interaction, 'Walka już się zakończyła lub jest nieaktywna.', {
+    ephemeral: true,
+  });
 }
 
 interface ClosableThread {
-  send(message: string): Promise<unknown>;
+  send(payload: unknown): Promise<unknown>;
   setArchived(state: boolean): Promise<unknown>;
 }
 
@@ -64,13 +65,13 @@ function scheduleThreadDelete(thread: unknown, delayMs: number): void {
 export async function closeBattleThread(thread: unknown, postscript: string): Promise<void> {
   if (!isClosableThread(thread)) return;
   const seconds = Math.round(THREAD_DELETE_DELAY_MS / 1000);
-  await thread.send(`${postscript}\n_Wątek zostanie usunięty za ${seconds}s._`).catch(() => {});
+  await chat.send(thread, `${postscript}\n_Wątek zostanie usunięty za ${seconds}s._`);
   await thread.setArchived(true).catch(() => {});
   scheduleThreadDelete(thread, THREAD_DELETE_DELAY_MS);
 }
 
 interface DeletableThread {
-  send: (message: string) => Promise<unknown>;
+  send: (payload: unknown) => Promise<unknown>;
   delete: (reason?: string) => Promise<unknown>;
 }
 
@@ -92,17 +93,17 @@ function isDeletableThread(t: unknown): t is DeletableThread {
 export async function deleteThreadNow(thread: unknown, postscript: string): Promise<void> {
   if (!isDeletableThread(thread)) {
     if (isClosableThread(thread)) {
-      await thread.send(postscript).catch(() => {});
+      await chat.send(thread, postscript);
       await thread.setArchived(true).catch(() => {});
     }
     return;
   }
-  await thread.send(postscript).catch(() => {});
+  await chat.send(thread, postscript);
   await thread.delete('User closed thread').catch(() => {});
 }
 
 interface SendableChannel {
-  send: (payload: { content: string } | string) => Promise<unknown>;
+  send: (payload: unknown) => Promise<unknown>;
 }
 
 function isSendableChannel(c: unknown): c is SendableChannel {
@@ -127,11 +128,11 @@ function getThreadParent(thread: unknown): SendableChannel | undefined {
 export async function postBattleSummary(thread: unknown, content: string): Promise<void> {
   const parent = getThreadParent(thread);
   if (parent) {
-    await parent.send(content).catch(() => {});
+    await chat.send(parent, content);
     return;
   }
   if (isClosableThread(thread)) {
-    await thread.send(content).catch(() => {});
+    await chat.send(thread, content);
   }
 }
 
@@ -144,14 +145,10 @@ export async function openItemPicker(
   const consumables = combatant.consumables ?? {};
   const row = buildItemPickerRow(battleId, combatantId, consumables, combatant.potionsLeft);
   if (!row) {
-    await interaction
-      .reply({ content: 'Brak itemów do użycia w combat.', flags: MessageFlags.Ephemeral })
-      .catch(() => {});
+    await chat.reply(interaction, 'Brak itemów do użycia w combat.', { ephemeral: true });
     return;
   }
-  await interaction
-    .reply({ content: 'Wybierz item:', flags: MessageFlags.Ephemeral, components: [row] })
-    .catch(() => {});
+  await chat.reply(interaction, 'Wybierz item:', { ephemeral: true, components: [row] });
 }
 
 export async function recordItemPick(
@@ -160,26 +157,22 @@ export async function recordItemPick(
 ): Promise<boolean> {
   const [, battleId, combatantId, itemId] = interaction.customId.split(':');
   if (state.id !== battleId) {
-    await interaction
-      .update({ content: 'Ten przycisk dotyczy innej walki.', components: [] })
-      .catch(() => {});
+    await chat.update(interaction, 'Ten przycisk dotyczy innej walki.', { components: [] });
     return false;
   }
   if (interaction.user.id !== combatantId) {
-    await interaction.update({ content: 'To nie twój przycisk.', components: [] }).catch(() => {});
+    await chat.update(interaction, 'To nie twój przycisk.', { components: [] });
     return false;
   }
   if (state.pending.has(combatantId)) {
-    await interaction
-      .update({ content: 'Już wybrałeś akcję — czekamy na pozostałych.', components: [] })
-      .catch(() => {});
+    await chat.update(interaction, 'Już wybrałeś akcję — czekamy na pozostałych.', {
+      components: [],
+    });
     return false;
   }
   const me = findCombatant(state, combatantId);
   if (!me || me.hp <= 0) {
-    await interaction
-      .update({ content: 'Już nie żyjesz w tej walce.', components: [] })
-      .catch(() => {});
+    await chat.update(interaction, 'Już nie żyjesz w tej walce.', { components: [] });
     return false;
   }
 
@@ -188,28 +181,24 @@ export async function recordItemPick(
   if (itemId === 'potion_small') {
     const inv = me.consumables?.potion_small ?? 0;
     if (me.potionsLeft <= 0 && inv <= 0) {
-      await interaction
-        .update({ content: 'Brak mikstur (zero darmowych i zero w plecaku).', components: [] })
-        .catch(() => {});
+      await chat.update(interaction, 'Brak mikstur (zero darmowych i zero w plecaku).', {
+        components: [],
+      });
       return false;
     }
     state.pending.set(combatantId, { kind: 'item', itemId });
-    await interaction
-      .update({ content: 'Wybrałeś: 🧪 **Mikstura**.', components: [] })
-      .catch(() => {});
+    await chat.update(interaction, 'Wybrałeś: 🧪 **Mikstura**.', { components: [] });
     return true;
   }
 
   const have = me.consumables?.[itemId] ?? 0;
   if (have <= 0) {
-    await interaction
-      .update({ content: 'Brak takiego itemu w plecaku.', components: [] })
-      .catch(() => {});
+    await chat.update(interaction, 'Brak takiego itemu w plecaku.', { components: [] });
     return false;
   }
   state.pending.set(combatantId, { kind: 'item', itemId });
   const name = ITEMS[itemId]?.name ?? itemId;
-  await interaction.update({ content: `Wybrałeś: **${name}**.`, components: [] }).catch(() => {});
+  await chat.update(interaction, `Wybrałeś: **${name}**.`, { components: [] });
   return true;
 }
 
@@ -221,14 +210,12 @@ export async function openSkillPicker(
 ): Promise<void> {
   const row = buildSkillPickerRow(battleId, combatantId, combatant);
   if (!row) {
-    await interaction
-      .reply({ content: 'Brak skilli — wybierz klasę przez `.class pick <id>`.', flags: MessageFlags.Ephemeral })
-      .catch(() => {});
+    await chat.reply(interaction, 'Brak skilli — wybierz klasę przez `.class pick <id>`.', {
+      ephemeral: true,
+    });
     return;
   }
-  await interaction
-    .reply({ content: 'Wybierz skill:', flags: MessageFlags.Ephemeral, components: [row] })
-    .catch(() => {});
+  await chat.reply(interaction, 'Wybierz skill:', { ephemeral: true, components: [row] });
 }
 
 export async function handleSkillPick(
@@ -237,35 +224,31 @@ export async function handleSkillPick(
 ): Promise<boolean> {
   const [, battleId, combatantId, skillId] = interaction.customId.split(':');
   if (state.id !== battleId) {
-    await interaction
-      .update({ content: 'Ten przycisk dotyczy innej walki.', components: [] })
-      .catch(() => {});
+    await chat.update(interaction, 'Ten przycisk dotyczy innej walki.', { components: [] });
     return false;
   }
   if (interaction.user.id !== combatantId) {
-    await interaction.update({ content: 'To nie twój przycisk.', components: [] }).catch(() => {});
+    await chat.update(interaction, 'To nie twój przycisk.', { components: [] });
     return false;
   }
   if (state.pending.has(combatantId)) {
-    await interaction
-      .update({ content: 'Już wybrałeś akcję — czekamy na pozostałych.', components: [] })
-      .catch(() => {});
+    await chat.update(interaction, 'Już wybrałeś akcję — czekamy na pozostałych.', {
+      components: [],
+    });
     return false;
   }
   const me = findCombatant(state, combatantId);
   if (!me || me.hp <= 0) {
-    await interaction
-      .update({ content: 'Już nie żyjesz w tej walce.', components: [] })
-      .catch(() => {});
+    await chat.update(interaction, 'Już nie żyjesz w tej walce.', { components: [] });
     return false;
   }
   const skill = getSkill(skillId);
   if (!skill) {
-    await interaction.update({ content: 'Nieznany skill.', components: [] }).catch(() => {});
+    await chat.update(interaction, 'Nieznany skill.', { components: [] });
     return false;
   }
   if (isOnCooldown(me, skillId)) {
-    await interaction.update({ content: 'Skill na cooldownie.', components: [] }).catch(() => {});
+    await chat.update(interaction, 'Skill na cooldownie.', { components: [] });
     return false;
   }
 
@@ -276,31 +259,25 @@ export async function handleSkillPick(
     skill.targeting === 'allAllies'
   ) {
     state.pending.set(combatantId, { kind: 'skill', skillId });
-    await interaction
-      .update({ content: `Wybrano: **${skill.name}**.`, components: [] })
-      .catch(() => {});
+    await chat.update(interaction, `Wybrano: **${skill.name}**.`, { components: [] });
     return true;
   }
 
   // ally / enemy — pokazujemy target picker
   const targets = skill.targeting === 'enemy' ? aliveEnemies(state, me) : aliveAllies(state, me);
   if (targets.length === 0) {
-    await interaction
-      .update({ content: 'Brak żywych celów dla tego skilla.', components: [] })
-      .catch(() => {});
+    await chat.update(interaction, 'Brak żywych celów dla tego skilla.', { components: [] });
     return false;
   }
   if (targets.length === 1) {
     state.pending.set(combatantId, { kind: 'skill', skillId, targetId: targets[0].id });
-    await interaction
-      .update({ content: `Wybrano: **${skill.name}** → **${targets[0].name}**.`, components: [] })
-      .catch(() => {});
+    await chat.update(interaction, `Wybrano: **${skill.name}** → **${targets[0].name}**.`, {
+      components: [],
+    });
     return true;
   }
   const row = buildSkillTargetRow(battleId, combatantId, skillId, targets);
-  await interaction
-    .update({ content: `Cel dla **${skill.name}**:`, components: [row] })
-    .catch(() => {});
+  await chat.update(interaction, `Cel dla **${skill.name}**:`, { components: [row] });
   return false;
 }
 
@@ -313,47 +290,43 @@ export async function handleSkillTarget(
   const [, battleId, combatantId, skillId] = parts;
   const targetId = parts.slice(4).join(':');
   if (state.id !== battleId) {
-    await interaction
-      .update({ content: 'Ten przycisk dotyczy innej walki.', components: [] })
-      .catch(() => {});
+    await chat.update(interaction, 'Ten przycisk dotyczy innej walki.', { components: [] });
     return false;
   }
   if (interaction.user.id !== combatantId) {
-    await interaction.update({ content: 'To nie twój przycisk.', components: [] }).catch(() => {});
+    await chat.update(interaction, 'To nie twój przycisk.', { components: [] });
     return false;
   }
   if (state.pending.has(combatantId)) {
-    await interaction
-      .update({ content: 'Już wybrałeś akcję — czekamy na pozostałych.', components: [] })
-      .catch(() => {});
+    await chat.update(interaction, 'Już wybrałeś akcję — czekamy na pozostałych.', {
+      components: [],
+    });
     return false;
   }
   const me = findCombatant(state, combatantId);
   if (!me || me.hp <= 0) {
-    await interaction
-      .update({ content: 'Już nie żyjesz w tej walce.', components: [] })
-      .catch(() => {});
+    await chat.update(interaction, 'Już nie żyjesz w tej walce.', { components: [] });
     return false;
   }
   const skill = getSkill(skillId);
   if (!skill) {
-    await interaction.update({ content: 'Nieznany skill.', components: [] }).catch(() => {});
+    await chat.update(interaction, 'Nieznany skill.', { components: [] });
     return false;
   }
   const target = findCombatant(state, targetId);
   if (!target || target.hp <= 0) {
-    await interaction.update({ content: 'Cel padł.', components: [] }).catch(() => {});
+    await chat.update(interaction, 'Cel padł.', { components: [] });
     return false;
   }
   state.pending.set(combatantId, { kind: 'skill', skillId, targetId });
-  await interaction
-    .update({ content: `Wybrano: **${skill.name}** → **${target.name}**.`, components: [] })
-    .catch(() => {});
+  await chat.update(interaction, `Wybrano: **${skill.name}** → **${target.name}**.`, {
+    components: [],
+  });
   return true;
 }
 
 interface SendableThread {
-  send: (payload: { content: string; components?: unknown[] } | string) => Promise<{ id: string }>;
+  send: (payload: unknown) => Promise<{ id: string }>;
   messages?: { fetch: (id: string) => Promise<{ edit: (payload: unknown) => Promise<unknown> }> };
 }
 
@@ -377,11 +350,12 @@ export async function promptHumansWithPanel(state: BattleState): Promise<void> {
   const aliveHumans = state.combatants.filter((c) => c.controller === 'human' && c.hp > 0);
   if (aliveHumans.length === 0) return;
   const mentions = aliveHumans.map((c) => `<@${c.id}>`).join(' ');
-  const sent = await state.thread.send({
-    content: `🎮 Runda ${state.roundNumber} — ${mentions}, kliknij **Otwórz panel** żeby wybrać akcję.`,
-    components: [buildPanelOpenerRow(state.id)],
-  });
-  state.promptMessageIds.set('__panel__', sent.id);
+  const sent = await chat.send(
+    state.thread,
+    `🎮 Runda ${state.roundNumber} — ${mentions}, kliknij **Otwórz panel** żeby wybrać akcję.`,
+    { components: [buildPanelOpenerRow(state.id)] },
+  );
+  if (sent) state.promptMessageIds.set('__panel__', sent.id);
 }
 
 /**
@@ -394,31 +368,25 @@ export async function handlePanelOpen(
 ): Promise<void> {
   const me = findCombatant(state, interaction.user.id);
   if (!me || me.controller !== 'human') {
-    await interaction
-      .reply({ content: 'Nie bierzesz udziału w tej walce.', flags: MessageFlags.Ephemeral })
-      .catch(() => {});
+    await chat.reply(interaction, 'Nie bierzesz udziału w tej walce.', { ephemeral: true });
     return;
   }
   if (me.hp <= 0) {
-    await interaction
-      .reply({ content: 'Już nie żyjesz w tej walce.', flags: MessageFlags.Ephemeral })
-      .catch(() => {});
+    await chat.reply(interaction, 'Już nie żyjesz w tej walce.', { ephemeral: true });
     return;
   }
   if (state.pending.has(me.id)) {
-    await interaction
-      .reply({ content: 'Już wybrałeś akcję — czekamy na pozostałych.', flags: MessageFlags.Ephemeral })
-      .catch(() => {});
+    await chat.reply(interaction, 'Już wybrałeś akcję — czekamy na pozostałych.', {
+      ephemeral: true,
+    });
     return;
   }
   const hasSkills = (me.skills ?? []).length > 0;
-  await interaction
-    .reply({
-      content: `🎮 Runda ${state.roundNumber} (${me.hp}/${me.maxHp} HP) — wybierz akcję:`,
-      flags: MessageFlags.Ephemeral,
-      components: [buildActionRow(state.id, me.id, false, hasSkills)],
-    })
-    .catch(() => {});
+  await chat.reply(
+    interaction,
+    `🎮 Runda ${state.roundNumber} (${me.hp}/${me.maxHp} HP) — wybierz akcję:`,
+    { ephemeral: true, components: [buildActionRow(state.id, me.id, false, hasSkills)] },
+  );
 }
 
 /**
@@ -430,7 +398,7 @@ export async function notifyChoiceMade(state: BattleState, combatantId: string):
   if (!isSendableThread(state.thread)) return;
   const c = findCombatant(state, combatantId);
   if (!c) return;
-  await state.thread.send(`✅ **${c.name}** wybrał akcję.`).catch(() => {});
+  await chat.send(state.thread, `✅ **${c.name}** wybrał akcję.`);
 }
 
 export function syncConsumablesAfterBattle(stats: PlayerStatsService, state: BattleState): void {
@@ -546,32 +514,26 @@ export async function handleBattleAction(
 ): Promise<void> {
   const [, battleId, combatantId, kind] = interaction.customId.split(':');
   if (interaction.user.id !== combatantId) {
-    await interaction
-      .reply({
-        content: options.notMineMessage ?? 'To nie twój przycisk.',
-        flags: MessageFlags.Ephemeral,
-      })
-      .catch(() => {});
+    await chat.reply(interaction, options.notMineMessage ?? 'To nie twój przycisk.', {
+      ephemeral: true,
+    });
     return;
   }
   const me = findCombatant(state, combatantId);
   if (!me || me.hp <= 0) {
-    await interaction
-      .reply({
-        content: options.alreadyDeadMessage ?? 'Już nie żyjesz w tej walce.',
-        flags: MessageFlags.Ephemeral,
-      })
-      .catch(() => {});
+    await chat.reply(interaction, options.alreadyDeadMessage ?? 'Już nie żyjesz w tej walce.', {
+      ephemeral: true,
+    });
     return;
   }
   if (state.pending.has(combatantId)) {
-    await interaction.reply({ content: 'Już wybrałeś akcję.', flags: MessageFlags.Ephemeral }).catch(() => {});
+    await chat.reply(interaction, 'Już wybrałeś akcję.', { ephemeral: true });
     return;
   }
 
   if (kind === 'def') {
     state.pending.set(combatantId, { kind: 'defend' });
-    await interaction.reply({ content: 'Wybrałeś: **Obrona**.', flags: MessageFlags.Ephemeral }).catch(() => {});
+    await chat.reply(interaction, 'Wybrałeś: **Obrona**.', { ephemeral: true });
     if (options.onChoiceRecorded) await options.onChoiceRecorded(combatantId);
     return;
   }
@@ -586,28 +548,20 @@ export async function handleBattleAction(
   if (kind === 'atk') {
     const enemies = aliveEnemies(state, me);
     if (enemies.length === 0) {
-      await interaction
-        .reply({ content: 'Brak żywych przeciwników.', flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, 'Brak żywych przeciwników.', { ephemeral: true });
       return;
     }
     if (enemies.length === 1) {
       state.pending.set(combatantId, { kind: 'attack', targetId: enemies[0].id });
-      await interaction
-        .reply({ content: `Atak na **${enemies[0].name}**.`, flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, `Atak na **${enemies[0].name}**.`, { ephemeral: true });
       if (options.onChoiceRecorded) await options.onChoiceRecorded(combatantId);
       return;
     }
     const row = buildTargetRow(battleId, combatantId, 'atk', enemies);
-    await interaction
-      .reply({ content: 'Wybierz cel:', flags: MessageFlags.Ephemeral, components: [row] })
-      .catch(() => {});
+    await chat.reply(interaction, 'Wybierz cel:', { ephemeral: true, components: [row] });
     return;
   }
-  await interaction
-    .reply({ content: `Nieznana akcja \`${kind}\`.`, flags: MessageFlags.Ephemeral })
-    .catch(() => {});
+  await chat.reply(interaction, `Nieznana akcja \`${kind}\`.`, { ephemeral: true });
 }
 
 /**
@@ -624,65 +578,51 @@ export async function handleBattleTarget(
   const [, battleId, combatantId, kind] = parts;
   const targetId = parts.slice(4).join(':');
   if (interaction.user.id !== combatantId) {
-    await interaction
-      .reply({
-        content: options.notMineMessage ?? 'To nie twój wybór celu.',
-        flags: MessageFlags.Ephemeral,
-      })
-      .catch(() => {});
+    await chat.reply(interaction, options.notMineMessage ?? 'To nie twój wybór celu.', {
+      ephemeral: true,
+    });
     return;
   }
   if (state.pending.has(combatantId)) {
-    await interaction
-      .update({ content: 'Już wybrałeś akcję wcześniej.', components: [] })
-      .catch(() => {});
+    await chat.update(interaction, 'Już wybrałeś akcję wcześniej.', { components: [] });
     return;
   }
   if (kind !== 'atk') {
-    await interaction
-      .update({ content: `Nieznany kind \`${kind}\`.`, components: [] })
-      .catch(() => {});
+    await chat.update(interaction, `Nieznany kind \`${kind}\`.`, { components: [] });
     return;
   }
   const me = findCombatant(state, combatantId);
   const target = findCombatant(state, targetId);
   if (target && target.hp > 0) {
     state.pending.set(combatantId, { kind: 'attack', targetId });
-    await interaction
-      .update({ content: `Wybrany: **${target.name}**.`, components: [] })
-      .catch(() => {});
+    await chat.update(interaction, `Wybrany: **${target.name}**.`, { components: [] });
     if (options.onChoiceRecorded) await options.onChoiceRecorded(combatantId);
     return;
   }
   // Cel padł — fallback na live enemy.
   if (!me) {
-    await interaction.update({ content: 'Cel padł.', components: [] }).catch(() => {});
+    await chat.update(interaction, 'Cel padł.', { components: [] });
     return;
   }
   const enemies = aliveEnemies(state, me);
   if (enemies.length === 0) {
     state.pending.set(combatantId, { kind: 'defend' });
-    await interaction
-      .update({ content: 'Cel padł — brak innych wrogów, idziesz w obronę.', components: [] })
-      .catch(() => {});
+    await chat.update(interaction, 'Cel padł — brak innych wrogów, idziesz w obronę.', {
+      components: [],
+    });
     if (options.onChoiceRecorded) await options.onChoiceRecorded(combatantId);
     return;
   }
   if (enemies.length === 1) {
     state.pending.set(combatantId, { kind: 'attack', targetId: enemies[0].id });
-    await interaction
-      .update({
-        content: `Cel padł — atakujesz **${enemies[0].name}**.`,
-        components: [],
-      })
-      .catch(() => {});
+    await chat.update(interaction, `Cel padł — atakujesz **${enemies[0].name}**.`, {
+      components: [],
+    });
     if (options.onChoiceRecorded) await options.onChoiceRecorded(combatantId);
     return;
   }
   const row = buildTargetRow(battleId, combatantId, 'atk', enemies);
-  await interaction
-    .update({ content: 'Cel padł — wybierz innego:', components: [row] })
-    .catch(() => {});
+  await chat.update(interaction, 'Cel padł — wybierz innego:', { components: [row] });
 }
 
 interface RecreateOpts {
