@@ -1,10 +1,9 @@
-import fs from 'node:fs';
 import { DialogService } from '../../src/modules/game/services/dialog.service.js';
 import { PlayerStatsService } from '../../src/modules/game/services/player-stats.js';
 import { QuestService } from '../../src/modules/game/services/quest.service.js';
 import { TalkCommand } from '../../src/modules/game/commands/talk.command.js';
 import { Marek } from '../../src/modules/game/npcs/port-cicada/marek.npc.js';
-import { tmpPlayerFile } from '../helpers/factories.js';
+import { mongoPlayerStats, type MongoStatsTest } from '../helpers/factories.js';
 
 interface FakeUser {
   id: string;
@@ -57,18 +56,18 @@ function lastUpdate(btn: FakeButtonInteraction): FakeUpdate | undefined {
 }
 
 describe('DialogService flow', () => {
-  let file: string;
+  let testCtx: MongoStatsTest;
   let stats: PlayerStatsService;
   let dialog: DialogService;
 
-  beforeEach(() => {
-    file = tmpPlayerFile();
-    stats = new PlayerStatsService(file);
+  beforeEach(async () => {
+    testCtx = await mongoPlayerStats();
+    stats = testCtx.stats;
     dialog = new DialogService(stats, new QuestService(stats));
   });
 
-  afterEach(() => {
-    if (fs.existsSync(file)) fs.rmSync(file, { force: true });
+  afterEach(async () => {
+    await testCtx.cleanup();
   });
 
   test('startFromInteraction renders Marek startNode with option buttons', async () => {
@@ -162,20 +161,20 @@ describe('DialogService flow', () => {
 });
 
 describe('TalkCommand', () => {
-  let file: string;
+  let testCtx: MongoStatsTest;
   let stats: PlayerStatsService;
   let dialog: DialogService;
   let talk: TalkCommand;
 
-  beforeEach(() => {
-    file = tmpPlayerFile();
-    stats = new PlayerStatsService(file);
+  beforeEach(async () => {
+    testCtx = await mongoPlayerStats();
+    stats = testCtx.stats;
     dialog = new DialogService(stats, new QuestService(stats));
     talk = new TalkCommand(dialog);
   });
 
-  afterEach(() => {
-    if (fs.existsSync(file)) fs.rmSync(file, { force: true });
+  afterEach(async () => {
+    await testCtx.cleanup();
   });
 
   test('matches .talk and .talk <args> only', () => {

@@ -4,29 +4,29 @@ import { DungeonService } from '../../src/modules/game/services/dungeon.service.
 import { PlayerStatsService } from '../../src/modules/game/services/player-stats.js';
 import { PartyService } from '../../src/modules/game/services/party.js';
 import { DUNGEONS } from '../../src/modules/game/engine/encounters.js';
-import { tmpPlayerFile } from '../helpers/factories.js';
+import { mongoPlayerStats, type MongoStatsTest } from '../helpers/factories.js';
 
 function tmpPartyFile(): string {
   return path.join(require('node:os').tmpdir(), `parties-${Date.now()}-${Math.random()}.json`);
 }
 
 describe('DungeonService — party gating', () => {
-  let playerFile: string;
   let partyFile: string;
+  let testCtx: MongoStatsTest;
   let stats: PlayerStatsService;
   let party: PartyService;
   let dungeons: DungeonService;
 
-  beforeEach(() => {
-    playerFile = tmpPlayerFile();
+  beforeEach(async () => {
+    testCtx = await mongoPlayerStats();
+    stats = testCtx.stats;
     partyFile = tmpPartyFile();
-    stats = new PlayerStatsService(playerFile);
     party = new PartyService(partyFile);
     dungeons = new DungeonService(stats, party);
   });
 
-  afterEach(() => {
-    if (fs.existsSync(playerFile)) fs.rmSync(playerFile, { force: true });
+  afterEach(async () => {
+    await testCtx.cleanup();
     if (fs.existsSync(partyFile)) fs.rmSync(partyFile, { force: true });
   });
 

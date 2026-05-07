@@ -1,18 +1,38 @@
-import os from 'node:os';
-import path from 'node:path';
-import type { PlayerStats } from '../../src/modules/game/services/player-stats.js';
+import { PlayerStatsService, type PlayerStats } from '../../src/modules/game/services/player-stats.js';
 import type { Combatant } from '../../src/modules/game/engine/combat.js';
 import type {
   BattleCombatant,
   BattleState,
   Controller,
 } from '../../src/modules/game/engine/battle-state.js';
+import { startTestHarness, type TestHarness, type TestEnv } from './mongo-setup.js';
 
-let counter = 0;
+export interface MongoStatsTest {
+  stats: PlayerStatsService;
+  env: TestEnv;
+  harness: TestHarness;
+  cleanup: () => Promise<void>;
+}
 
-export function tmpPlayerFile(): string {
-  counter += 1;
-  return path.join(os.tmpdir(), `players-${Date.now()}-${counter}.json`);
+/**
+ * Spina mongodb-memory-server + PlayerStatsService dla testu. Wywołać
+ * w `beforeEach`/test body. Po teście wywołaj `cleanup()`.
+ */
+export async function mongoPlayerStats(): Promise<MongoStatsTest> {
+  const harness = await startTestHarness();
+  const env = await harness.newEnv();
+  const stats = new PlayerStatsService(env.repos);
+  await stats.load();
+  return {
+    stats,
+    env,
+    harness,
+    cleanup: async () => {
+      await stats.flush();
+      await env.cleanup();
+      await harness.close();
+    },
+  };
 }
 
 export function makePlayer(overrides: Partial<PlayerStats> = {}): PlayerStats {
@@ -25,7 +45,7 @@ export function makePlayer(overrides: Partial<PlayerStats> = {}): PlayerStats {
     wins: 0,
     losses: 0,
     duels: 0,
-    inventory: { resources: {}, items: [] },
+    inventory: { resources: {} },
     equipped: {},
     skills: {
       mining: { level: 1, xp: 0 },
@@ -48,7 +68,6 @@ export function makePlayer(overrides: Partial<PlayerStats> = {}): PlayerStats {
     ...overrides,
     inventory: {
       resources: { ...base.inventory.resources, ...(overrides.inventory?.resources ?? {}) },
-      items: overrides.inventory?.items ?? [...base.inventory.items],
     },
     skills: { ...base.skills, ...(overrides.skills ?? {}) },
     attribute: { ...base.attribute, ...(overrides.attribute ?? {}) },

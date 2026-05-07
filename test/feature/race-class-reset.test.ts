@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import { PlayerStatsService } from '../../src/modules/game/services/player-stats.js';
 import { RACES } from '../../src/modules/game/races/index.js';
 import {
@@ -6,19 +5,19 @@ import {
   findSubclass,
   SUBCLASS2_UNLOCK_LEVEL,
 } from '../../src/modules/game/classes/index.js';
-import { tmpPlayerFile } from '../helpers/factories.js';
+import { mongoPlayerStats, type MongoStatsTest } from '../helpers/factories.js';
 
 describe('race / class / reset feature flow', () => {
-  let file: string;
+  let testCtx: MongoStatsTest;
   let svc: PlayerStatsService;
 
-  beforeEach(() => {
-    file = tmpPlayerFile();
-    svc = new PlayerStatsService(file);
+  beforeEach(async () => {
+    testCtx = await mongoPlayerStats();
+    svc = testCtx.stats;
   });
 
-  afterEach(() => {
-    if (fs.existsSync(file)) fs.rmSync(file, { force: true });
+  afterEach(async () => {
+    await testCtx.cleanup();
   });
 
   test('applyRace adds race primary stats to player.primary', () => {

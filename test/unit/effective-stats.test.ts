@@ -1,19 +1,18 @@
-import fs from 'node:fs';
 import { PlayerStatsService } from '../../src/modules/game/services/player-stats.js';
 import { rollItemInstance } from '../../src/modules/game/services/items.js';
-import { tmpPlayerFile } from '../helpers/factories.js';
+import { mongoPlayerStats, type MongoStatsTest } from '../helpers/factories.js';
 
 describe('PlayerStatsService — effective stats (z ekwipunkiem)', () => {
-  let file: string;
+  let testCtx: MongoStatsTest;
   let stats: PlayerStatsService;
 
-  beforeEach(() => {
-    file = tmpPlayerFile();
-    stats = new PlayerStatsService(file);
+  beforeEach(async () => {
+    testCtx = await mongoPlayerStats();
+    stats = testCtx.stats;
   });
 
-  afterEach(() => {
-    if (fs.existsSync(file)) fs.rmSync(file, { force: true });
+  afterEach(async () => {
+    await testCtx.cleanup();
   });
 
   test('effectiveCritPercent: baza 15% + primary/attribute + ekwipunek', () => {

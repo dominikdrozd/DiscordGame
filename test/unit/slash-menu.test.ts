@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import { MenuCommand } from '../../src/modules/game/commands/menu.command.js';
 import { MenuService } from '../../src/modules/game/services/menu.service.js';
 import { PlayerStatsService } from '../../src/modules/game/services/player-stats.js';
@@ -12,7 +11,7 @@ import { SmithService } from '../../src/modules/game/services/smith.service.js';
 import { QuestService } from '../../src/modules/game/services/quest.service.js';
 import { QuestCommand } from '../../src/modules/game/commands/quest.command.js';
 import { hasSlashCommand } from '../../src/types/command.types.js';
-import { tmpPlayerFile } from '../helpers/factories.js';
+import { mongoPlayerStats, type MongoStatsTest } from '../helpers/factories.js';
 
 interface FakeSlashInteraction {
   isChatInputCommand: () => boolean;
@@ -31,13 +30,13 @@ function makeSlash(commandName: string, userId = 'p1'): FakeSlashInteraction {
 }
 
 describe('MenuCommand /menu slash command', () => {
-  let file: string;
+  let testCtx: MongoStatsTest;
   let stats: PlayerStatsService;
   let menuCmd: MenuCommand;
 
-  beforeEach(() => {
-    file = tmpPlayerFile();
-    stats = new PlayerStatsService(file);
+  beforeEach(async () => {
+    testCtx = await mongoPlayerStats();
+    stats = testCtx.stats;
     const party = new PartyService();
     const quests = new QuestService(stats);
     const exp = new ExpeditionService(stats, party, quests);
@@ -68,8 +67,8 @@ describe('MenuCommand /menu slash command', () => {
     menuCmd = new MenuCommand(menu);
   });
 
-  afterEach(() => {
-    if (fs.existsSync(file)) fs.rmSync(file, { force: true });
+  afterEach(async () => {
+    await testCtx.cleanup();
   });
 
   test('implementuje ISlashCommand z definicją', () => {

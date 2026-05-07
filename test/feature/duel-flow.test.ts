@@ -1,11 +1,11 @@
-import fs from 'node:fs';
 import { resolveBattleRound } from '../../src/modules/game/engine/combat-battle.js';
 import { PlayerStatsService } from '../../src/modules/game/services/player-stats.js';
 import {
   makeBattleCombatant,
   makeBattleState,
   mockRandom,
-  tmpPlayerFile,
+  mongoPlayerStats,
+  type MongoStatsTest,
 } from '../helpers/factories.js';
 
 afterEach(() => {
@@ -13,16 +13,16 @@ afterEach(() => {
 });
 
 describe('duel feature flow', () => {
-  let file: string;
+  let testCtx: MongoStatsTest;
   let stats: PlayerStatsService;
 
-  beforeEach(() => {
-    file = tmpPlayerFile();
-    stats = new PlayerStatsService(file);
+  beforeEach(async () => {
+    testCtx = await mongoPlayerStats();
+    stats = testCtx.stats;
   });
 
-  afterEach(() => {
-    if (fs.existsSync(file)) fs.rmSync(file, { force: true });
+  afterEach(async () => {
+    await testCtx.cleanup();
   });
 
   test('1v1 duel resolves with winner gaining xp via awardWin after fatal round', () => {

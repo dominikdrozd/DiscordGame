@@ -1,9 +1,7 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import { InventoryService } from '../../src/modules/game/services/inventory.service.js';
 import { PlayerStatsService } from '../../src/modules/game/services/player-stats.js';
 import { rollItemInstance } from '../../src/modules/game/services/items.js';
-import { tmpPlayerFile } from '../helpers/factories.js';
+import { mongoPlayerStats, type MongoStatsTest } from '../helpers/factories.js';
 
 interface FakeMessage {
   edit: jest.Mock;
@@ -92,25 +90,22 @@ function makeBtn(customId: string, userId = 'p1'): FakeBtnInteraction {
 }
 
 describe('InventoryService — single-message + text commands', () => {
-  let file: string;
-  let dir: string;
+  let testCtx: MongoStatsTest;
   let stats: PlayerStatsService;
   let service: InventoryService;
   let registerThread: jest.Mock;
   let reply: jest.Mock;
 
-  beforeEach(() => {
-    file = tmpPlayerFile();
-    dir = file.replace(/\.json$/, '');
-    stats = new PlayerStatsService(file);
+  beforeEach(async () => {
+    testCtx = await mongoPlayerStats();
+    stats = testCtx.stats;
     service = new InventoryService(stats);
     registerThread = jest.fn();
     reply = jest.fn().mockResolvedValue({});
   });
 
-  afterEach(() => {
-    if (fs.existsSync(file)) fs.rmSync(file, { force: true });
-    if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
+  afterEach(async () => {
+    await testCtx.cleanup();
   });
 
   test('openInventoryForUser tworzy wątek + jedno listing message + close button', async () => {
@@ -282,7 +277,7 @@ describe('InventoryService — single-message + text commands', () => {
       forgetThread: jest.fn(),
     });
 
-    expect(player.inventory.items.find((it) => it.uid === sword.uid)).toBeUndefined();
+    expect(stats.findItem(player, sword.uid)).toBeUndefined();
     expect(player.gold).toBe(initialGold + 15);
     expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('Sprzedano'));
   });
@@ -313,7 +308,7 @@ describe('InventoryService — single-message + text commands', () => {
       forgetThread: jest.fn(),
     });
 
-    expect(player.inventory.items.find((it) => it.uid === sword.uid)).toBeDefined();
+    expect(stats.findItem(player, sword.uid)).toBeDefined();
     expect(player.gold).toBe(initialGold);
     expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('Pominięte'));
   });

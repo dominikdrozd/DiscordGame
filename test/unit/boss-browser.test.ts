@@ -1,8 +1,7 @@
-import fs from 'node:fs';
 import { BossService } from '../../src/modules/game/services/boss.service.js';
 import { PlayerStatsService } from '../../src/modules/game/services/player-stats.js';
 import { buildBossBrowseRows } from '../../src/modules/game/ui/boss-buttons.js';
-import { tmpPlayerFile } from '../helpers/factories.js';
+import { mongoPlayerStats, type MongoStatsTest } from '../helpers/factories.js';
 
 interface FakeBtn {
   isButton: () => boolean;
@@ -104,18 +103,18 @@ describe('Boss browser UI', () => {
 });
 
 describe('BossService.openFromInteraction', () => {
-  let file: string;
+  let testCtx: MongoStatsTest;
   let stats: PlayerStatsService;
   let service: BossService;
 
-  beforeEach(() => {
-    file = tmpPlayerFile();
-    stats = new PlayerStatsService(file);
+  beforeEach(async () => {
+    testCtx = await mongoPlayerStats();
+    stats = testCtx.stats;
     service = new BossService(stats);
   });
 
-  afterEach(() => {
-    if (fs.existsSync(file)) fs.rmSync(file, { force: true });
+  afterEach(async () => {
+    await testCtx.cleanup();
   });
 
   test('renderuje pierwszego bossa (T1) z opisem + dropami + buttonami', async () => {

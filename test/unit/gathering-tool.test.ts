@@ -1,22 +1,21 @@
-import fs from 'node:fs';
 import { PlayerStatsService } from '../../src/modules/game/services/player-stats.js';
 import { MineCommand } from '../../src/modules/game/commands/mine.command.js';
 import { FishCommand } from '../../src/modules/game/commands/fish.command.js';
 import { ChopCommand } from '../../src/modules/game/commands/chop.command.js';
 import { rollItemInstance } from '../../src/modules/game/services/items.js';
-import { tmpPlayerFile, mockRandom } from '../helpers/factories.js';
+import { mongoPlayerStats, mockRandom, type MongoStatsTest } from '../helpers/factories.js';
 
 describe('Gathering: tool w plecaku wystarcza (bez equip)', () => {
-  let file: string;
+  let testCtx: MongoStatsTest;
   let stats: PlayerStatsService;
 
-  beforeEach(() => {
-    file = tmpPlayerFile();
-    stats = new PlayerStatsService(file);
+  beforeEach(async () => {
+    testCtx = await mongoPlayerStats();
+    stats = testCtx.stats;
   });
 
-  afterEach(() => {
-    if (fs.existsSync(file)) fs.rmSync(file, { force: true });
+  afterEach(async () => {
+    await testCtx.cleanup();
     jest.restoreAllMocks();
   });
 

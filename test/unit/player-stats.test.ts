@@ -1,22 +1,17 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import { PlayerStatsService } from '../../src/modules/game/services/player-stats.js';
-import { tmpPlayerFile } from '../helpers/factories.js';
+import { mongoPlayerStats, type MongoStatsTest } from '../helpers/factories.js';
 
 describe('PlayerStatsService', () => {
-  let file: string;
-  let dir: string;
+  let testCtx: MongoStatsTest;
   let svc: PlayerStatsService;
 
-  beforeEach(() => {
-    file = tmpPlayerFile();
-    dir = file.replace(/\.json$/, '');
-    svc = new PlayerStatsService(file);
+  beforeEach(async () => {
+    testCtx = await mongoPlayerStats();
+    svc = testCtx.stats;
   });
 
-  afterEach(() => {
-    if (fs.existsSync(file)) fs.rmSync(file, { force: true });
-    if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
+  afterEach(async () => {
+    await testCtx.cleanup();
   });
 
   describe('xpForNextLevel', () => {
@@ -65,7 +60,7 @@ describe('PlayerStatsService', () => {
   });
 
   describe('awardWin', () => {
-    test('grants 50+ xp to winner and 10 to loser and persists to disk', () => {
+    test('grants 50+ xp to winner and 10 to loser and persists', async () => {
       const result = svc.awardWin('w1', 'Winner', 'l1', 'Loser');
       expect(result.winner.wins).toBe(1);
       expect(result.winner.duels).toBe(1);
@@ -74,9 +69,11 @@ describe('PlayerStatsService', () => {
       expect(result.loser.xp).toBe(10);
       // 50 base, equal level → 0 bonus
       expect(result.winner.skills.combat.xp).toBe(50);
-      // per-player files persisted (winner + loser)
-      expect(fs.existsSync(path.join(dir, 'w1.json'))).toBe(true);
-      expect(fs.existsSync(path.join(dir, 'l1.json'))).toBe(true);
+      // wait for async persistence then verify both winner+loser stored in Mongo
+      await svc.flush();
+      const docs = await testCtx.env.repos.player.findAll();
+      const ids = docs.map((d) => d._id).sort();
+      expect(ids).toEqual(['l1', 'w1']);
     });
 
     test('grants level bonus xp when loser higher level', () => {
@@ -236,23 +233,34 @@ describe('PlayerStatsService', () => {
   });
 
   describe('persistence (load/save)', () => {
-    test('save+load round-trip preserves player data', () => {
+    test('save+load round-trip preserves player data', async () => {
       const p = svc.get('p1', 'Tester');
       p.gold = 250;
       p.level = 3;
       p.primary.str = 5;
       svc.save();
+      await svc.flush();
 
-      const reloaded = new PlayerStatsService(file);
+      const reloaded = new PlayerStatsService(testCtx.env.repos);
+      await reloaded.load();
       const got = reloaded.get('p1');
       expect(got.gold).toBe(250);
       expect(got.level).toBe(3);
       expect(got.primary.str).toBe(5);
     });
 
-    test('ensureDefaults backfills missing fields on legacy file', () => {
-      fs.writeFileSync(file, JSON.stringify([{ id: 'legacy', name: 'Old' }]), 'utf8');
-      const fresh = new PlayerStatsService(file);
+    test('ensureDefaults backfills missing fields on legacy doc', async () => {
+      // Wstrzykujemy do Mongo niekompletny dokument, jak po migracji starych danych.
+      // Idziemy obok PlayerRepo (które wymaga pełnego PlayerDoc) wprost do collection
+      // typowanej jako string-_id Document (łapie minimalny `id`/`name`/`_id`).
+      const legacyCol = testCtx.env.db.collection<{
+        _id: string;
+        id: string;
+        name: string;
+      }>('players');
+      await legacyCol.insertOne({ _id: 'legacy', id: 'legacy', name: 'Old' });
+      const fresh = new PlayerStatsService(testCtx.env.repos);
+      await fresh.load();
       const p = fresh.get('legacy');
       expect(p.gold).toBe(100);
       expect(p.skills.mining.level).toBe(1);

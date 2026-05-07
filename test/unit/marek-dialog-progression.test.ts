@@ -1,22 +1,21 @@
 import { Marek } from '../../src/modules/game/npcs/port-cicada/marek.npc.js';
 import { PlayerStatsService } from '../../src/modules/game/services/player-stats.js';
 import { QuestService } from '../../src/modules/game/services/quest.service.js';
-import { tmpPlayerFile } from '../helpers/factories.js';
-import fs from 'node:fs';
+import { mongoPlayerStats, type MongoStatsTest } from '../helpers/factories.js';
 
 /**
  * Repro: gracz ukończył first_steps, oczekiwana widoczność opcji dialogowych
  * Marka. Q2 (marek_pick_race) musi być widoczne, reszta ukryta.
  */
 describe('Marek dialog progression after first_steps completed', () => {
-  let file: string;
+  let testCtx: MongoStatsTest;
   let stats: PlayerStatsService;
-  beforeEach(() => {
-    file = tmpPlayerFile();
-    stats = new PlayerStatsService(file);
+  beforeEach(async () => {
+    testCtx = await mongoPlayerStats();
+    stats = testCtx.stats;
   });
-  afterEach(() => {
-    if (fs.existsSync(file)) fs.rmSync(file, { force: true });
+  afterEach(async () => {
+    await testCtx.cleanup();
   });
 
   test('po skończeniu first_steps Q2 (marek_pick_race) jest offerable + widoczne w intro', () => {

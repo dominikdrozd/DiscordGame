@@ -1,7 +1,6 @@
-import fs from 'node:fs';
 import { CraftService } from '../../src/modules/game/services/craft.service.js';
 import { PlayerStatsService } from '../../src/modules/game/services/player-stats.js';
-import { tmpPlayerFile } from '../helpers/factories.js';
+import { mongoPlayerStats, type MongoStatsTest } from '../helpers/factories.js';
 
 interface FakeMsg {
   author: { id: string };
@@ -18,18 +17,18 @@ function makeMsg(authorId = 'p1'): FakeMsg {
 }
 
 describe('craft feature flow', () => {
-  let file: string;
+  let testCtx: MongoStatsTest;
   let stats: PlayerStatsService;
   let craft: CraftService;
 
-  beforeEach(() => {
-    file = tmpPlayerFile();
-    stats = new PlayerStatsService(file);
+  beforeEach(async () => {
+    testCtx = await mongoPlayerStats();
+    stats = testCtx.stats;
     craft = new CraftService(stats);
   });
 
-  afterEach(() => {
-    if (fs.existsSync(file)) fs.rmSync(file, { force: true });
+  afterEach(async () => {
+    await testCtx.cleanup();
   });
 
   test('craft outputResource (potion_small) trafia do inventory.resources zamiast items', async () => {
@@ -45,7 +44,7 @@ describe('craft feature flow', () => {
       forgetThread: () => {},
     });
     expect(player.inventory.resources.potion_small).toBe(1);
-    expect(player.inventory.items).toHaveLength(0);
+    expect(stats.getItemsForPlayer(player.id)).toHaveLength(0);
     expect(player.inventory.resources.fish_karp ?? 0).toBe(0);
     expect(player.inventory.resources.wood_sosna ?? 0).toBe(0);
   });
@@ -63,8 +62,9 @@ describe('craft feature flow', () => {
       registerThread: () => {},
       forgetThread: () => {},
     });
-    expect(player.inventory.items).toHaveLength(1);
-    expect(player.inventory.items[0].baseId).toBe('sword_iron');
+    const items = stats.getItemsForPlayer(player.id);
+    expect(items).toHaveLength(1);
+    expect(items[0].baseId).toBe('sword_iron');
     expect(player.inventory.resources.ore_iron ?? 0).toBe(0);
     expect(player.inventory.resources.wood_dab ?? 0).toBe(0);
   });
@@ -81,7 +81,7 @@ describe('craft feature flow', () => {
       registerThread: () => {},
       forgetThread: () => {},
     });
-    expect(player.inventory.items).toHaveLength(0);
+    expect(stats.getItemsForPlayer(player.id)).toHaveLength(0);
     expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('za niski lvl craftingu'));
   });
 
