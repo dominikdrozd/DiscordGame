@@ -70,11 +70,11 @@ export class IdentificationService {
 
   /** Lista niezidentyfikowanych itemów gracza. */
   unidentified(player: PlayerStats): ItemInstance[] {
-    return player.inventory.items.filter((it) => it.identified === false);
+    return this.stats.getItemsForPlayer(player.id).filter((it) => it.identified === false);
   }
 
   private findItem(player: PlayerStats, uid: string): ItemInstance | undefined {
-    return player.inventory.items.find((it) => it.uid === uid);
+    return this.stats.findItem(player, uid);
   }
 
   /** Renderuje widok skryby — lista niezidentyfikowanych z przyciskami identify. */

@@ -1,6 +1,7 @@
 import type { Client } from 'discord.js';
 import { MessageFlags } from 'discord.js';
 import type { CommandManager } from '../../managers/command.manager.js';
+import type { Repos } from '../../persistence/repos/index.js';
 import { PlayerStatsService } from './services/player-stats.js';
 import { PartyService } from './services/party.js';
 import { DuelService } from './services/duel.service.js';
@@ -58,8 +59,9 @@ export interface GameServices {
 
 import { hasThreadCreate } from './engine/discord-helpers.js';
 
-export function createGameServices(): GameServices {
-  const stats = new PlayerStatsService();
+export async function createGameServices(repos: Repos): Promise<GameServices> {
+  const stats = new PlayerStatsService(repos);
+  await stats.load();
   const party = new PartyService();
   const quests = new QuestService(stats);
   const expeditions = new ExpeditionService(stats, party, quests);

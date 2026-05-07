@@ -62,10 +62,10 @@ function successChance(targetLevel: number, diamonds: number): number {
   return Math.min(100, base + bonus);
 }
 
-function upgradeableItems(p: PlayerStats): ItemInstance[] {
+function upgradeableItems(p: PlayerStats, stats: PlayerStatsService): ItemInstance[] {
   // Sort: założone najpierw (weapon, armor, tool), potem reszta z plecaka.
   const equippedUids = new Set([p.equipped.weapon, p.equipped.armor, p.equipped.tool].filter(Boolean));
-  const upgradeable = p.inventory.items.filter((it) => it.slot);
+  const upgradeable = stats.getItemsForPlayer(p.id).filter((it) => it.slot);
   return [...upgradeable].sort((a, b) => {
     const aE = equippedUids.has(a.uid) ? 0 : 1;
     const bE = equippedUids.has(b.uid) ? 0 : 1;
@@ -97,7 +97,7 @@ export class SmithService {
     const player = this.stats.get(userId, interaction.user.globalName || interaction.user.username);
     const state: BrowserState = { userId, cityId, fromMenu: false, index: 0 };
     this.browsers.set(userId, state);
-    const items = upgradeableItems(player);
+    const items = upgradeableItems(player, this.stats);
     await interaction
       .reply({
         content: this.renderContent(player, state, items),
@@ -130,7 +130,7 @@ export class SmithService {
     }
     if (action === 'nav') {
       const dir = parts[3] === '-1' ? -1 : 1;
-      const items = upgradeableItems(player);
+      const items = upgradeableItems(player, this.stats);
       if (items.length === 0) {
         await this.renderBrowser(interaction, state);
         return;
@@ -142,7 +142,7 @@ export class SmithService {
     }
     if (action === 'up') {
       const diamonds = Math.min(MAX_DIAMONDS_PER_ATTEMPT, parseInt(parts[3], 10) || 0);
-      const items = upgradeableItems(player);
+      const items = upgradeableItems(player, this.stats);
       const item = items[state.index];
       if (!item) {
         state.lastMessage = '🚫 Brak itemu na liście.';
@@ -224,7 +224,7 @@ export class SmithService {
 
   private async renderBrowser(interaction: ButtonInteraction, state: BrowserState): Promise<void> {
     const player = this.stats.get(state.userId);
-    const items = upgradeableItems(player);
+    const items = upgradeableItems(player, this.stats);
     await interaction
       .update({
         content: this.renderContent(player, state, items),

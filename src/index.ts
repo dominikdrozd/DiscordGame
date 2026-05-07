@@ -2,6 +2,8 @@ import { Client, GatewayIntentBits, Events, MessageFlags, REST, Routes } from 'd
 import 'dotenv/config';
 import { CommandManager } from './managers/command.manager.js';
 import { errMsg } from './utils.js';
+import { MongoConnection } from './persistence/mongo.js';
+import { makeRepos, ensureIndexes } from './persistence/repos/index.js';
 import { AskCommand } from './commands/ask.command.js';
 import { AskMovieCommand } from './commands/ask-movie.command.js';
 import { AskMedCommand } from './commands/ask-med.command.js';
@@ -16,6 +18,17 @@ import {
   startWorldBossLoop,
   startArenaLoop,
 } from './modules/game/index.js';
+
+const mongoUri = process.env.MONGO_URI;
+if (!mongoUri) {
+  console.error('[fatal] MONGO_URI nie ustawione w env — bot nie wystartuje');
+  process.exit(1);
+}
+const mongo = new MongoConnection();
+await mongo.connect(mongoUri);
+const repos = makeRepos(mongo.db());
+await ensureIndexes(repos);
+console.log('[mongo] connected to', mongo.db().databaseName);
 
 const client = new Client({
   intents: [
@@ -38,7 +51,7 @@ manager.register(new AskMedCommand());
 manager.register(new MovieOfTheDayCommand());
 
 // game module
-const gameServices = createGameServices();
+const gameServices = await createGameServices(repos);
 registerGameCommands(manager, gameServices);
 
 // admin
@@ -189,5 +202,23 @@ client.on(Events.InteractionCreate, async (interaction) => {
 export async function handleMessage(c: Client, msg: any): Promise<void> {
   await manager.dispatch(c, msg);
 }
+
+const shutdown = async (signal: string): Promise<void> => {
+  console.log(`[shutdown] received ${signal}, flushing + closing`);
+  try {
+    await gameServices.stats.flush();
+    await mongo.close();
+    await client.destroy();
+  } catch (e) {
+    console.error('[shutdown] error:', errMsg(e));
+  }
+  process.exit(0);
+};
+process.on('SIGTERM', () => {
+  void shutdown('SIGTERM');
+});
+process.on('SIGINT', () => {
+  void shutdown('SIGINT');
+});
 
 client.login(process.env.DISCORD_TOKEN || '');

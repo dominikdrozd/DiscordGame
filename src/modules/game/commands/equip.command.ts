@@ -46,7 +46,8 @@ export class EquipCommand extends BaseCommand implements ISlashCommand {
       interaction.user.globalName || interaction.user.username,
     );
     const q = focused.value.toLowerCase();
-    const choices = player.inventory.items
+    const choices = this.stats
+      .getItemsForPlayer(player.id)
       .filter((it) => it.slot)
       .filter((it) => it.uid.toLowerCase().includes(q) || it.name.toLowerCase().includes(q))
       .slice(0, 25)

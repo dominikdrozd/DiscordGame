@@ -447,7 +447,7 @@ export class InventoryService {
       player.equipped.armor,
       player.equipped.tool,
     ].filter(Boolean));
-    return [...player.inventory.items].sort((a, b) => {
+    return [...this.stats.getItemsForPlayer(player.id)].sort((a, b) => {
       const aE = equippedUids.has(a.uid) ? 0 : 1;
       const bE = equippedUids.has(b.uid) ? 0 : 1;
       if (aE !== bE) return aE - bE;

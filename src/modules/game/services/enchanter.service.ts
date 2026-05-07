@@ -54,11 +54,11 @@ function removeCost(size: GemSize): number {
   return Math.round(INSERT_COST[size].gold / 2);
 }
 
-function socketableItems(p: PlayerStats): ItemInstance[] {
+function socketableItems(p: PlayerStats, stats: PlayerStatsService): ItemInstance[] {
   const equippedUids = new Set(
     [p.equipped.weapon, p.equipped.armor, p.equipped.tool].filter(Boolean),
   );
-  const list = p.inventory.items.filter((it) => (it.gemSlots ?? 0) > 0);
+  const list = stats.getItemsForPlayer(p.id).filter((it) => (it.gemSlots ?? 0) > 0);
   return list.sort((a, b) => {
     const aE = equippedUids.has(a.uid) ? 0 : 1;
     const bE = equippedUids.has(b.uid) ? 0 : 1;
@@ -103,7 +103,7 @@ export class EnchanterService {
       mode: { kind: 'browse' },
     };
     this.browsers.set(userId, state);
-    const items = socketableItems(player);
+    const items = socketableItems(player, this.stats);
     await interaction
       .reply({
         content: this.renderContent(player, state, items),
@@ -145,7 +145,7 @@ export class EnchanterService {
     }
     if (action === 'nav') {
       const dir = parts[3] === '-1' ? -1 : 1;
-      const items = socketableItems(player);
+      const items = socketableItems(player, this.stats);
       if (items.length > 0) {
         state.index = (state.index + dir + items.length) % items.length;
       }
@@ -156,7 +156,7 @@ export class EnchanterService {
     }
     if (action === 'remove') {
       const slotIdx = parseInt(parts[3], 10);
-      const items = socketableItems(player);
+      const items = socketableItems(player, this.stats);
       const item = items[state.index];
       if (!item) {
         state.lastMessage = '🚫 Brak itemu.';
@@ -184,7 +184,7 @@ export class EnchanterService {
     }
     if (action === 'insert') {
       const gemId = parts[3];
-      const items = socketableItems(player);
+      const items = socketableItems(player, this.stats);
       const item = items[state.index];
       if (!item || state.mode.kind !== 'pick') {
         state.lastMessage = '🚫 Brak itemu lub slotu.';
@@ -300,7 +300,7 @@ export class EnchanterService {
     state: BrowserState,
   ): Promise<void> {
     const player = this.stats.get(state.userId);
-    const items = socketableItems(player);
+    const items = socketableItems(player, this.stats);
     await interaction
       .update({
         content: this.renderContent(player, state, items),
