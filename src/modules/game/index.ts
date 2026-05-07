@@ -64,7 +64,8 @@ import { hasThreadCreate } from './engine/discord-helpers.js';
 export async function createGameServices(repos: Repos): Promise<GameServices> {
   const stats = new PlayerStatsService(repos);
   await stats.load();
-  const party = new PartyService();
+  const party = new PartyService(repos.party);
+  await party.load();
   const quests = new QuestService(stats);
   const expeditions = new ExpeditionService(stats, party, quests);
   const identification = new IdentificationService(stats);

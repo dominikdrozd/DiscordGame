@@ -209,6 +209,7 @@ const shutdown = async (signal: string): Promise<void> => {
   console.log(`[shutdown] received ${signal}, flushing + closing`);
   try {
     await gameServices.stats.flush();
+    await gameServices.party.flush();
     await mongo.close();
     await client.destroy();
   } catch (e) {

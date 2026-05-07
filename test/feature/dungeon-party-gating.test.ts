@@ -1,18 +1,11 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import os from 'node:os';
 import { DungeonService } from '../../src/modules/game/services/dungeon.service.js';
 import { PlayerStatsService } from '../../src/modules/game/services/player-stats.js';
 import { PartyService } from '../../src/modules/game/services/party.js';
+import { BattleStore } from '../../src/modules/game/engine/battle-store.js';
 import { DUNGEONS } from '../../src/modules/game/engine/encounters.js';
 import { mongoPlayerStats, type MongoStatsTest } from '../helpers/factories.js';
 
-function tmpPartyFile(): string {
-  return path.join(os.tmpdir(), `parties-${Date.now()}-${Math.random()}.json`);
-}
-
 describe('DungeonService — party gating', () => {
-  let partyFile: string;
   let testCtx: MongoStatsTest;
   let stats: PlayerStatsService;
   let party: PartyService;
@@ -21,14 +14,14 @@ describe('DungeonService — party gating', () => {
   beforeEach(async () => {
     testCtx = await mongoPlayerStats();
     stats = testCtx.stats;
-    partyFile = tmpPartyFile();
-    party = new PartyService(partyFile);
-    dungeons = new DungeonService(stats, party);
+    party = new PartyService(testCtx.env.repos.party);
+    await party.load();
+    dungeons = new DungeonService(stats, party, new BattleStore(testCtx.env.repos.battle));
   });
 
   afterEach(async () => {
+    await party.flush();
     await testCtx.cleanup();
-    if (fs.existsSync(partyFile)) fs.rmSync(partyFile, { force: true });
   });
 
   test('solo gracz (bez party) nie może wejść — clear "party-only" message', () => {

@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { Repos, PlayerDoc, ItemDoc } from './repos/index.js';
+import type { Repos, PlayerDoc, ItemDoc, PartyDoc } from './repos/index.js';
 
 /**
  * Jednorazowa migracja legacy JSON → Mongo. Skip jeśli `players` collection
@@ -15,6 +15,7 @@ export async function migrateLegacyJsonIfNeeded(
   repos: Repos,
   rootDir: string = path.resolve('data'),
 ): Promise<void> {
+  await migrateLegacyPartiesIfNeeded(repos, rootDir);
   if ((await repos.player.count()) > 0) return;
 
   const monolith = path.join(rootDir, 'players.json');
@@ -103,4 +104,35 @@ async function migratePlayerArray(repos: Repos, players: LegacyPlayer[]): Promis
   if (playerDocs.length > 0) await repos.player.insertMany(playerDocs);
   if (itemDocs.length > 0) await repos.item.insertMany(itemDocs);
   console.log(`[mongo] migrated ${playerDocs.length} players, ${itemDocs.length} items`);
+}
+
+interface LegacyParty {
+  id: string;
+  leaderId: string;
+  members: string[];
+  pendingInvites: string[];
+  createdAt: number;
+}
+
+async function migrateLegacyPartiesIfNeeded(repos: Repos, rootDir: string): Promise<void> {
+  const file = path.join(rootDir, 'parties.json');
+  if (!fs.existsSync(file)) return;
+  if ((await repos.party.findAll()).length > 0) return; // już zmigrowane
+
+  const arr: unknown = JSON.parse(fs.readFileSync(file, 'utf8'));
+  if (!Array.isArray(arr)) {
+    console.warn('[mongo] data/parties.json nie jest tablicą — pomijam migrację');
+    return;
+  }
+
+  const docs: PartyDoc[] = [];
+  for (const p of arr) {
+    if (!p || typeof p !== 'object' || !('id' in p) || typeof (p as { id: unknown }).id !== 'string') continue;
+    const party = p as LegacyParty;
+    docs.push({ ...party, _id: party.id });
+  }
+
+  if (docs.length > 0) await repos.party.insertMany(docs);
+  fs.renameSync(file, `${file}.migrated-${Date.now()}`);
+  console.log(`[mongo] migrated ${docs.length} parties`);
 }

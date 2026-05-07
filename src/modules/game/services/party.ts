@@ -1,5 +1,4 @@
-import fs from 'node:fs';
-import path from 'node:path';
+import type { PartyRepo } from '../../../persistence/repos/party.repo.js';
 
 export interface Party {
   id: string;
@@ -11,16 +10,6 @@ export interface Party {
 
 export const MAX_PARTY = 4;
 
-function isParty(v: unknown): v is Party {
-  if (!v || typeof v !== 'object') return false;
-  if (!('id' in v) || typeof v.id !== 'string') return false;
-  if (!('leaderId' in v) || typeof v.leaderId !== 'string') return false;
-  if (!('members' in v) || !Array.isArray(v.members)) return false;
-  if (!('pendingInvites' in v) || !Array.isArray(v.pendingInvites)) return false;
-  if (!('createdAt' in v) || typeof v.createdAt !== 'number') return false;
-  return true;
-}
-
 let counter = 0;
 function newPartyId(): string {
   counter += 1;
@@ -28,31 +17,58 @@ function newPartyId(): string {
 }
 
 export class PartyService {
-  private readonly file: string;
   private readonly parties: Map<string, Party> = new Map();
+  private readonly lastSavedJson = new Map<string, string>();
+  private readonly toDelete = new Set<string>();
+  private pendingWrites: Promise<unknown>[] = [];
 
-  constructor(file = path.resolve('data/parties.json')) {
-    this.file = file;
-    this.load();
-  }
+  constructor(private readonly repo: PartyRepo) {}
 
-  private load(): void {
-    try {
-      const raw = fs.readFileSync(this.file, 'utf8');
-      const parsed: unknown = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return;
-      for (const item of parsed) {
-        if (isParty(item)) this.parties.set(item.id, item);
-      }
-    } catch {
-      // brak pliku — ok
+  async load(): Promise<void> {
+    this.parties.clear();
+    this.lastSavedJson.clear();
+    const docs = await this.repo.findAll();
+    for (const doc of docs) {
+      const { _id, ...rest } = doc;
+      const party = rest as Party;
+      this.parties.set(_id, party);
+      this.lastSavedJson.set(_id, JSON.stringify(party));
     }
   }
 
+  /** Sync z perspektywy callera, fire-and-forget async upsert/delete z dirty tracking. */
   save(): void {
-    const dir = path.dirname(this.file);
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(this.file, JSON.stringify([...this.parties.values()], null, 2), 'utf8');
+    for (const [id, p] of this.parties) {
+      const json = JSON.stringify(p);
+      if (this.lastSavedJson.get(id) === json) continue;
+      this.lastSavedJson.set(id, json);
+      this.pendingWrites.push(
+        this.repo.upsert({ ...p, _id: id }).catch((e: unknown) => {
+          console.error(
+            `[mongo] party save fail ${id}:`,
+            e instanceof Error ? e.message : String(e),
+          );
+        }),
+      );
+    }
+    for (const id of this.toDelete) {
+      this.lastSavedJson.delete(id);
+      this.pendingWrites.push(
+        this.repo.deleteOne(id).catch((e: unknown) => {
+          console.error(
+            `[mongo] party delete fail ${id}:`,
+            e instanceof Error ? e.message : String(e),
+          );
+        }),
+      );
+    }
+    this.toDelete.clear();
+  }
+
+  async flush(): Promise<void> {
+    const queue = this.pendingWrites;
+    this.pendingWrites = [];
+    await Promise.allSettled(queue);
   }
 
   list(): Party[] {
@@ -146,6 +162,7 @@ export class PartyService {
     if (!party) return { ok: false, reason: 'Nie jesteś w żadnym party.' };
     party.members = party.members.filter((id) => id !== userId);
     if (party.members.length === 0) {
+      this.toDelete.add(party.id);
       this.parties.delete(party.id);
       this.save();
       return { ok: true, partyDisbanded: true };
@@ -178,6 +195,7 @@ export class PartyService {
     if (!party) return { ok: false, reason: 'Party nie istnieje.' };
     if (party.leaderId !== leaderId)
       return { ok: false, reason: 'Tylko lider może rozwiązać party.' };
+    this.toDelete.add(partyId);
     this.parties.delete(partyId);
     this.save();
     return { ok: true };
