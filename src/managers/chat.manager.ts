@@ -30,13 +30,17 @@ const RETRY_DELAYS_MS = [100, 250, 500];
 
 type ReplyableInteraction = ButtonInteraction | ChatInputCommandInteraction;
 
-interface SendableTarget {
+interface SendableTarget<TMsg = Message> {
   id?: string;
-  send: (payload: MessageCreateOptions | string) => Promise<Message>;
+  send: (payload: MessageCreateOptions | string) => Promise<TMsg>;
 }
 
 interface EditableMessage {
-  edit: (payload: MessageEditOptions | string) => Promise<Message>;
+  edit: (payload: MessageEditOptions | string) => Promise<unknown>;
+}
+
+interface ReplyableMessage {
+  reply: (payload: MessageCreateOptions | string) => Promise<unknown>;
 }
 
 export interface ReplyOpts {
@@ -180,17 +184,17 @@ class ChatManager {
    * `send`-y do tego samego target.id czekają na poprzedni write. Naive
    * serializacja przeciwdziała 5/5s spike'om (np. combat round 3-4 msg).
    */
-  async send(
-    target: SendableTarget,
+  async send<TMsg = Message>(
+    target: SendableTarget<TMsg>,
     content: string,
     opts: SendOpts = {},
-  ): Promise<Message | null> {
+  ): Promise<TMsg | null> {
     const payload: MessageCreateOptions = { content: this.clip(content) };
     if (opts.components) payload.components = opts.components;
 
     const channelId = target.id ?? '__no_id__';
     const prev = this.channelQueues.get(channelId) ?? Promise.resolve();
-    const result: Promise<Message | null> = prev
+    const result: Promise<TMsg | null> = prev
       .then(() => this.withRetry(() => target.send(payload)))
       .catch(() => null);
     // Queue holds void promise that never rejects — łańcuch nie pęka po error.
@@ -213,6 +217,23 @@ class ChatManager {
     if (opts.content !== undefined) payload.content = this.clip(opts.content);
     if (opts.components !== undefined) payload.components = opts.components;
     await this.withRetry(() => message.edit(payload));
+  }
+
+  /**
+   * Odpowiedź na text-message (`.foo bar`) — wraps `msg.reply()`. Używane
+   * w game commands (msg.reply), różne od interaction.reply (slash/button).
+   * Bez components → przesyła plain string (zgodnie z konwencją bota).
+   */
+  async replyToMessage(
+    msg: ReplyableMessage,
+    content: string,
+    opts: SendOpts = {},
+  ): Promise<void> {
+    const clipped = this.clip(content);
+    const payload: MessageCreateOptions | string = opts.components
+      ? { content: clipped, components: opts.components }
+      : clipped;
+    await this.withRetry(() => msg.reply(payload));
   }
 
   /** Defer interaction reply — używać gdy operacja > 3s (Discord interaction TTL). */

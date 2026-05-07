@@ -3,7 +3,6 @@ import {
   ButtonBuilder,
   ButtonStyle,
   ChannelType,
-  MessageFlags,
   type ButtonInteraction,
 } from 'discord.js';
 import type { ICommandContext } from '../../../types/command.types.js';
@@ -17,6 +16,7 @@ import {
 } from './items.js';
 import { displayName, errMsg } from '../../../utils.js';
 import { deleteThreadNow } from '../engine/battle-helpers.js';
+import { chat } from '../../../managers/chat.manager.js';
 
 interface InventoryState {
   userId: string;
@@ -106,7 +106,9 @@ export class InventoryService {
       userName: displayName(msg),
       channel: msg.channel,
       registerThread,
-      reply: (content: string) => msg.reply(content),
+      reply: async (content: string) => {
+        await chat.replyToMessage(msg, content);
+      },
       startThreadFallback: (opts) => msg.startThread(opts),
     });
   }
@@ -182,20 +184,10 @@ export class InventoryService {
       itemList,
     };
 
-    const listing = await thread
-      .send({
-        content: this.renderListing(player, itemList),
-        components: [this.buildCloseRow(args.userId)],
-      })
-      .catch(() => null);
-    if (
-      listing &&
-      typeof listing === 'object' &&
-      'id' in listing &&
-      typeof listing.id === 'string'
-    ) {
-      state.listingMessageId = listing.id;
-    }
+    const listing = await chat.send(thread, this.renderListing(player, itemList), {
+      components: [this.buildCloseRow(args.userId)],
+    });
+    if (listing) state.listingMessageId = listing.id;
 
     this.states.set(args.userId, state);
     this.resetIdleTimer(state);
@@ -216,7 +208,7 @@ export class InventoryService {
     const [cmd, ...rest] = text.split(/\s+/);
 
     if (cmd === 'close') {
-      await msg.reply('🎒 Plecak zamknięty.').catch(() => {});
+      await chat.replyToMessage(msg, '🎒 Plecak zamknięty.');
       await this.closeState(state);
       return;
     }
@@ -233,18 +225,16 @@ export class InventoryService {
       return;
     }
     if (cmd === 'help' || cmd === '?') {
-      await msg
-        .reply(
-          'Komendy: `sell N M K` (batch) · `equip N` · `unequip weapon|armor|tool` · `close`',
-        )
-        .catch(() => {});
+      await chat.replyToMessage(
+        msg,
+        'Komendy: `sell N M K` (batch) · `equip N` · `unequip weapon|armor|tool` · `close`',
+      );
       return;
     }
-    await msg
-      .reply(
-        `Nieznana komenda \`${cmd}\`. Dostępne: \`sell N M\`, \`equip N\`, \`unequip <slot>\`, \`close\`, \`help\` (bez prefixów \`.inv\`).`,
-      )
-      .catch(() => {});
+    await chat.replyToMessage(
+      msg,
+      `Nieznana komenda \`${cmd}\`. Dostępne: \`sell N M\`, \`equip N\`, \`unequip <slot>\`, \`close\`, \`help\` (bez prefixów \`.inv\`).`,
+    );
   }
 
   async handleInteraction(interaction: ButtonInteraction): Promise<void> {
@@ -255,27 +245,22 @@ export class InventoryService {
     const userId = parts[parts.length - 1];
 
     if (interaction.user.id !== userId) {
-      await interaction
-        .reply({ content: 'To nie twój plecak.', flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, 'To nie twój plecak.', { ephemeral: true });
       return;
     }
     const state = this.states.get(userId);
     if (!state) {
-      await interaction
-        .reply({
-          content: 'Plecak już zamknięty — otwórz go ponownie `.inv` lub z `.menu`.',
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      await chat.reply(
+        interaction,
+        'Plecak już zamknięty — otwórz go ponownie `.inv` lub z `.menu`.',
+        { ephemeral: true },
+      );
       return;
     }
     this.resetIdleTimer(state);
 
     if (action === 'close') {
-      await interaction
-        .update({ content: '🎒 Plecak zamknięty.', components: [] })
-        .catch(() => {});
+      await chat.update(interaction, '🎒 Plecak zamknięty.', { components: [] });
       await this.closeState(state);
     }
   }
@@ -289,12 +274,12 @@ export class InventoryService {
     args: string[],
   ): Promise<void> {
     if (args.length === 0) {
-      await msg.reply('Użycie: `sell N M K` — gdzie N M K to indexy z plecaka.').catch(() => {});
+      await chat.replyToMessage(msg, 'Użycie: `sell N M K` — gdzie N M K to indexy z plecaka.');
       return;
     }
     const indices = parseUniqueIndices(args, state.itemList.length);
     if (indices.length === 0) {
-      await msg.reply('Niewłaściwe indexy. Sprawdź listę itemów (numery 1-N).').catch(() => {});
+      await chat.replyToMessage(msg, 'Niewłaściwe indexy. Sprawdź listę itemów (numery 1-N).');
       return;
     }
     const sold: Array<{ name: string; price: number }> = [];
@@ -339,7 +324,7 @@ export class InventoryService {
     if (skipped.length > 0) {
       lines.push(`⚠️ Pominięte: ${skipped.join(', ')}`);
     }
-    await msg.reply(lines.join('\n') || 'Nic nie sprzedano.').catch(() => {});
+    await chat.replyToMessage(msg, lines.join('\n') || 'Nic nie sprzedano.');
     await this.refreshListing(state);
   }
 
@@ -350,27 +335,33 @@ export class InventoryService {
     arg: string | undefined,
   ): Promise<void> {
     if (!arg) {
-      await msg.reply('Użycie: `equip N` — gdzie N to index z plecaka.').catch(() => {});
+      await chat.replyToMessage(msg, 'Użycie: `equip N` — gdzie N to index z plecaka.');
       return;
     }
     const idx = parseInt(arg, 10);
     if (!Number.isFinite(idx) || idx < 1 || idx > state.itemList.length) {
-      await msg.reply(`Niewłaściwy index: \`${arg}\`. Plecak ma ${state.itemList.length} itemów.`).catch(() => {});
+      await chat.replyToMessage(
+        msg,
+        `Niewłaściwy index: \`${arg}\`. Plecak ma ${state.itemList.length} itemów.`,
+      );
       return;
     }
     const target = state.itemList[idx - 1];
     const fresh = this.stats.findItem(player, target.uid);
     if (!fresh || !fresh.slot) {
-      await msg.reply('Nie posiadasz już tego itemu (lub nie da się go założyć).').catch(() => {});
+      await chat.replyToMessage(
+        msg,
+        'Nie posiadasz już tego itemu (lub nie da się go założyć).',
+      );
       return;
     }
     const result = this.stats.equip(player, fresh.uid);
     if (!result.ok) {
-      await msg.reply(`🚫 ${result.reason ?? 'Nie udało się założyć.'}`).catch(() => {});
+      await chat.replyToMessage(msg, `🚫 ${result.reason ?? 'Nie udało się założyć.'}`);
       return;
     }
     this.stats.save();
-    await msg.reply(`⤴️ Założono **${fresh.name}** (slot: ${fresh.slot}).`).catch(() => {});
+    await chat.replyToMessage(msg, `⤴️ Założono **${fresh.name}** (slot: ${fresh.slot}).`);
     await this.refreshListing(state);
   }
 
@@ -381,21 +372,27 @@ export class InventoryService {
     slotArg: string | undefined,
   ): Promise<void> {
     if (!slotArg) {
-      await msg.reply('Użycie: `unequip weapon` / `unequip armor` / `unequip tool`.').catch(() => {});
+      await chat.replyToMessage(
+        msg,
+        'Użycie: `unequip weapon` / `unequip armor` / `unequip tool`.',
+      );
       return;
     }
     const slot = slotArg as ItemSlot;
     if (!VALID_SLOTS.includes(slot)) {
-      await msg.reply(`Nieznany slot \`${slotArg}\`. Dostępne: ${VALID_SLOTS.join(', ')}.`).catch(() => {});
+      await chat.replyToMessage(
+        msg,
+        `Nieznany slot \`${slotArg}\`. Dostępne: ${VALID_SLOTS.join(', ')}.`,
+      );
       return;
     }
     const removed = this.stats.unequip(player, slot);
     if (!removed) {
-      await msg.reply(`Slot **${slot}** był pusty.`).catch(() => {});
+      await chat.replyToMessage(msg, `Slot **${slot}** był pusty.`);
       return;
     }
     this.stats.save();
-    await msg.reply(`⤵️ Zdjęto **${removed.name}** ze slotu **${slot}**.`).catch(() => {});
+    await chat.replyToMessage(msg, `⤵️ Zdjęto **${removed.name}** ze slotu **${slot}**.`);
     await this.refreshListing(state);
   }
 
@@ -461,14 +458,12 @@ export class InventoryService {
     state.itemList = this.sortedItems(player);
     try {
       const m = await state.thread.messages.fetch(state.listingMessageId);
-      await m
-        .edit({
-          content: this.renderListing(player, state.itemList),
-          components: [this.buildCloseRow(state.userId)],
-        })
-        .catch(() => {});
+      await chat.edit(m, {
+        content: this.renderListing(player, state.itemList),
+        components: [this.buildCloseRow(state.userId)],
+      });
     } catch {
-      // ignore
+      // ignore — fetch failed, np. wiadomość usunięta
     }
   }
 

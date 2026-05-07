@@ -258,6 +258,30 @@ describe('ChatManager', () => {
     });
   });
 
+  describe('replyToMessage', () => {
+    test('bez components → przesyła plain string', async () => {
+      const reply = jest.fn().mockResolvedValue(undefined);
+      const msg = { reply };
+      await chat.replyToMessage(msg, 'pong');
+      expect(reply).toHaveBeenCalledWith('pong');
+    });
+
+    test('z components → przesyła object {content, components}', async () => {
+      const reply = jest.fn().mockResolvedValue(undefined);
+      const msg = { reply };
+      await chat.replyToMessage(msg, 'with btns', { components: [] });
+      expect(reply).toHaveBeenCalledWith({ content: 'with btns', components: [] });
+    });
+
+    test('content > 1900 → slice (plain string path)', async () => {
+      const reply = jest.fn().mockResolvedValue(undefined);
+      const msg = { reply };
+      await chat.replyToMessage(msg, 'X'.repeat(2500));
+      const call = reply.mock.calls[0][0] as string;
+      expect(call.length).toBeLessThanOrEqual(1900);
+    });
+  });
+
   describe('deferReply', () => {
     test('fresh interaction → deferReply', async () => {
       const i = makeInteraction();
