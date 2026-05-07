@@ -28,6 +28,9 @@ import { CLASSES, findSubclass, findSubclass2 } from '../classes/index.js';
 import { RACES } from '../races/index.js';
 import { QuestService } from './quest.service.js';
 import type { AmbushService } from '../engine/ambush.js';
+import type { DungeonService } from './dungeon.service.js';
+import type { BossService } from './boss.service.js';
+import type { WorldBossService } from '../engine/world-boss.js';
 
 const MAX_LOG_LINES = 25;
 
@@ -57,6 +60,9 @@ export class ExpeditionService {
    * cykl konstrukcji rozwiązany przez DI po fakcie.
    */
   private ambushService?: AmbushService;
+  private dungeonService?: DungeonService;
+  private bossService?: BossService;
+  private worldBossService?: WorldBossService;
 
   constructor(
     private readonly stats: PlayerStatsService,
@@ -66,6 +72,18 @@ export class ExpeditionService {
 
   bindAmbushService(svc: AmbushService): void {
     this.ambushService = svc;
+  }
+
+  bindDungeonService(svc: DungeonService): void {
+    this.dungeonService = svc;
+  }
+
+  bindBossService(svc: BossService): void {
+    this.bossService = svc;
+  }
+
+  bindWorldBossService(svc: WorldBossService): void {
+    this.worldBossService = svc;
   }
 
   async handle(ctx: ICommandContext): Promise<void> {
@@ -121,7 +139,7 @@ export class ExpeditionService {
     if (player.activeExpedition) {
       await msg.reply({
         content: this.renderActiveContent(player),
-        components: buildExpActiveRows(player.id, this.canClaim(player), false, this.inAmbush(player)),
+        components: buildExpActiveRows(player.id, this.canClaim(player), false, this.inActiveBattle(player)),
       });
       return;
     }
@@ -165,7 +183,7 @@ export class ExpeditionService {
       await interaction
         .reply({
           content: this.renderActiveContent(player),
-          components: buildExpActiveRows(player.id, this.canClaim(player), false, this.inAmbush(player)),
+          components: buildExpActiveRows(player.id, this.canClaim(player), false, this.inActiveBattle(player)),
           flags: MessageFlags.Ephemeral,
         })
         .catch(() => {});
@@ -200,7 +218,7 @@ export class ExpeditionService {
       await interaction
         .update({
           content: this.renderActiveContent(player),
-          components: buildExpActiveRows(player.id, this.canClaim(player), true, this.inAmbush(player)),
+          components: buildExpActiveRows(player.id, this.canClaim(player), true, this.inActiveBattle(player)),
         })
         .catch(() => {});
       return;
@@ -474,7 +492,7 @@ export class ExpeditionService {
     await interaction
       .update({
         content: this.renderActiveContent(player),
-        components: buildExpActiveRows(player.id, this.canClaim(player), fromMenu, this.inAmbush(player)),
+        components: buildExpActiveRows(player.id, this.canClaim(player), fromMenu, this.inActiveBattle(player)),
       })
       .catch(() => {});
   }
@@ -530,27 +548,62 @@ export class ExpeditionService {
       .catch(() => {});
   }
 
-  /** Klik "⚔️ Wróć do walki" — re-prompt panelu w wątku ambushu. */
+  /** Klik "⚔️ Wróć do walki" — próbuje resume na wszystkich battle services. */
   private async handleResume(
     interaction: ButtonInteraction,
     player: PlayerStats,
   ): Promise<void> {
-    if (!this.ambushService) {
-      await interaction
-        .reply({ content: 'Brak aktywnej walki (ambush service unbound).', flags: MessageFlags.Ephemeral })
-        .catch(() => {});
-      return;
+    if (this.ambushService) {
+      const r = await this.ambushService.resumeForPlayer(player.id);
+      if (r.ok) {
+        await interaction
+          .reply({
+            content: `⚔️ Panel akcji odświeżony w <#${r.threadId}>. Idź do wątku i kontynuuj walkę.`,
+            flags: MessageFlags.Ephemeral,
+          })
+          .catch(() => {});
+        return;
+      }
     }
-    const result = await this.ambushService.resumeForPlayer(player.id);
-    if (!result.ok) {
-      await interaction
-        .reply({ content: 'Nie masz aktywnej walki — być może już się skończyła.', flags: MessageFlags.Ephemeral })
-        .catch(() => {});
-      return;
+    if (this.dungeonService) {
+      const r = await this.dungeonService.resumeForPlayer(interaction.client, player.id);
+      if (r.ok) {
+        await interaction
+          .reply({
+            content: `🏰 Wracasz do dungeonu — <#${r.threadId}>.`,
+            flags: MessageFlags.Ephemeral,
+          })
+          .catch(() => {});
+        return;
+      }
+    }
+    if (this.bossService) {
+      const r = await this.bossService.resumeForPlayer(interaction.client, player.id);
+      if (r.ok) {
+        await interaction
+          .reply({
+            content: `👹 Wracasz do walki z bossem — <#${r.threadId}>.`,
+            flags: MessageFlags.Ephemeral,
+          })
+          .catch(() => {});
+        return;
+      }
+    }
+    if (this.worldBossService) {
+      const r = await this.worldBossService.resumeForPlayer(interaction.client, player.id);
+      if (r.ok) {
+        await interaction
+          .reply({
+            content: `🌋 Wracasz na world boss — <#${r.threadId}>.`,
+            flags: MessageFlags.Ephemeral,
+          })
+          .catch(() => {});
+        return;
+      }
     }
     await interaction
       .reply({
-        content: `⚔️ Panel akcji odświeżony w <#${result.threadId}>. Idź do wątku i kontynuuj walkę.`,
+        content: 'Nie masz aktywnej walki — być może już się skończyła.',
         flags: MessageFlags.Ephemeral,
       })
       .catch(() => {});
@@ -559,6 +612,15 @@ export class ExpeditionService {
   /** Czy gracz ma aktualnie aktywny ambush (block claim, show resume button). */
   private inAmbush(player: PlayerStats): boolean {
     return !!player.activeExpedition?.ambushedSince;
+  }
+
+  /** Czy gracz ma JAKĄKOLWIEK aktywną walkę (ambush/dungeon/boss/worldBoss). */
+  private inActiveBattle(player: PlayerStats): boolean {
+    if (this.inAmbush(player)) return true;
+    if (this.dungeonService?.getActiveStateForPlayer(player.id)) return true;
+    if (this.bossService?.getActiveStateForPlayer(player.id)) return true;
+    if (this.worldBossService?.getActiveStateForPlayer(player.id)) return true;
+    return false;
   }
 
   private async handleClose(interaction: ButtonInteraction, userId: string): Promise<void> {

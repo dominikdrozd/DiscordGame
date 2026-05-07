@@ -87,6 +87,8 @@ export async function registerGameCommands(
   const dungeons = new DungeonService(stats, party, battleStore);
   await bosses.hydrate();
   await dungeons.hydrate();
+  expeditions.bindDungeonService(dungeons);
+  expeditions.bindBossService(bosses);
   const crafting = new CraftService(stats);
   const inventory = new InventoryService(stats);
   // Closure: musi widzieć inventoryCommand do registerThreadFor. Closure
@@ -240,6 +242,7 @@ export async function startWorldBossLoop(
   const battleStore = new BattleStore(services.repos.battle);
   const wb = new WorldBossService(client, services.stats, battleStore);
   await wb.hydrate();
+  services.expeditions.bindWorldBossService(wb);
   wb.start();
   return wb;
 }
