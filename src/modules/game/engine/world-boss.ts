@@ -32,6 +32,7 @@ import {
   promptHumansWithPanel,
   postBattleSummary,
   routeBattleInteraction,
+  recreateBattleThread,
 } from './battle-helpers.js';
 import { buildPanelOpenerRow } from '../ui/battle-buttons.js';
 import { rollItemInstance } from '../services/items.js';
@@ -124,6 +125,83 @@ export class WorldBossService {
     private readonly stats: PlayerStatsService,
     private readonly battleStore: BattleStore,
   ) {}
+
+  /** Zwraca aktywny world-boss state gracza (jeśli jest). */
+  getActiveStateForPlayer(playerId: string): WorldBossBattleState | undefined {
+    for (const state of this.battles.values()) {
+      if (state.finished) continue;
+      if (state.combatants.some((c) => c.team === 0 && c.id === playerId && c.hp > 0)) {
+        return state;
+      }
+    }
+    return undefined;
+  }
+
+  /** Resume world-boss battle dla gracza — recreate thread jeśli zniknął. */
+  async resumeForPlayer(
+    client: Client,
+    playerId: string,
+  ): Promise<{ ok: boolean; threadId?: string }> {
+    const state = this.getActiveStateForPlayer(playerId);
+    if (!state) return { ok: false };
+
+    const memberTags = state.participantIds.map((id) => `<@${id}>`).join(' ');
+    const opts = {
+      threadName: `World Boss (resume): ${state.bossId}`,
+      announceText: `🌋 ${memberTags} — wątek world-bossa odtworzony, kontynuujcie walkę!`,
+    };
+
+    if (state.thread === null) {
+      const newThread = await recreateBattleThread(client, state, opts);
+      return this.attachNewThread(state, newThread, playerId);
+    }
+
+    const threadAny = state.thread as {
+      setArchived?: (s: boolean) => Promise<unknown>;
+      send?: (msg: string) => Promise<unknown>;
+      id?: string;
+    };
+    try {
+      if (typeof threadAny.setArchived === 'function') {
+        await threadAny.setArchived(false).catch(() => {});
+      }
+      if (typeof threadAny.send === 'function') {
+        await threadAny.send(`🌋 <@${playerId}> wraca na world boss.`);
+      }
+      await promptHumansWithPanel(state);
+      return { ok: true, threadId: typeof threadAny.id === 'string' ? threadAny.id : undefined };
+    } catch {
+      const newThread = await recreateBattleThread(client, state, opts);
+      return this.attachNewThread(state, newThread, playerId);
+    }
+  }
+
+  private async attachNewThread(
+    state: WorldBossBattleState,
+    newThread: unknown,
+    playerId: string,
+  ): Promise<{ ok: boolean; threadId?: string }> {
+    if (!newThread || typeof newThread !== 'object' || !('id' in newThread)) {
+      return { ok: false };
+    }
+    const tid = (newThread as { id: string }).id;
+    this.battles.delete(state.id);
+    state.id = tid;
+    state.thread = newThread;
+    state.promptMessageIds.clear();
+    this.battles.set(tid, state);
+    await this.battleStore.updateThreadId(state._battleId, tid);
+    try {
+      const sender = newThread as { send?: (msg: string) => Promise<unknown> };
+      if (typeof sender.send === 'function') {
+        await sender.send(`🌋 <@${playerId}> wraca na world boss.`);
+      }
+      await promptHumansWithPanel(state);
+    } catch {
+      return { ok: false };
+    }
+    return { ok: true, threadId: tid };
+  }
 
   /** Wczytuje aktywne world-boss battles z Mongo na starcie. */
   async hydrate(): Promise<void> {

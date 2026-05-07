@@ -13,8 +13,10 @@ import {
   type BattleState,
   humansAlive,
 } from '../engine/battle-state.js';
+import type { Client } from 'discord.js';
 import { resolveBattleRound } from '../engine/combat-battle.js';
 import { BattleStore } from '../engine/battle-store.js';
+import { recreateBattleThread } from '../engine/battle-helpers.js';
 import { chooseAiAction } from '../engine/ai.js';
 import {
   syncConsumablesAfterBattle,
@@ -120,6 +122,76 @@ export class DungeonService {
     private readonly party: PartyService,
     private readonly battleStore: BattleStore,
   ) {}
+
+  /** Zwraca aktywny dungeon state gracza (jeśli jest). */
+  getActiveStateForPlayer(playerId: string): DungeonBattleState | undefined {
+    for (const state of this.states.values()) {
+      if (state.finished) continue;
+      if (state.combatants.some((c) => c.team === 0 && c.id === playerId && c.hp > 0)) {
+        return state;
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Resume dungeon battle dla gracza. Recreate thread jeśli zniknął.
+   * Po hydrate state.thread === null — od razu recreate.
+   */
+  async resumeForPlayer(
+    client: Client,
+    playerId: string,
+  ): Promise<{ ok: boolean; threadId?: string }> {
+    const state = this.getActiveStateForPlayer(playerId);
+    if (!state) return { ok: false };
+
+    const memberTags = state.partyMemberIds.map((id) => `<@${id}>`).join(' ');
+    const opts = {
+      threadName: `Dungeon (resume): ${state.dungeonId}`,
+      announceText: `🏰 ${memberTags} — wątek dungeonu odtworzony, kontynuujcie walkę!`,
+    };
+
+    if (state.thread === null) {
+      const newThread = await recreateBattleThread(client, state, opts);
+      return this.attachNewThread(state, newThread, playerId);
+    }
+
+    try {
+      if (typeof state.thread.setArchived === 'function') {
+        await state.thread.setArchived(false).catch(() => {});
+      }
+      await state.thread.send(`🏰 <@${playerId}> wraca do walki w dungeonie.`);
+      await promptHumansWithPanel(state);
+      return { ok: true, threadId: state.thread.id };
+    } catch {
+      const newThread = await recreateBattleThread(client, state, opts);
+      return this.attachNewThread(state, newThread, playerId);
+    }
+  }
+
+  private async attachNewThread(
+    state: DungeonBattleState,
+    newThread: unknown,
+    playerId: string,
+  ): Promise<{ ok: boolean; threadId?: string }> {
+    if (!newThread || typeof newThread !== 'object' || !('id' in newThread)) {
+      return { ok: false };
+    }
+    const tid = (newThread as { id: string }).id;
+    this.states.delete(state.id);
+    state.id = tid;
+    state.thread = newThread;
+    state.promptMessageIds.clear();
+    this.states.set(tid, state);
+    await this.battleStore.updateThreadId(state._battleId, tid);
+    try {
+      await state.thread.send(`🏰 <@${playerId}> wraca do walki w dungeonie.`);
+      await promptHumansWithPanel(state);
+    } catch {
+      return { ok: false };
+    }
+    return { ok: true, threadId: tid };
+  }
 
   /** Wczytuje aktywne dungeony z Mongo na starcie. Thread null — czeka na resume. */
   async hydrate(): Promise<void> {

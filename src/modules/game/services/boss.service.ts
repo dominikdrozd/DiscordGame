@@ -12,8 +12,10 @@ import {
   type BattleState,
   humansAlive,
 } from '../engine/battle-state.js';
+import type { Client } from 'discord.js';
 import { resolveBattleRound } from '../engine/combat-battle.js';
 import { BattleStore } from '../engine/battle-store.js';
+import { recreateBattleThread } from '../engine/battle-helpers.js';
 import { chooseAiAction } from '../engine/ai.js';
 import {
   syncConsumablesAfterBattle,
@@ -71,6 +73,72 @@ export class BossService {
     private readonly battleStore: BattleStore,
     private readonly quests?: QuestService,
   ) {}
+
+  /** Zwraca aktywny boss state gracza (jeśli jest). */
+  getActiveStateForPlayer(playerId: string): BossBattleState | undefined {
+    for (const state of this.states.values()) {
+      if (state.finished) continue;
+      if (state.combatants.some((c) => c.team === 0 && c.id === playerId && c.hp > 0)) {
+        return state;
+      }
+    }
+    return undefined;
+  }
+
+  /** Resume walki z bossem dla gracza — recreate thread jeśli zniknął. */
+  async resumeForPlayer(
+    client: Client,
+    playerId: string,
+  ): Promise<{ ok: boolean; threadId?: string }> {
+    const state = this.getActiveStateForPlayer(playerId);
+    if (!state) return { ok: false };
+
+    const opts = {
+      threadName: `Boss (resume): ${state.bossId}`,
+      announceText: `👹 <@${playerId}> — wątek z bossem odtworzony, kontynuuj walkę!`,
+    };
+
+    if (state.thread === null) {
+      const newThread = await recreateBattleThread(client, state, opts);
+      return this.attachNewThread(state, newThread, playerId);
+    }
+
+    try {
+      if (typeof state.thread.setArchived === 'function') {
+        await state.thread.setArchived(false).catch(() => {});
+      }
+      await state.thread.send(`👹 <@${playerId}> wraca do walki z bossem.`);
+      await promptHumansWithPanel(state);
+      return { ok: true, threadId: state.thread.id };
+    } catch {
+      const newThread = await recreateBattleThread(client, state, opts);
+      return this.attachNewThread(state, newThread, playerId);
+    }
+  }
+
+  private async attachNewThread(
+    state: BossBattleState,
+    newThread: unknown,
+    playerId: string,
+  ): Promise<{ ok: boolean; threadId?: string }> {
+    if (!newThread || typeof newThread !== 'object' || !('id' in newThread)) {
+      return { ok: false };
+    }
+    const tid = (newThread as { id: string }).id;
+    this.states.delete(state.id);
+    state.id = tid;
+    state.thread = newThread;
+    state.promptMessageIds.clear();
+    this.states.set(tid, state);
+    await this.battleStore.updateThreadId(state._battleId, tid);
+    try {
+      await state.thread.send(`👹 <@${playerId}> wraca do walki z bossem.`);
+      await promptHumansWithPanel(state);
+    } catch {
+      return { ok: false };
+    }
+    return { ok: true, threadId: tid };
+  }
 
   /** Wczytuje aktywne walki z bossami na starcie. */
   async hydrate(): Promise<void> {
