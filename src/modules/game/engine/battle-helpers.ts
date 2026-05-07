@@ -1,9 +1,10 @@
-import { MessageFlags, type ButtonInteraction } from 'discord.js';
+import { MessageFlags, type ButtonInteraction, type Client } from 'discord.js';
 import type { BattleCombatant, BattleState } from './battle-state.js';
 import { findCombatant, aliveAllies, aliveEnemies } from './battle-state.js';
 import { consumablesUsed } from './player-combatant.js';
 import type { PlayerStatsService } from '../services/player-stats.js';
 import { ITEMS } from '../services/items.js';
+import { errMsg } from '../../../utils.js';
 import {
   buildActionRow,
   buildItemPickerRow,
@@ -682,4 +683,57 @@ export async function handleBattleTarget(
   await interaction
     .update({ content: 'Cel padł — wybierz innego:', components: [row] })
     .catch(() => {});
+}
+
+interface RecreateOpts {
+  /** Nazwa nowego threadu — np. `Ambush (resume): playerId`. Skracana do 100 chars. */
+  threadName: string;
+  /** Linia anonsu w parent channelu — np. `⚔️ <@p1> — wątek odtworzony`. */
+  announceText: string;
+  autoArchiveMinutes?: number;
+}
+
+interface RecreatedThread {
+  id: string;
+}
+
+function isRecreatedThread(t: unknown): t is RecreatedThread {
+  return !!t && typeof t === 'object' && 'id' in t && typeof (t as { id: unknown }).id === 'string';
+}
+
+/**
+ * Odtwarza Discord thread w `state.parentChannelId` po jego usunięciu.
+ * Zwraca nowy thread (lub null jeśli parent channel również niedostępny).
+ * Wywoływane przez serwisy w `resumeForPlayer` gdy `state.thread` null lub `send` rzuca.
+ */
+export async function recreateBattleThread(
+  client: Client,
+  state: BattleState,
+  opts: RecreateOpts,
+): Promise<unknown> {
+  if (!state.parentChannelId) return null;
+  try {
+    const channel = await client.channels.fetch(state.parentChannelId).catch(() => null);
+    if (!channel || !channel.isTextBased() || !('send' in channel)) return null;
+    const announcement = await channel.send(opts.announceText).catch(() => null);
+    if (
+      !announcement ||
+      typeof (announcement as { startThread?: unknown }).startThread !== 'function'
+    ) {
+      return null;
+    }
+    const thread = await (announcement as {
+      startThread: (o: { name: string; autoArchiveDuration: number }) => Promise<unknown>;
+    })
+      .startThread({
+        name: opts.threadName.slice(0, 100),
+        autoArchiveDuration: opts.autoArchiveMinutes ?? 60,
+      })
+      .catch(() => null);
+    if (!isRecreatedThread(thread)) return null;
+    return thread;
+  } catch (e) {
+    console.error('[battle] recreate thread fail:', errMsg(e));
+    return null;
+  }
 }

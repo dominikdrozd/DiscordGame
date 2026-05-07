@@ -80,6 +80,7 @@ export class BossService {
       if (doc.type !== 'boss' || !doc.bossContext) continue;
       const bossState = state as BossBattleState;
       bossState.bossId = doc.bossContext.bossId;
+      bossState.parentChannelId = doc.parentChannelId;
       this.states.set(state.id, bossState);
       restored += 1;
     }
@@ -302,6 +303,7 @@ export class BossService {
 
     const state: BossBattleState = {
       _battleId: randomUUID(),
+      parentChannelId: thread.parentId ?? thread.id,
       id: thread.id,
       thread,
       combatants: [playerCombatant, bossCombatant],

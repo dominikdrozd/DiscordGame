@@ -132,6 +132,7 @@ export class DungeonService {
       dungeonState.roomIndex = doc.dungeonContext.roomIndex;
       dungeonState.currentBossId = doc.dungeonContext.currentBossId;
       dungeonState.partyMemberIds = doc.dungeonContext.partyMemberIds;
+      dungeonState.parentChannelId = doc.parentChannelId;
       this.states.set(state.id, dungeonState);
       restored += 1;
     }
@@ -324,6 +325,7 @@ export class DungeonService {
 
     const state: DungeonBattleState = {
       _battleId: randomUUID(),
+      parentChannelId: thread.parentId ?? thread.id,
       id: thread.id,
       thread,
       combatants: [...playerCombatants, firstBoss],

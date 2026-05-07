@@ -134,6 +134,7 @@ export class WorldBossService {
       const wbState = state as WorldBossBattleState;
       wbState.bossId = doc.worldBossContext.bossId;
       wbState.participantIds = doc.worldBossContext.participantIds;
+      wbState.parentChannelId = doc.parentChannelId;
       this.battles.set(state.id, wbState);
       restored += 1;
     }
@@ -299,6 +300,7 @@ export class WorldBossService {
 
     const state: WorldBossBattleState = {
       _battleId: randomUUID(),
+      parentChannelId: channel.id,
       id: tid,
       thread,
       combatants: [...playerCombatants, bossCombatant],

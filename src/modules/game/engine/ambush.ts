@@ -86,6 +86,7 @@ import {
   promptHumansWithPanel,
   postBattleSummary,
   routeBattleInteraction,
+  recreateBattleThread,
 } from './battle-helpers.js';
 
 const AMBUSH_CHECK_INTERVAL_MS = parseInt(process.env.AMBUSH_CHECK_INTERVAL_MS || '300000', 10);
@@ -143,6 +144,7 @@ export class AmbushService {
       if (!doc.expedition) continue;
       const ambushState = state as AmbushBattleState;
       ambushState.expedition = doc.expedition;
+      ambushState.parentChannelId = doc.parentChannelId;
       this.states.set(state.id, ambushState);
 
       const elapsed = now - doc.createdAt;
@@ -300,39 +302,20 @@ export class AmbushService {
 
   /**
    * Odtwarza wątek ambushu w parent channelu po jego usunięciu.
-   * Zwraca nowy thread (z API) lub null jeśli odtworzenie nieudane
-   * (np. brak permissions, channel zniknął razem z wątkiem).
+   * Deleguje do generic `recreateBattleThread` w `battle-helpers.ts`.
    */
   private async recreateThreadFor(
     state: AmbushBattleState,
     playerId: string,
   ): Promise<unknown> {
-    try {
-      const channel = await this.client.channels.fetch(state.expedition.channelId).catch(() => null);
-      if (!channel || !channel.isTextBased() || !('send' in channel)) return null;
-      const players = state.combatants
-        .filter((c) => c.team === 0)
-        .map((c) => `<@${c.id}>`)
-        .join(' ');
-      const announcement = await channel
-        .send(`⚔️ ${players} — wątek ambushu został odtworzony, kontynuujcie walkę!`)
-        .catch(() => null);
-      if (!announcement || typeof (announcement as { startThread?: unknown }).startThread !== 'function') {
-        return null;
-      }
-      const thread = await (announcement as {
-        startThread: (opts: { name: string; autoArchiveDuration: number }) => Promise<unknown>;
-      })
-        .startThread({
-          name: `Ambush (resume): ${playerId}`.slice(0, 100),
-          autoArchiveDuration: 60,
-        })
-        .catch(() => null);
-      return thread ?? null;
-    } catch (e) {
-      console.error('[ambush] recreate thread fail:', errMsg(e));
-      return null;
-    }
+    const players = state.combatants
+      .filter((c) => c.team === 0)
+      .map((c) => `<@${c.id}>`)
+      .join(' ');
+    return recreateBattleThread(this.client, state, {
+      threadName: `Ambush (resume): ${playerId}`,
+      announceText: `⚔️ ${players} — wątek ambushu został odtworzony, kontynuujcie walkę!`,
+    });
   }
 
   async handleInteraction(interaction: ButtonInteraction): Promise<void> {
@@ -433,6 +416,7 @@ export class AmbushService {
     this.stats.save();
     const state: AmbushBattleState = {
       _battleId: randomUUID(),
+      parentChannelId: channelId,
       id: thread.id,
       thread,
       combatants: [...playerCombatants, ...mobCombatants],
@@ -512,6 +496,7 @@ export class AmbushService {
 
     const state: AmbushBattleState = {
       _battleId: randomUUID(),
+      parentChannelId: exp.channelId,
       id: thread.id,
       thread,
       combatants: [playerCombatant, ...mobCombatants],
