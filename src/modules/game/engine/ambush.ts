@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Client, ButtonInteraction } from 'discord.js';
 import { PlayerStatsService } from '../services/player-stats.js';
+import { BattleStore } from './battle-store.js';
 import { PartyService, type Party } from '../services/party.js';
 import { rollLootMany } from '../services/loot.js';
 import { ITEMS } from '../services/items.js';
@@ -115,8 +116,49 @@ export class AmbushService {
     private readonly client: Client,
     private readonly stats: PlayerStatsService,
     private readonly party: PartyService,
+    private readonly battleStore: BattleStore,
     private readonly logAmbush: (playerId: string, line: string) => void = () => {},
   ) {}
+
+  /**
+   * Wczytuje aktywne ambush battles z Mongo i odtwarza in-memory state.
+   * Wywoływane raz na starcie (po `client.once('ready')`). Stale battles
+   * (>AMBUSH_TIMEOUT_MS od createdAt) są od razu finished'owane jako timeout.
+   *
+   * Thread NIE jest odtwarzany od razu — czeka na klik "Wróć do walki".
+   * Timeout handler jest re-scheduled z pozostałym czasem.
+   */
+  async hydrate(): Promise<void> {
+    const loaded = await this.battleStore.loadActive();
+    let restored = 0;
+    let staleSkipped = 0;
+    const now = Date.now();
+    for (const { state, doc } of loaded) {
+      if (doc.type !== 'ambush') continue; // inne typy — phase 3
+      if (now - doc.createdAt > AMBUSH_TIMEOUT_MS) {
+        await this.battleStore.finish(doc._id, { draw: true });
+        staleSkipped += 1;
+        continue;
+      }
+      if (!doc.expedition) continue;
+      const ambushState = state as AmbushBattleState;
+      ambushState.expedition = doc.expedition;
+      this.states.set(state.id, ambushState);
+
+      const elapsed = now - doc.createdAt;
+      const remaining = Math.max(60_000, AMBUSH_TIMEOUT_MS - elapsed);
+      ambushState.timeoutHandle = setTimeout(() => {
+        this.timeoutAmbush(ambushState).catch((e) =>
+          console.error('[ambush] hydrate timeout fail:', errMsg(e)),
+        );
+      }, remaining);
+      ambushState.timeoutHandle.unref?.();
+      restored += 1;
+    }
+    console.log(
+      `[ambush] hydrate: ${restored} active battles restored, ${staleSkipped} stale skipped`,
+    );
+  }
 
   start(): void {
     if (this.timer) return;
@@ -373,6 +415,10 @@ export class AmbushService {
       expedition: { destination: expDestination, channelId },
     };
     this.states.set(thread.id, state);
+    await this.battleStore.create(state, 'ambush', {
+      parentChannelId: channelId,
+      expedition: { destination: expDestination, channelId },
+    });
 
     state.timeoutHandle = setTimeout(() => {
       this.timeoutAmbush(state).catch((e) =>
@@ -448,6 +494,10 @@ export class AmbushService {
       expedition: { destination: exp.destination, channelId: exp.channelId },
     };
     this.states.set(thread.id, state);
+    await this.battleStore.create(state, 'ambush', {
+      parentChannelId: exp.channelId,
+      expedition: { destination: exp.destination, channelId: exp.channelId },
+    });
 
     state.timeoutHandle = setTimeout(() => {
       this.timeoutAmbush(state).catch((e) => console.error('[ambush] timeout fail:', errMsg(e)));
@@ -485,6 +535,8 @@ export class AmbushService {
     state.promptMessageIds.clear();
 
     const result = resolveBattleRound(state);
+    // Snapshot persisted PRZED round-summary message — eliminuje race "summary widoczny, crash przed snapshot".
+    await this.battleStore.snapshot(state);
 
     // Log walki — zawsze, też dla ostatniej rundy gdy ktoś ginie.
     if (result.lines.length > 0) {
@@ -507,6 +559,10 @@ export class AmbushService {
     result: { draw?: boolean; winnerTeam?: number },
   ): Promise<void> {
     if (state.timeoutHandle) clearTimeout(state.timeoutHandle);
+    await this.battleStore.finish(state._battleId, {
+      winnerTeam: result.winnerTeam,
+      draw: result.draw,
+    });
     syncConsumablesAfterBattle(this.stats, state);
     const playerCombatants = state.combatants.filter((c) => c.team === 0);
     const def = EXPEDITIONS[state.expedition.destination];
@@ -570,6 +626,7 @@ export class AmbushService {
   private async timeoutAmbush(state: AmbushBattleState): Promise<void> {
     if (state.finished) return;
     state.finished = true;
+    await this.battleStore.finish(state._battleId, { draw: true });
     for (const pc of state.combatants.filter((c) => c.team === 0)) {
       const p = this.stats.get(pc.id, pc.name);
       p.activeExpedition = null;

@@ -48,6 +48,7 @@ import { IdentificationService } from './services/identification.service.js';
 import { EnchanterService } from './services/enchanter.service.js';
 import { QuestService } from './services/quest.service.js';
 import { QuestCommand } from './commands/quest.command.js';
+import { BattleStore } from './engine/battle-store.js';
 
 export interface GameServices {
   stats: PlayerStatsService;
@@ -55,6 +56,7 @@ export interface GameServices {
   expeditions: ExpeditionService;
   identification: IdentificationService;
   enchanter: EnchanterService;
+  repos: Repos;
 }
 
 import { hasThreadCreate } from './engine/discord-helpers.js';
@@ -67,7 +69,7 @@ export async function createGameServices(repos: Repos): Promise<GameServices> {
   const expeditions = new ExpeditionService(stats, party, quests);
   const identification = new IdentificationService(stats);
   const enchanter = new EnchanterService(stats);
-  return { stats, party, expeditions, identification, enchanter };
+  return { stats, party, expeditions, identification, enchanter, repos };
 }
 
 export function registerGameCommands(manager: CommandManager, services: GameServices): void {
@@ -204,13 +206,22 @@ export function registerGameCommands(manager: CommandManager, services: GameServ
   manager.register(new MenuCommand(menu));
 }
 
-export function startAmbushLoop(client: Client, services: GameServices): AmbushService {
-  const ambush = new AmbushService(client, services.stats, services.party, (id, line) =>
-    services.expeditions.logAmbush(id, line),
+export async function startAmbushLoop(
+  client: Client,
+  services: GameServices,
+): Promise<AmbushService> {
+  const battleStore = new BattleStore(services.repos.battle);
+  const ambush = new AmbushService(
+    client,
+    services.stats,
+    services.party,
+    battleStore,
+    (id, line) => services.expeditions.logAmbush(id, line),
   );
   // ExpeditionService musi mieć referencję do AmbushService żeby renderować
   // "Wróć do walki" — bind po konstrukcji bo dependency cycle.
   services.expeditions.bindAmbushService(ambush);
+  await ambush.hydrate();
   ambush.start();
   return ambush;
 }

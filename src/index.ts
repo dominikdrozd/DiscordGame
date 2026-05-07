@@ -85,7 +85,7 @@ async function registerSlashCommands(applicationId: string): Promise<void> {
   }
 }
 
-client.once(Events.ClientReady, (c) => {
+client.once(Events.ClientReady, async (c) => {
   console.log(`Zalogowano jako ${c.user.tag}`);
   console.log(
     'Komendy:',
@@ -94,7 +94,7 @@ client.once(Events.ClientReady, (c) => {
       .map((cmd) => cmd.prefix.trim())
       .join(', '),
   );
-  ambushService = startAmbushLoop(client, gameServices);
+  ambushService = await startAmbushLoop(client, gameServices);
   worldBossService = startWorldBossLoop(client, gameServices);
   arenaService = startArenaLoop(client, gameServices);
   void registerSlashCommands(c.user.id);
