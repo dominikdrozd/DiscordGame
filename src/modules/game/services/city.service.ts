@@ -1,4 +1,4 @@
-import { ChannelType, MessageFlags, type ButtonInteraction } from 'discord.js';
+import { ChannelType, type ButtonInteraction } from 'discord.js';
 import type { ICommandContext } from '../../../types/command.types.js';
 import { PlayerStatsService, type PlayerStats } from './player-stats.js';
 import { CITIES, getCity, listCities, type City, type Merchant } from '../cities/index.js';
@@ -7,6 +7,7 @@ import { REGION_LVL_REQ } from '../engine/encounters.js';
 import { displayName, errMsg } from '../../../utils.js';
 import { buildShopItemRows, buildShopCloseRow } from '../ui/shop-buttons.js';
 import { deleteThreadNow } from '../engine/battle-helpers.js';
+import { chat } from '../../../managers/chat.manager.js';
 
 interface ShopItem {
   merchantId: string;
@@ -83,7 +84,8 @@ export class CityService {
     const { msg, prompt } = ctx;
     const player = this.stats.get(msg.author.id, msg.author.globalName ?? msg.author.username);
     if (player.activeExpedition) {
-      await msg.reply(
+      await chat.replyToMessage(
+        msg,
         '🚫 Jesteś na wyprawie — nie możesz wejść do miasta. Wróć po `.expedition claim` (albo `🎁 Zbierz` w menu).',
       );
       return;
@@ -97,7 +99,8 @@ export class CityService {
     if (sub === 'buy') return this.buy(msg, args[1], args[2], args[3]);
     if (sub === 'sell') return this.sell(msg, args[1], args[2]);
 
-    await msg.reply(
+    await chat.replyToMessage(
+      msg,
       'Użycie: `.city` / `.city info <id>` / `.city shop <id>` / `.city buy <city> <item> [qty]` / `.city sell <item> [qty]`.',
     );
   }
@@ -113,17 +116,16 @@ export class CityService {
     const arg = parts[5];
 
     if (interaction.user.id !== userId) {
-      await interaction.reply({ content: 'To nie twój sklep.', flags: MessageFlags.Ephemeral }).catch(() => {});
+      await chat.reply(interaction, 'To nie twój sklep.', { ephemeral: true });
       return;
     }
     const state = this.shops.get(shopKey(cityId, userId));
     if (!state) {
-      await interaction
-        .reply({
-          content: 'Sklep już zamknięty — otwórz go ponownie `.city shop <id>`.',
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      await chat.reply(
+        interaction,
+        'Sklep już zamknięty — otwórz go ponownie `.city shop <id>`.',
+        { ephemeral: true },
+      );
       return;
     }
     this.resetIdleTimer(state);
@@ -136,7 +138,7 @@ export class CityService {
 
   private async list(msg: any): Promise<void> {
     const player = this.stats.get(msg.author.id, displayName(msg));
-    await msg.reply(this.renderList(player));
+    await chat.replyToMessage(msg, this.renderList(player));
   }
 
   /** Public render helper — używany z `.city` i z `/city list`. */
@@ -157,11 +159,11 @@ export class CityService {
 
   private async info(msg: any, cityId: string | undefined): Promise<void> {
     if (!cityId) {
-      await msg.reply('Użycie: `.city info <id>`.');
+      await chat.replyToMessage(msg, 'Użycie: `.city info <id>`.');
       return;
     }
     const player = this.stats.get(msg.author.id, displayName(msg));
-    await msg.reply(this.renderInfo(player, cityId));
+    await chat.replyToMessage(msg, this.renderInfo(player, cityId));
   }
 
   /** Public — używane z `/city info`. */
@@ -196,7 +198,7 @@ export class CityService {
   private async openShop(ctx: ICommandContext, cityId: string | undefined): Promise<void> {
     const { msg, registerThread } = ctx;
     if (!cityId) {
-      await msg.reply('Użycie: `.city shop <id>`.');
+      await chat.replyToMessage(msg, 'Użycie: `.city shop <id>`.');
       return;
     }
     await this.openShopForUser({
@@ -205,7 +207,9 @@ export class CityService {
       userName: displayName(msg),
       channel: msg.channel,
       registerThread,
-      reply: (content: string) => msg.reply(content),
+      reply: async (content: string) => {
+        await chat.replyToMessage(msg, content);
+      },
       startThreadFallback: (opts: { name: string; autoArchiveDuration: number }) =>
         msg.startThread(opts),
     });
@@ -311,47 +315,37 @@ export class CityService {
       sellModeItems: new Set(),
     };
 
-    await thread
-      .send({
-        content: `🛒 **${city.name}** — witaj w sklepie. Kup lub sprzedaj klikając guziki przy każdym itemie. Sklep zamknie się sam po 5 min braku interakcji.`,
-      })
-      .catch(() => {});
+    await chat.send(
+      thread,
+      `🛒 **${city.name}** — witaj w sklepie. Kup lub sprzedaj klikając guziki przy każdym itemie. Sklep zamknie się sam po 5 min braku interakcji.`,
+    );
 
     let groupedByMerchant = '';
     for (const item of items) {
       if (item.merchantId !== groupedByMerchant) {
-        await thread
-          .send({
-            content: `__**${item.merchantName}**__ — _${item.merchantDescription}_`,
-          })
-          .catch(() => {});
+        await chat.send(
+          thread,
+          `__**${item.merchantName}**__ — _${item.merchantDescription}_`,
+        );
         groupedByMerchant = item.merchantId;
       }
-      const sent = await thread
-        .send({
-          content: this.renderItemContent(item, player, false),
-          components: buildShopItemRows({
-            cityId: state.cityId,
-            userId: state.userId,
-            itemId: item.itemId,
-            buyPrice: item.buyPrice,
-            haveQty: player.inventory.resources[item.itemId] ?? 0,
-            playerGold: player.gold,
-            sellMode: false,
-          }),
-        })
-        .catch(() => null);
-      if (sent && typeof sent === 'object' && 'id' in sent && typeof sent.id === 'string') {
-        state.itemMessageIds.set(item.itemId, sent.id);
-      }
+      const sent = await chat.send(thread, this.renderItemContent(item, player, false), {
+        components: buildShopItemRows({
+          cityId: state.cityId,
+          userId: state.userId,
+          itemId: item.itemId,
+          buyPrice: item.buyPrice,
+          haveQty: player.inventory.resources[item.itemId] ?? 0,
+          playerGold: player.gold,
+          sellMode: false,
+        }),
+      });
+      if (sent) state.itemMessageIds.set(item.itemId, sent.id);
     }
 
-    await thread
-      .send({
-        content: '_Gdy skończysz zakupy, kliknij guzik poniżej:_',
-        components: buildShopCloseRow(state.cityId, state.userId),
-      })
-      .catch(() => {});
+    await chat.send(thread, '_Gdy skończysz zakupy, kliknij guzik poniżej:_', {
+      components: buildShopCloseRow(state.cityId, state.userId),
+    });
 
     this.shops.set(shopKey(city.id, args.userId), state);
     this.resetIdleTimer(state);
@@ -394,20 +388,17 @@ export class CityService {
   ): Promise<void> {
     const player = this.stats.get(state.userId);
     const sellMode = state.sellModeItems.has(item.itemId);
-    await interaction
-      .update({
-        content: this.renderItemContent(item, player, sellMode),
-        components: buildShopItemRows({
-          cityId: state.cityId,
-          userId: state.userId,
-          itemId: item.itemId,
-          buyPrice: item.buyPrice,
-          haveQty: player.inventory.resources[item.itemId] ?? 0,
-          playerGold: player.gold,
-          sellMode,
-        }),
-      })
-      .catch(() => {});
+    await chat.update(interaction, this.renderItemContent(item, player, sellMode), {
+      components: buildShopItemRows({
+        cityId: state.cityId,
+        userId: state.userId,
+        itemId: item.itemId,
+        buyPrice: item.buyPrice,
+        haveQty: player.inventory.resources[item.itemId] ?? 0,
+        playerGold: player.gold,
+        sellMode,
+      }),
+    });
   }
 
   private async handleBuy(
@@ -418,19 +409,18 @@ export class CityService {
   ): Promise<void> {
     const item = itemId ? this.findItem(state, itemId) : undefined;
     if (!item) {
-      await interaction.reply({ content: 'Nieznany item.', flags: MessageFlags.Ephemeral }).catch(() => {});
+      await chat.reply(interaction, 'Nieznany item.', { ephemeral: true });
       return;
     }
     const qty = Math.max(1, parseInt(qtyArg ?? '1', 10) || 1);
     const totalCost = item.buyPrice * qty;
     const player = this.stats.get(state.userId);
     if (!this.stats.hasGold(player, totalCost)) {
-      await interaction
-        .reply({
-          content: `Brakuje złota — masz ${player.gold}, potrzebujesz ${totalCost} (×${qty}).`,
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      await chat.reply(
+        interaction,
+        `Brakuje złota — masz ${player.gold}, potrzebujesz ${totalCost} (×${qty}).`,
+        { ephemeral: true },
+      );
       return;
     }
     this.stats.removeGold(player, totalCost);
@@ -447,15 +437,13 @@ export class CityService {
   ): Promise<void> {
     const item = itemId ? this.findItem(state, itemId) : undefined;
     if (!item) {
-      await interaction.reply({ content: 'Nieznany item.', flags: MessageFlags.Ephemeral }).catch(() => {});
+      await chat.reply(interaction, 'Nieznany item.', { ephemeral: true });
       return;
     }
     const player = this.stats.get(state.userId);
     const have = player.inventory.resources[item.itemId] ?? 0;
     if (have <= 0) {
-      await interaction
-        .reply({ content: 'Nie masz tego itemu w plecaku.', flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, 'Nie masz tego itemu w plecaku.', { ephemeral: true });
       return;
     }
     state.sellModeItems.add(item.itemId);
@@ -470,7 +458,7 @@ export class CityService {
   ): Promise<void> {
     const item = itemId ? this.findItem(state, itemId) : undefined;
     if (!item) {
-      await interaction.reply({ content: 'Nieznany item.', flags: MessageFlags.Ephemeral }).catch(() => {});
+      await chat.reply(interaction, 'Nieznany item.', { ephemeral: true });
       return;
     }
     const qty = Math.max(1, parseInt(qtyArg ?? '1', 10) || 1);
@@ -493,12 +481,9 @@ export class CityService {
   private async handleClose(interaction: ButtonInteraction, state: ShopState): Promise<void> {
     if (state.idleTimer) clearTimeout(state.idleTimer);
     this.shops.delete(shopKey(state.cityId, state.userId));
-    await interaction
-      .update({
-        content: `🛒 Sklep w **${state.cityName}** zamknięty. Wracaj do nas!`,
-        components: [],
-      })
-      .catch(() => {});
+    await chat.update(interaction, `🛒 Sklep w **${state.cityName}** zamknięty. Wracaj do nas!`, {
+      components: [],
+    });
     await deleteThreadNow(state.thread, '🛒 Wątek sklepu zamknięty przez gracza — usuwam.');
   }
 
@@ -560,12 +545,12 @@ export class CityService {
     qtyArg: string | undefined,
   ): Promise<void> {
     if (!cityId || !itemId) {
-      await msg.reply('Użycie: `.city buy <city_id> <item_id> [qty]`.');
+      await chat.replyToMessage(msg, 'Użycie: `.city buy <city_id> <item_id> [qty]`.');
       return;
     }
     const player = this.stats.get(msg.author.id, displayName(msg));
     const qty = Math.max(1, parseInt(qtyArg ?? '1', 10) || 1);
-    await msg.reply(this.tryBuy(player, cityId, itemId, qty));
+    await chat.replyToMessage(msg, this.tryBuy(player, cityId, itemId, qty));
   }
 
   private async sell(
@@ -574,13 +559,14 @@ export class CityService {
     qtyArg: string | undefined,
   ): Promise<void> {
     if (!itemId) {
-      await msg.reply(
+      await chat.replyToMessage(
+        msg,
         'Użycie: `.city sell <item_id> [qty]` (sprzedaż auto-wybiera handlarza z najwyższym skupem).',
       );
       return;
     }
     const player = this.stats.get(msg.author.id, displayName(msg));
     const requestedQty = qtyArg ? parseInt(qtyArg, 10) || undefined : undefined;
-    await msg.reply(this.trySell(player, itemId, requestedQty));
+    await chat.replyToMessage(msg, this.trySell(player, itemId, requestedQty));
   }
 }
