@@ -1,8 +1,8 @@
 import {
-  MessageFlags,
   type ButtonInteraction,
   type ChatInputCommandInteraction,
 } from 'discord.js';
+import { chat } from '../../../managers/chat.manager.js';
 import type { ICommandContext } from '../../../types/command.types.js';
 import { PlayerStatsService, type PlayerStats } from './player-stats.js';
 import { PartyService } from './party.js';
@@ -95,7 +95,8 @@ export class ExpeditionService {
     if (sub === 'status') return this.status(msg);
     if (sub === 'claim') return this.claim(msg);
     if (sub === 'start') return this.start(msg, args[1]);
-    await msg.reply(
+    await chat.replyToMessage(
+      msg,
       'Użycie: `.expedition` (interaktywny browser) / `.expedition start <id>` / `.expedition status` / `.expedition claim`.',
     );
   }
@@ -109,7 +110,7 @@ export class ExpeditionService {
     const arg = parts[3];
 
     if (interaction.user.id !== userId) {
-      await interaction.reply({ content: 'To nie twój browser.', flags: MessageFlags.Ephemeral }).catch(() => {});
+      await chat.reply(interaction, 'To nie twój browser.', { ephemeral: true });
       return;
     }
     const player = this.stats.get(userId);
@@ -137,8 +138,7 @@ export class ExpeditionService {
   private async openInteractive(msg: any): Promise<void> {
     const player = this.stats.get(msg.author.id, displayName(msg));
     if (player.activeExpedition) {
-      await msg.reply({
-        content: this.renderActiveContent(player),
+      await chat.replyToMessage(msg, this.renderActiveContent(player), {
         components: buildExpActiveRows(player.id, this.canClaim(player), false, this.inActiveBattle(player)),
       });
       return;
@@ -153,8 +153,7 @@ export class ExpeditionService {
     const sorted = sortedExpeditions();
     const exp = sorted[state.index];
     const inParty = !!this.party.getByMember(player.id);
-    await msg.reply({
-      content: this.renderExpDetails(exp, player),
+    await chat.replyToMessage(msg, this.renderExpDetails(exp, player), {
       components: buildExpBrowseRows(player.id, sorted.length, this.canEnter(exp, player), false, inParty),
     });
   }
@@ -180,25 +179,19 @@ export class ExpeditionService {
     };
     this.browsers.set(userId, state);
     if (player.activeExpedition) {
-      await interaction
-        .reply({
-          content: this.renderActiveContent(player),
-          components: buildExpActiveRows(player.id, this.canClaim(player), false, this.inActiveBattle(player)),
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      await chat.reply(interaction, this.renderActiveContent(player), {
+        ephemeral: true,
+        components: buildExpActiveRows(player.id, this.canClaim(player), false, this.inActiveBattle(player)),
+      });
       return;
     }
     const sorted = sortedExpeditions();
     const exp = sorted[state.index];
     const inParty = !!this.party.getByMember(player.id);
-    await interaction
-      .reply({
-        content: this.renderExpDetails(exp, player),
-        components: buildExpBrowseRows(player.id, sorted.length, this.canEnter(exp, player), false, inParty),
-        flags: MessageFlags.Ephemeral,
-      })
-      .catch(() => {});
+    await chat.reply(interaction, this.renderExpDetails(exp, player), {
+      ephemeral: true,
+      components: buildExpBrowseRows(player.id, sorted.length, this.canEnter(exp, player), false, inParty),
+    });
   }
 
   async openFromInteraction(interaction: ButtonInteraction): Promise<void> {
@@ -215,23 +208,17 @@ export class ExpeditionService {
     };
     this.browsers.set(userId, state);
     if (player.activeExpedition) {
-      await interaction
-        .update({
-          content: this.renderActiveContent(player),
-          components: buildExpActiveRows(player.id, this.canClaim(player), true, this.inActiveBattle(player)),
-        })
-        .catch(() => {});
+      await chat.update(interaction, this.renderActiveContent(player), {
+        components: buildExpActiveRows(player.id, this.canClaim(player), true, this.inActiveBattle(player)),
+      });
       return;
     }
     const sorted = sortedExpeditions();
     const exp = sorted[state.index];
     const inParty = !!this.party.getByMember(player.id);
-    await interaction
-      .update({
-        content: this.renderExpDetails(exp, player),
-        components: buildExpBrowseRows(player.id, sorted.length, this.canEnter(exp, player), true, inParty),
-      })
-      .catch(() => {});
+    await chat.update(interaction, this.renderExpDetails(exp, player), {
+      components: buildExpBrowseRows(player.id, sorted.length, this.canEnter(exp, player), true, inParty),
+    });
   }
 
   private renderExpDetails(exp: ExpeditionDef, player: PlayerStats): string {
@@ -420,12 +407,9 @@ export class ExpeditionService {
     }
     const state = this.browsers.get(userId);
     if (!state) {
-      await interaction
-        .reply({
-          content: 'Browser zamknięty — wpisz `.expedition` żeby otworzyć.',
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      await chat.reply(interaction, 'Browser zamknięty — wpisz `.expedition` żeby otworzyć.', {
+        ephemeral: true,
+      });
       return;
     }
     const sorted = sortedExpeditions();
@@ -433,18 +417,15 @@ export class ExpeditionService {
     state.index = (state.index + dir + sorted.length) % sorted.length;
     const exp = sorted[state.index];
     const inParty = !!this.party.getByMember(player.id);
-    await interaction
-      .update({
-        content: this.renderExpDetails(exp, player),
-        components: buildExpBrowseRows(
-          userId,
-          sorted.length,
-          this.canEnter(exp, player),
-          state.fromMenu,
-          inParty,
-        ),
-      })
-      .catch(() => {});
+    await chat.update(interaction, this.renderExpDetails(exp, player), {
+      components: buildExpBrowseRows(
+        userId,
+        sorted.length,
+        this.canEnter(exp, player),
+        state.fromMenu,
+        inParty,
+      ),
+    });
   }
 
   private async handleEnter(
@@ -454,7 +435,7 @@ export class ExpeditionService {
   ): Promise<void> {
     const state = this.browsers.get(userId);
     if (!state) {
-      await interaction.reply({ content: 'Browser zamknięty.', flags: MessageFlags.Ephemeral }).catch(() => {});
+      await chat.reply(interaction, 'Browser zamknięty.', { ephemeral: true });
       return;
     }
     const sorted = sortedExpeditions();
@@ -462,61 +443,47 @@ export class ExpeditionService {
     const player = this.stats.get(userId);
     const result = this.tryStartExpedition(player, exp, state.channelId, soloMode);
     if (!result.ok) {
-      await interaction
-        .reply({ content: result.reason ?? 'Nie udało się.', flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, result.reason ?? 'Nie udało się.', { ephemeral: true });
       return;
     }
     const fromMenu = state.fromMenu;
     this.browsers.delete(userId);
     this.logs.set(userId, []);
-    await interaction
-      .update({
-        content: `🗺️ **${exp.name}** rozpoczęta — wraca za ${Math.round(exp.durationMs / 60_000)} min. Wpisz \`.expedition\` żeby śledzić log walk.`,
-        components: fromMenu ? buildExpAfterRows(userId) : [],
-      })
-      .catch(() => {});
+    await chat.update(
+      interaction,
+      `🗺️ **${exp.name}** rozpoczęta — wraca za ${Math.round(exp.durationMs / 60_000)} min. Wpisz \`.expedition\` żeby śledzić log walk.`,
+      { components: fromMenu ? buildExpAfterRows(userId) : [] },
+    );
   }
 
   private async refreshActive(interaction: ButtonInteraction, player: PlayerStats): Promise<void> {
     const fromMenu = this.browsers.get(player.id)?.fromMenu ?? false;
     if (!player.activeExpedition) {
-      await interaction
-        .update({
-          content: 'Nie masz aktywnej wyprawy. Wpisz `.expedition` żeby otworzyć browser.',
-          components: fromMenu ? buildExpAfterRows(player.id) : [],
-        })
-        .catch(() => {});
+      await chat.update(
+        interaction,
+        'Nie masz aktywnej wyprawy. Wpisz `.expedition` żeby otworzyć browser.',
+        { components: fromMenu ? buildExpAfterRows(player.id) : [] },
+      );
       return;
     }
-    await interaction
-      .update({
-        content: this.renderActiveContent(player),
-        components: buildExpActiveRows(player.id, this.canClaim(player), fromMenu, this.inActiveBattle(player)),
-      })
-      .catch(() => {});
+    await chat.update(interaction, this.renderActiveContent(player), {
+      components: buildExpActiveRows(player.id, this.canClaim(player), fromMenu, this.inActiveBattle(player)),
+    });
   }
 
   private async handleClaim(interaction: ButtonInteraction, player: PlayerStats): Promise<void> {
     if (!player.activeExpedition) {
-      await interaction
-        .reply({ content: 'Nie masz wyprawy do odebrania.', flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, 'Nie masz wyprawy do odebrania.', { ephemeral: true });
       return;
     }
     if (player.activeExpedition.ambushedSince) {
-      await interaction
-        .reply({
-          content: '⚔️ Wyprawa zatrzymana — dokończ ambush najpierw.',
-          flags: MessageFlags.Ephemeral,
-        })
-        .catch(() => {});
+      await chat.reply(interaction, '⚔️ Wyprawa zatrzymana — dokończ ambush najpierw.', {
+        ephemeral: true,
+      });
       return;
     }
     if (player.activeExpedition.endsAt > Date.now()) {
-      await interaction
-        .reply({ content: 'Wyprawa jeszcze trwa.', flags: MessageFlags.Ephemeral })
-        .catch(() => {});
+      await chat.reply(interaction, 'Wyprawa jeszcze trwa.', { ephemeral: true });
       return;
     }
     // Forced final encounter — gracz musi pokonać moba ZANIM odbierze
@@ -526,13 +493,11 @@ export class ExpeditionService {
     if (!player.activeExpedition.finalFightDone && this.ambushService) {
       const triggered = await this.ambushService.triggerForcedFinaleFor(player.id);
       if (triggered) {
-        await interaction
-          .reply({
-            content:
-              '⚔️ **Strażnik regionu zastępuje ci drogę!** Pokonaj go w wątku ambushu, potem kliknij **🎁 Zbierz** ponownie.',
-            flags: MessageFlags.Ephemeral,
-          })
-          .catch(() => {});
+        await chat.reply(
+          interaction,
+          '⚔️ **Strażnik regionu zastępuje ci drogę!** Pokonaj go w wątku ambushu, potem kliknij **🎁 Zbierz** ponownie.',
+          { ephemeral: true },
+        );
         return;
       }
     }
@@ -540,12 +505,9 @@ export class ExpeditionService {
     const summary = this.runClaim(player);
     this.logs.delete(player.id);
     this.browsers.delete(player.id);
-    await interaction
-      .update({
-        content: summary,
-        components: fromMenu ? buildExpAfterRows(player.id) : [],
-      })
-      .catch(() => {});
+    await chat.update(interaction, summary, {
+      components: fromMenu ? buildExpAfterRows(player.id) : [],
+    });
   }
 
   /** Klik "⚔️ Wróć do walki" — próbuje resume na wszystkich battle services. */
@@ -556,57 +518,44 @@ export class ExpeditionService {
     if (this.ambushService) {
       const r = await this.ambushService.resumeForPlayer(player.id);
       if (r.ok) {
-        await interaction
-          .reply({
-            content: `⚔️ Panel akcji odświeżony w <#${r.threadId}>. Idź do wątku i kontynuuj walkę.`,
-            flags: MessageFlags.Ephemeral,
-          })
-          .catch(() => {});
+        await chat.reply(
+          interaction,
+          `⚔️ Panel akcji odświeżony w <#${r.threadId}>. Idź do wątku i kontynuuj walkę.`,
+          { ephemeral: true },
+        );
         return;
       }
     }
     if (this.dungeonService) {
       const r = await this.dungeonService.resumeForPlayer(interaction.client, player.id);
       if (r.ok) {
-        await interaction
-          .reply({
-            content: `🏰 Wracasz do dungeonu — <#${r.threadId}>.`,
-            flags: MessageFlags.Ephemeral,
-          })
-          .catch(() => {});
+        await chat.reply(interaction, `🏰 Wracasz do dungeonu — <#${r.threadId}>.`, {
+          ephemeral: true,
+        });
         return;
       }
     }
     if (this.bossService) {
       const r = await this.bossService.resumeForPlayer(interaction.client, player.id);
       if (r.ok) {
-        await interaction
-          .reply({
-            content: `👹 Wracasz do walki z bossem — <#${r.threadId}>.`,
-            flags: MessageFlags.Ephemeral,
-          })
-          .catch(() => {});
+        await chat.reply(interaction, `👹 Wracasz do walki z bossem — <#${r.threadId}>.`, {
+          ephemeral: true,
+        });
         return;
       }
     }
     if (this.worldBossService) {
       const r = await this.worldBossService.resumeForPlayer(interaction.client, player.id);
       if (r.ok) {
-        await interaction
-          .reply({
-            content: `🌋 Wracasz na world boss — <#${r.threadId}>.`,
-            flags: MessageFlags.Ephemeral,
-          })
-          .catch(() => {});
+        await chat.reply(interaction, `🌋 Wracasz na world boss — <#${r.threadId}>.`, {
+          ephemeral: true,
+        });
         return;
       }
     }
-    await interaction
-      .reply({
-        content: 'Nie masz aktywnej walki — być może już się skończyła.',
-        flags: MessageFlags.Ephemeral,
-      })
-      .catch(() => {});
+    await chat.reply(interaction, 'Nie masz aktywnej walki — być może już się skończyła.', {
+      ephemeral: true,
+    });
   }
 
   /** Czy gracz ma aktualnie aktywny ambush (block claim, show resume button). */
@@ -626,12 +575,9 @@ export class ExpeditionService {
   private async handleClose(interaction: ButtonInteraction, userId: string): Promise<void> {
     const fromMenu = this.browsers.get(userId)?.fromMenu ?? false;
     this.browsers.delete(userId);
-    await interaction
-      .update({
-        content: 'Browser ekspedycji zamknięty.',
-        components: fromMenu ? buildExpAfterRows(userId) : [],
-      })
-      .catch(() => {});
+    await chat.update(interaction, 'Browser ekspedycji zamknięty.', {
+      components: fromMenu ? buildExpAfterRows(userId) : [],
+    });
   }
 
   // ── Internal helpers ────────────────────────────────────
@@ -745,18 +691,20 @@ export class ExpeditionService {
   private async status(msg: any): Promise<void> {
     const player = this.stats.get(msg.author.id, displayName(msg));
     if (!player.activeExpedition) {
-      await msg.reply('Nie masz aktywnej wyprawy.');
+      await chat.replyToMessage(msg, 'Nie masz aktywnej wyprawy.');
       return;
     }
     const def = EXPEDITIONS[player.activeExpedition.destination];
     const left = player.activeExpedition.endsAt - Date.now();
     if (left <= 0) {
-      await msg.reply(
+      await chat.replyToMessage(
+        msg,
         `✅ **${def?.name ?? player.activeExpedition.destination}** zakończona — odbierz \`.expedition claim\`.`,
       );
       return;
     }
-    await msg.reply(
+    await chat.replyToMessage(
+      msg,
       `🗺️ **${def?.name ?? player.activeExpedition.destination}** trwa — koniec za ${Math.ceil(left / 60_000)} min.`,
     );
   }
@@ -764,39 +712,42 @@ export class ExpeditionService {
   private async claim(msg: any): Promise<void> {
     const player = this.stats.get(msg.author.id, displayName(msg));
     if (!player.activeExpedition) {
-      await msg.reply('Nie masz wyprawy do odebrania.');
+      await chat.replyToMessage(msg, 'Nie masz wyprawy do odebrania.');
       return;
     }
     if (player.activeExpedition.endsAt > Date.now()) {
       const left = player.activeExpedition.endsAt - Date.now();
-      await msg.reply(`Wyprawa jeszcze trwa, zostało ${Math.ceil(left / 60_000)} min.`);
+      await chat.replyToMessage(
+        msg,
+        `Wyprawa jeszcze trwa, zostało ${Math.ceil(left / 60_000)} min.`,
+      );
       return;
     }
     const summary = this.runClaim(player);
     this.logs.delete(player.id);
-    await msg.reply(summary);
+    await chat.replyToMessage(msg, summary);
   }
 
   private async start(msg: any, destId: string | undefined): Promise<void> {
     if (!destId) {
-      await msg.reply('Użycie: `.expedition start <id>`.');
+      await chat.replyToMessage(msg, 'Użycie: `.expedition start <id>`.');
       return;
     }
     const def = EXPEDITIONS[destId];
     if (!def) {
-      await msg.reply(`Nie ma wyprawy \`${destId}\`. Zobacz \`.expedition\`.`);
+      await chat.replyToMessage(msg, `Nie ma wyprawy \`${destId}\`. Zobacz \`.expedition\`.`);
       return;
     }
     const partyEntity = this.party.getByMember(msg.author.id);
     const isLeader = partyEntity?.leaderId === msg.author.id;
     if (partyEntity && !isLeader) {
-      await msg.reply('Wyprawę dla party może rozpocząć tylko lider.');
+      await chat.replyToMessage(msg, 'Wyprawę dla party może rozpocząć tylko lider.');
       return;
     }
     const leader = this.stats.get(msg.author.id, displayName(msg));
     const result = this.tryStartExpedition(leader, def, msg.channel?.id);
     if (!result.ok) {
-      await msg.reply(result.reason ?? 'Nie udało się rozpocząć.');
+      await chat.replyToMessage(msg, result.reason ?? 'Nie udało się rozpocząć.');
       return;
     }
     const targets = partyEntity ? partyEntity.members : [leader.id];
@@ -807,7 +758,8 @@ export class ExpeditionService {
     const tag = partyEntity
       ? `dla party (${targets.map((id: string) => `<@${id}>`).join(', ')})`
       : '';
-    await msg.reply(
+    await chat.replyToMessage(
+      msg,
       `🗺️ **${def.name}** rozpoczęta ${tag} — wraca za ${Math.round(def.durationMs / 60_000)} min. Wpisz \`.expedition\` żeby zobaczyć log walk.`,
     );
   }
