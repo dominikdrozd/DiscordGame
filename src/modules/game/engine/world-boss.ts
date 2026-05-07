@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
   type ButtonInteraction,
   type Client,
@@ -280,6 +281,7 @@ export class WorldBossService {
     };
 
     const state: WorldBossBattleState = {
+      _battleId: randomUUID(),
       id: tid,
       thread,
       combatants: [...playerCombatants, bossCombatant],

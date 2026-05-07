@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
   ChannelType,
   MessageFlags,
@@ -184,6 +185,7 @@ export class DuelService {
     const p2: BattleCombatant = { ...p2Raw, team: 1, controller: 'human' };
 
     const state: DuelBattleState = {
+      _battleId: randomUUID(),
       id: thread.id,
       thread,
       combatants: [p1, p2],
@@ -237,6 +239,7 @@ export class DuelService {
     const all = [...sideA, ...sideB];
 
     const state: DuelBattleState = {
+      _battleId: randomUUID(),
       id: thread.id,
       thread,
       combatants: all.map((x) => x.combatant),

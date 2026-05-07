@@ -17,6 +17,9 @@ export interface BattleAction {
 }
 
 export interface BattleState {
+  /** Stabilny UUID — primary key w `battles` collection, niezmienny przez thread recreate. */
+  _battleId: string;
+  /** Discord thread id — używane do routingu interactions. Zmienia się gdy thread odtworzony. */
   id: string;
   thread: any;
   combatants: BattleCombatant[];

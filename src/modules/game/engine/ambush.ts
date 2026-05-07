@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { Client, ButtonInteraction } from 'discord.js';
 import { PlayerStatsService } from '../services/player-stats.js';
 import { PartyService, type Party } from '../services/party.js';
@@ -361,6 +362,7 @@ export class AmbushService {
     }
     this.stats.save();
     const state: AmbushBattleState = {
+      _battleId: randomUUID(),
       id: thread.id,
       thread,
       combatants: [...playerCombatants, ...mobCombatants],
@@ -435,6 +437,7 @@ export class AmbushService {
     this.stats.save();
 
     const state: AmbushBattleState = {
+      _battleId: randomUUID(),
       id: thread.id,
       thread,
       combatants: [playerCombatant, ...mobCombatants],

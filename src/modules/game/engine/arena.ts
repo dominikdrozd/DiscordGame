@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
   type ButtonInteraction,
   type Client,
@@ -431,6 +432,7 @@ export class ArenaService {
     const cb = buildHumanCombatant(this.stats, b, 1);
     const battleId = `arena_${Date.now().toString(36)}_${t.currentMatchIdx}`;
     const state: BattleState = {
+      _battleId: randomUUID(),
       id: battleId,
       thread: t.thread,
       combatants: [ca, cb],

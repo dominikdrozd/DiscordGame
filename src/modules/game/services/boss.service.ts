@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
   ChannelType,
   MessageFlags,
@@ -284,6 +285,7 @@ export class BossService {
     };
 
     const state: BossBattleState = {
+      _battleId: randomUUID(),
       id: thread.id,
       thread,
       combatants: [playerCombatant, bossCombatant],

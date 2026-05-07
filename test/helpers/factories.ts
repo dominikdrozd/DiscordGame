@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { PlayerStatsService, type PlayerStats } from '../../src/modules/game/services/player-stats.js';
 import type { Combatant } from '../../src/modules/game/engine/combat.js';
 import type {
@@ -104,6 +105,7 @@ export function makeBattleCombatant(overrides: Partial<BattleCombatant> = {}): B
 
 export function makeBattleState(combatants: BattleCombatant[]): BattleState {
   return {
+    _battleId: randomUUID(),
     id: 'bs1',
     thread: null,
     combatants,

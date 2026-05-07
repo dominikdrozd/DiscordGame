@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
   ChannelType,
   MessageFlags,
@@ -303,6 +304,7 @@ export class DungeonService {
     const firstBossId = def.rooms[0];
 
     const state: DungeonBattleState = {
+      _battleId: randomUUID(),
       id: thread.id,
       thread,
       combatants: [...playerCombatants, firstBoss],
