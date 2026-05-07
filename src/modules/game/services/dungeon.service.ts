@@ -14,6 +14,7 @@ import {
   humansAlive,
 } from '../engine/battle-state.js';
 import { resolveBattleRound } from '../engine/combat-battle.js';
+import { BattleStore } from '../engine/battle-store.js';
 import { chooseAiAction } from '../engine/ai.js';
 import {
   syncConsumablesAfterBattle,
@@ -117,7 +118,25 @@ export class DungeonService {
   constructor(
     private readonly stats: PlayerStatsService,
     private readonly party: PartyService,
+    private readonly battleStore: BattleStore,
   ) {}
+
+  /** Wczytuje aktywne dungeony z Mongo na starcie. Thread null — czeka na resume. */
+  async hydrate(): Promise<void> {
+    const loaded = await this.battleStore.loadActive();
+    let restored = 0;
+    for (const { state, doc } of loaded) {
+      if (doc.type !== 'dungeon' || !doc.dungeonContext) continue;
+      const dungeonState = state as DungeonBattleState;
+      dungeonState.dungeonId = doc.dungeonContext.dungeonId;
+      dungeonState.roomIndex = doc.dungeonContext.roomIndex;
+      dungeonState.currentBossId = doc.dungeonContext.currentBossId;
+      dungeonState.partyMemberIds = doc.dungeonContext.partyMemberIds;
+      this.states.set(state.id, dungeonState);
+      restored += 1;
+    }
+    console.log(`[dungeon] hydrate: ${restored} active dungeons restored`);
+  }
 
   /** True jeśli któryś niezakończony dungeon state ma tego gracza po team 0. */
   hasActiveFor(playerId: string): boolean {
@@ -318,6 +337,15 @@ export class DungeonService {
       partyMemberIds: [...party.members],
     };
     this.states.set(thread.id, state);
+    await this.battleStore.create(state, 'dungeon', {
+      parentChannelId: thread.parentId ?? thread.id,
+      dungeonContext: {
+        dungeonId: state.dungeonId,
+        roomIndex: state.roomIndex,
+        currentBossId: state.currentBossId,
+        partyMemberIds: state.partyMemberIds,
+      },
+    });
 
     // Dodaj wszystkich party members do wątku (jeśli to private — i tak nie zaszkodzi).
     if (thread.members && typeof thread.members.add === 'function') {
@@ -361,6 +389,7 @@ export class DungeonService {
     state.promptMessageIds.clear();
 
     const result = resolveBattleRound(state);
+    await this.battleStore.snapshot(state);
     const lines = [...result.lines];
 
     if (result.finished) {
@@ -368,6 +397,10 @@ export class DungeonService {
 
       // Cała party padła lub remis — porażka.
       if (result.draw || result.winnerTeam === 1) {
+        await this.battleStore.finish(state._battleId, {
+          winnerTeam: result.winnerTeam,
+          draw: result.draw,
+        });
         for (const memberId of state.partyMemberIds) {
           const member = this.stats.get(memberId);
           this.stats.setCooldown(member, 'dungeon', COOLDOWN_MS);
@@ -427,6 +460,10 @@ export class DungeonService {
           const gemLines = awardGemDrops(this.stats, memberStats, finalTier);
           if (gemLines.length) lines.push(...gemLines);
         }
+        await this.battleStore.finish(state._battleId, {
+          winnerTeam: result.winnerTeam,
+          draw: result.draw,
+        });
         // Cooldown dla CAŁEJ party (nie tylko ocalałych) — żeby nie było farmu
         // przez ciągłe wskrzeszanie partnerów.
         for (const memberId of state.partyMemberIds) {
@@ -455,6 +492,7 @@ export class DungeonService {
       state.finished = false;
       state.winnerTeam = undefined;
       state.draw = undefined;
+      await this.battleStore.snapshot(state);
       this.stats.save();
       await state.thread.send(
         [

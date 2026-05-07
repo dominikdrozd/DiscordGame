@@ -72,14 +72,20 @@ export async function createGameServices(repos: Repos): Promise<GameServices> {
   return { stats, party, expeditions, identification, enchanter, repos };
 }
 
-export function registerGameCommands(manager: CommandManager, services: GameServices): void {
-  const { stats, party, expeditions } = services;
+export async function registerGameCommands(
+  manager: CommandManager,
+  services: GameServices,
+): Promise<void> {
+  const { stats, party, expeditions, repos } = services;
+  const battleStore = new BattleStore(repos.battle);
 
   // services state-bearing, paired 1:1 z komendą
   const quests = new QuestService(stats);
   const duels = new DuelService(stats, party, quests);
-  const bosses = new BossService(stats, quests);
-  const dungeons = new DungeonService(stats, party);
+  const bosses = new BossService(stats, battleStore, quests);
+  const dungeons = new DungeonService(stats, party, battleStore);
+  await bosses.hydrate();
+  await dungeons.hydrate();
   const crafting = new CraftService(stats);
   const inventory = new InventoryService(stats);
   // Closure: musi widzieć inventoryCommand do registerThreadFor. Closure
@@ -226,8 +232,13 @@ export async function startAmbushLoop(
   return ambush;
 }
 
-export function startWorldBossLoop(client: Client, services: GameServices): WorldBossService {
-  const wb = new WorldBossService(client, services.stats);
+export async function startWorldBossLoop(
+  client: Client,
+  services: GameServices,
+): Promise<WorldBossService> {
+  const battleStore = new BattleStore(services.repos.battle);
+  const wb = new WorldBossService(client, services.stats, battleStore);
+  await wb.hydrate();
   wb.start();
   return wb;
 }

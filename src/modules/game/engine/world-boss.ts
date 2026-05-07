@@ -15,6 +15,7 @@ import {
   humansAlive,
 } from './battle-state.js';
 import { resolveBattleRound } from './combat-battle.js';
+import { BattleStore } from './battle-store.js';
 import { chooseAiAction } from './ai.js';
 import { buildHumanCombatant } from './player-combatant.js';
 import {
@@ -121,7 +122,23 @@ export class WorldBossService {
   constructor(
     private readonly client: Client,
     private readonly stats: PlayerStatsService,
+    private readonly battleStore: BattleStore,
   ) {}
+
+  /** Wczytuje aktywne world-boss battles z Mongo na starcie. */
+  async hydrate(): Promise<void> {
+    const loaded = await this.battleStore.loadActive();
+    let restored = 0;
+    for (const { state, doc } of loaded) {
+      if (doc.type !== 'worldBoss' || !doc.worldBossContext) continue;
+      const wbState = state as WorldBossBattleState;
+      wbState.bossId = doc.worldBossContext.bossId;
+      wbState.participantIds = doc.worldBossContext.participantIds;
+      this.battles.set(state.id, wbState);
+      restored += 1;
+    }
+    console.log(`[world-boss] hydrate: ${restored} active battles restored`);
+  }
 
   start(): void {
     if (this.timer) return;
@@ -293,6 +310,10 @@ export class WorldBossService {
       bossId: boss.id,
     };
     this.battles.set(tid, state);
+    await this.battleStore.create(state, 'worldBoss', {
+      parentChannelId: channel.id,
+      worldBossContext: { bossId: state.bossId, participantIds: state.participantIds },
+    });
 
     await this.disableAnnounceButton(evt);
 
@@ -391,12 +412,17 @@ export class WorldBossService {
     state.promptMessageIds.clear();
 
     const result = resolveBattleRound(state);
+    await this.battleStore.snapshot(state);
     const lines = [...result.lines];
 
     if (result.finished) {
       const boss = BOSS_MOBS[state.bossId];
 
       if (result.draw || result.winnerTeam === 1) {
+        await this.battleStore.finish(state._battleId, {
+          winnerTeam: result.winnerTeam,
+          draw: result.draw,
+        });
         syncConsumablesAfterBattle(this.stats, state);
         this.stats.save();
         if (lines.length > 0) {
@@ -412,6 +438,10 @@ export class WorldBossService {
       }
 
       // Wygrana — distribute rewards.
+      await this.battleStore.finish(state._battleId, {
+        winnerTeam: result.winnerTeam,
+        draw: result.draw,
+      });
       const aliveHumans = state.combatants.filter((c) => c.team === 0 && c.hp > 0);
       lines.push('', `🏆 **${boss?.name ?? state.bossId} pokonany!** Łupy:`);
       for (const human of aliveHumans) {

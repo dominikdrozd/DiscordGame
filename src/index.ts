@@ -54,7 +54,7 @@ manager.register(new MovieOfTheDayCommand());
 
 // game module
 const gameServices = await createGameServices(repos);
-registerGameCommands(manager, gameServices);
+await registerGameCommands(manager, gameServices);
 
 // admin
 manager.register(new ClearCommand());
@@ -95,7 +95,7 @@ client.once(Events.ClientReady, async (c) => {
       .join(', '),
   );
   ambushService = await startAmbushLoop(client, gameServices);
-  worldBossService = startWorldBossLoop(client, gameServices);
+  worldBossService = await startWorldBossLoop(client, gameServices);
   arenaService = startArenaLoop(client, gameServices);
   void registerSlashCommands(c.user.id);
 });

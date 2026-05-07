@@ -22,9 +22,14 @@ export interface BattleDoc {
   playerIds: string[];
   // type-specific (opcjonalne, jedno z poniższych w zależności od `type`):
   expedition?: { destination: string; channelId: string };
-  dungeonContext?: { dungeonId: string; floor: number };
+  dungeonContext?: {
+    dungeonId: string;
+    roomIndex: number;
+    currentBossId: string;
+    partyMemberIds: string[];
+  };
   bossContext?: { bossId: string };
-  worldBossContext?: { bossId: string; phase: number };
+  worldBossContext?: { bossId: string; participantIds: string[] };
   // metadata
   createdAt: number;
   updatedAt: number;

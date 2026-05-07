@@ -13,6 +13,7 @@ import {
   humansAlive,
 } from '../engine/battle-state.js';
 import { resolveBattleRound } from '../engine/combat-battle.js';
+import { BattleStore } from '../engine/battle-store.js';
 import { chooseAiAction } from '../engine/ai.js';
 import {
   syncConsumablesAfterBattle,
@@ -67,8 +68,23 @@ export class BossService {
 
   constructor(
     private readonly stats: PlayerStatsService,
+    private readonly battleStore: BattleStore,
     private readonly quests?: QuestService,
   ) {}
+
+  /** Wczytuje aktywne walki z bossami na starcie. */
+  async hydrate(): Promise<void> {
+    const loaded = await this.battleStore.loadActive();
+    let restored = 0;
+    for (const { state, doc } of loaded) {
+      if (doc.type !== 'boss' || !doc.bossContext) continue;
+      const bossState = state as BossBattleState;
+      bossState.bossId = doc.bossContext.bossId;
+      this.states.set(state.id, bossState);
+      restored += 1;
+    }
+    console.log(`[boss] hydrate: ${restored} active boss battles restored`);
+  }
 
   async start(ctx: ICommandContext): Promise<void> {
     const { msg, prompt, registerThread } = ctx;
@@ -296,6 +312,10 @@ export class BossService {
       bossId: def.id,
     };
     this.states.set(thread.id, state);
+    await this.battleStore.create(state, 'boss', {
+      parentChannelId: thread.parentId ?? thread.id,
+      bossContext: { bossId: state.bossId },
+    });
 
     const bagPotion = playerCombatant.consumables?.potion_small ?? 0;
     await thread.send(
@@ -433,6 +453,7 @@ export class BossService {
     state.promptMessageIds.clear();
 
     const result = resolveBattleRound(state);
+    await this.battleStore.snapshot(state);
 
     // Log walki — także dla ostatniej rundy (przed `finish`).
     if (result.lines.length > 0) {
@@ -458,6 +479,10 @@ export class BossService {
     state: BossBattleState,
     result: { draw?: boolean; winnerTeam?: number },
   ): Promise<void> {
+    await this.battleStore.finish(state._battleId, {
+      winnerTeam: result.winnerTeam,
+      draw: result.draw,
+    });
     const playerCombatant = state.combatants.find((c) => c.team === 0)!;
     const player = this.stats.get(playerCombatant.id, playerCombatant.name);
     this.stats.setCooldown(player, 'boss', COOLDOWN_MS);

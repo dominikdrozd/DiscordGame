@@ -8,9 +8,14 @@ import type { BattleRepo, BattleDoc, BattleType } from '../../../persistence/rep
 export interface BattleContext {
   parentChannelId: string;
   expedition?: { destination: string; channelId: string };
-  dungeonContext?: { dungeonId: string; floor: number };
+  dungeonContext?: {
+    dungeonId: string;
+    roomIndex: number;
+    currentBossId: string;
+    partyMemberIds: string[];
+  };
   bossContext?: { bossId: string };
-  worldBossContext?: { bossId: string; phase: number };
+  worldBossContext?: { bossId: string; participantIds: string[] };
 }
 
 /** Para load-time: state (do hydratacji w pamięci) + raw doc (do read-only meta). */
